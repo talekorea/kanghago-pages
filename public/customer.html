@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>강하고 무역 - 통관 정보 확인</title>
+<style>
+  :root {
+    --bg:#F4EFE6; --ivory:#FAF6EE; --gold:#C9973A; --navy:#1B2A3B;
+    --text:#1B2A3B; --text-dim:#666; --border:#d4c5a8; --bg-soft:#f8f5ee;
+  }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,'Segoe UI','Malgun Gothic',sans-serif; background:var(--bg); color:var(--text); margin:0; padding:0; line-height:1.6; }
+  header { background:linear-gradient(135deg, var(--navy) 0%, #2c4060 100%); color:var(--ivory); padding:20px 24px; text-align:center; }
+  header h1 { margin:0; font-size:22px; color:var(--gold); }
+  header p { margin:6px 0 0 0; font-size:14px; opacity:0.9; }
+  .container { max-width:780px; margin:20px auto; padding:0 16px; }
+  .section { background:#fff; border-radius:10px; padding:18px 20px; margin-bottom:14px; box-shadow:0 2px 6px rgba(0,0,0,0.06); }
+  .section h2 { font-size:16px; margin:0 0 14px 0; color:var(--navy); display:flex; align-items:center; gap:8px; padding-bottom:8px; border-bottom:2px solid var(--gold); }
+  .section h2 .num { background:var(--gold); color:#fff; width:24px; height:24px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; }
+  .greeting { background:var(--bg-soft); padding:16px 20px; border-radius:8px; margin-bottom:14px; }
+  .greeting h2 { color:var(--navy); margin:0 0 6px 0; font-size:18px; border:none; padding:0; }
+  .product-row { display:flex; gap:12px; padding:10px 0; border-bottom:1px solid #f0ebe1; }
+  .product-row:last-child { border-bottom:none; }
+  .product-row img { width:60px; height:60px; object-fit:cover; border-radius:6px; border:1px solid var(--border); flex-shrink:0; }
+  .product-info { flex:1; min-width:0; }
+  .product-info .name { font-weight:600; font-size:13px; word-break:break-word; }
+  .product-info .meta { font-size:11px; color:#666; margin-top:2px; }
+  .hs-badge { background:var(--bg-soft); padding:2px 6px; border-radius:3px; font-family:monospace; font-size:10px; color:#444; }
+  .fta-cards { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:10px; }
+  .fta-card { border:2px solid var(--border); border-radius:8px; padding:14px; cursor:pointer; text-align:center; transition:all 0.2s; }
+  .fta-card:hover { border-color:var(--gold); }
+  .fta-card.selected { border-color:var(--gold); background:#fff8e1; }
+  .fta-card.recommended { position:relative; }
+  .fta-card.recommended::after { content:'⭐ 추천'; position:absolute; top:-10px; right:-6px; background:var(--gold); color:#fff; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; }
+  .fta-card .label { font-size:11px; color:#666; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+  .fta-card .amount { font-size:18px; font-weight:700; color:var(--navy); margin:6px 0; }
+  .fta-card .save { font-size:11px; color:#0a7b40; font-weight:600; }
+  .checkbox-row { display:flex; align-items:flex-start; gap:10px; background:var(--bg-soft); padding:12px; border-radius:6px; margin-top:12px; cursor:pointer; }
+  .checkbox-row input { margin-top:2px; transform:scale(1.2); }
+  .checkbox-row .text { flex:1; font-size:13px; }
+  .checkbox-row .text strong { display:block; margin-bottom:3px; color:var(--navy); }
+  .delivery-options { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .delivery-card { border:2px solid var(--border); border-radius:8px; padding:14px; cursor:pointer; text-align:center; }
+  .delivery-card:hover { border-color:var(--gold); }
+  .delivery-card.selected { border-color:var(--gold); background:#fff8e1; }
+  .delivery-card .icon { font-size:32px; }
+  .delivery-card .name { font-weight:600; margin-top:6px; }
+  .delivery-card .desc { font-size:11px; color:#666; margin-top:4px; }
+  .form-grid { display:grid; gap:10px; }
+  .form-grid label { font-size:12px; color:#666; }
+  .form-grid input { width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:5px; font-size:13px; font-family:inherit; }
+  .form-grid input:focus { outline:2px solid var(--gold); outline-offset:-1px; }
+  textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:5px; font-size:13px; font-family:inherit; min-height:80px; resize:vertical; }
+  textarea:focus { outline:2px solid var(--gold); outline-offset:-1px; }
+  .info-row { display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:13px; padding:8px 0; }
+  .info-row .key { color:#666; }
+  .submit-section { background:linear-gradient(135deg, var(--navy), #2c4060); color:#fff; border-radius:10px; padding:24px; text-align:center; margin-top:20px; }
+  .submit-section button { background:var(--gold); color:#fff; padding:14px 32px; font-size:16px; font-weight:700; border:none; border-radius:8px; cursor:pointer; }
+  .submit-section button:hover { background:#b8862b; }
+  .submit-section button:disabled { background:#888; cursor:not-allowed; }
+  .summary-info { font-size:13px; margin:8px 0; }
+  .error-box { background:#ffe8e6; border:1px solid #cc3333; color:#cc3333; padding:14px; border-radius:8px; margin:20px auto; max-width:600px; text-align:center; }
+
+  /* Toast */
+  #toasts { position:fixed; top:20px; right:20px; z-index:9999; display:flex; flex-direction:column; gap:8px; max-width:380px; }
+  .toast { background:#fff; padding:12px 16px; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.2); border-left:4px solid #888; cursor:pointer; animation:slideIn 0.3s ease; }
+  .toast.t-success { border-left-color:#0a7b40; }
+  .toast.t-warn { border-left-color:var(--gold); }
+  .toast.t-error { border-left-color:#cc3333; }
+  @keyframes slideIn { from { transform:translateX(120%); opacity:0; } to { transform:translateX(0); opacity:1; } }
+
+  @media (max-width:600px) {
+    .fta-cards, .delivery-options { grid-template-columns:1fr; }
+    .container { padding:0 10px; }
+    .submit-section button { width:100%; }
+  }
+
+  .completed-banner { background:#e8f5e9; border:2px solid #0a7b40; color:#0a7b40; padding:16px; border-radius:8px; text-align:center; font-weight:600; margin-bottom:14px; }
+</style>
+</head>
+<body>
+
+<div id="toasts"></div>
+
+<header>
+  <h1>강하고 무역 (Kanghago)</h1>
+  <p>통관 정보 확인 및 응답</p>
+</header>
+
+<div id="loadingBox" class="container" style="text-align:center; padding:40px;">
+  <div style="font-size:32px;">⏳</div>
+  <p>로딩 중...</p>
+</div>
+
+<div id="errorBox" class="error-box" style="display:none;"></div>
+
+<div id="content" class="container" style="display:none;">
+
+  <!-- 인사말 -->
+  <div class="greeting">
+    <h2 id="greetTitle">안녕하세요!</h2>
+    <p>아래 정보를 확인해 주시고, 마지막에 <strong>[확정 제출]</strong> 버튼을 눌러주세요.</p>
+  </div>
+
+  <div id="completedBanner" class="completed-banner" style="display:none;">
+    ✅ 이미 응답을 제출하셨습니다. 강하고 무역이 곧 진행 안내드리겠습니다.
+  </div>
+
+  <!-- 1. 제품 목록 -->
+  <div class="section">
+    <h2><span class="num">1</span> 제품 목록</h2>
+    <div id="productsBox"></div>
+  </div>
+
+  <!-- 2. 예상 관부가세 -->
+  <div class="section">
+    <h2><span class="num">2</span> 예상 관부가세 선택</h2>
+    <p style="font-size:13px; color:#666; margin:0 0 12px 0;">아래 3가지 중 하나를 선택하세요. <strong>한중/아태 FTA</strong> 선택 시 <strong>원산지증명서 신청</strong>이 필요합니다.</p>
+    <div class="fta-cards" id="ftaCards"></div>
+    <label class="checkbox-row" id="coRow" style="display:none;">
+      <input type="checkbox" id="coRequest" />
+      <div class="text">
+        <strong>📜 원산지증명서 신청 요청</strong>
+        한중/아태 FTA 혜택을 받으려면 원산지증명서가 필요합니다. 강하고 무역에서 발급 대행해 드립니다.
+        (발급 수수료 별도, 약 5-7일 소요)
+      </div>
+    </label>
+  </div>
+
+  <!-- 3. 박스 정보 + 배송 방식 -->
+  <div class="section">
+    <h2><span class="num">3</span> 배송 방식 선택</h2>
+    <div class="summary-info" id="boxSummary"></div>
+    <div class="delivery-options">
+      <div class="delivery-card" data-delivery="택배" onclick="selectDelivery('택배')">
+        <div class="icon">📦</div>
+        <div class="name">택배</div>
+        <div class="desc">CJ대한통운, 경동택배 등<br>적정 업체 자동 배정 · 2-3일</div>
+      </div>
+      <div class="delivery-card" data-delivery="화물" onclick="selectDelivery('화물')">
+        <div class="icon">🚚</div>
+        <div class="name">화물</div>
+        <div class="desc">1톤/5톤 등<br>업체 자동 배정 · 1-2일</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. 수취 정보 -->
+  <div class="section">
+    <h2><span class="num">4</span> 수취 정보 확인</h2>
+    <p style="font-size:12px; color:#666; margin:0 0 12px 0;">💡 변경 사항만 수정해 주세요. 맞으면 그대로 두시면 됩니다.</p>
+    <div class="form-grid">
+      <div>
+        <label>수취인 이름 *</label>
+        <input type="text" id="custName" />
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div>
+          <label>회사명 (선택)</label>
+          <input type="text" id="custCompany" />
+        </div>
+        <div>
+          <label>전화번호 *</label>
+          <input type="text" id="custPhone" placeholder="010-1234-5678" />
+        </div>
+      </div>
+      <div>
+        <label>주소 *</label>
+        <input type="text" id="custAddress" placeholder="서울특별시 ..." />
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 특이사항 -->
+  <div class="section">
+    <h2><span class="num">5</span> 특이사항 / 요청사항</h2>
+    <p style="font-size:12px; color:#666; margin:0 0 8px 0;">예: "13-16시 사이에 도착해주세요" / "경비실에 맡겨주세요" / "사다리차 필요 (3층)"</p>
+    <textarea id="note" placeholder="원하는 도착 시간, 보관 위치, 기타 요청사항"></textarea>
+  </div>
+
+  <!-- 제출 -->
+  <div class="submit-section">
+    <p style="margin:0 0 16px 0;">위 내용으로 확정하시겠습니까?</p>
+    <button id="submitBtn" onclick="submitResponse()">✅ 확정 제출</button>
+    <p style="margin:14px 0 0 0; font-size:11px; opacity:0.7;">제출 후 변경이 필요하면 강하고 무역에 연락해 주세요.</p>
+  </div>
+
+  <!-- 진행 로그 (디버그) -->
+  <div style="margin-top:20px; padding:10px; background:rgba(0,0,0,0.05); border-radius:6px; font-size:11px; color:#666; font-family:monospace;" id="log"></div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const shipId = params.get('ship');
+const token = params.get('t');
+
+const state = {
+  shipment: null,
+  products: [],
+  boxes: [],
+  customer: null,
+  selectedFta: null,
+  selectedDelivery: null,
+  isCompleted: false
+};
+
+function log(msg) {
+  const el = document.getElementById('log');
+  if (!el) return;
+  const t = new Date().toLocaleTimeString();
+  el.innerHTML += `[${t}] ${msg}<br>`;
+}
+
+function toast(msg, type, opts) {
+  opts = opts || {};
+  const el = document.createElement('div');
+  el.className = 'toast t-' + (type || 'info');
+  el.innerHTML = `<strong>${opts.title || ''}</strong>${opts.title ? '<br>' : ''}${msg}`;
+  el.onclick = () => el.remove();
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => { try { el.remove(); } catch(e){} }, opts.duration || 4000);
+}
+
+function showError(msg) {
+  document.getElementById('loadingBox').style.display = 'none';
+  document.getElementById('content').style.display = 'none';
+  const eb = document.getElementById('errorBox');
+  eb.style.display = '';
+  eb.innerHTML = '<strong>❌ 오류</strong><br>' + msg + '<br><br><small>강하고 무역에 문의해 주세요.</small>';
+}
+
+async function init() {
+  if (!shipId || !token) {
+    showError('잘못된 접근입니다. 강하고 무역에서 받은 정확한 링크로 다시 접속해 주세요.');
+    return;
+  }
+
+  try {
+    const url = '/api/customer?ship=' + encodeURIComponent(shipId) + '&t=' + encodeURIComponent(token);
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'HTTP ' + res.status }));
+      throw new Error(err.error || 'HTTP ' + res.status);
+    }
+    const data = await res.json();
+    state.shipment = data.shipment;
+    state.products = data.products || [];
+    state.boxes = data.boxes || [];
+    state.customer = data.customer;
+
+    document.getElementById('loadingBox').style.display = 'none';
+    document.getElementById('content').style.display = '';
+
+    renderAll();
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+function renderAll() {
+  const f = state.shipment.fields || {};
+  state.isCompleted = !!f['고객응답일시'];
+
+  // 인사말
+  const name = (state.customer?.fields?.['회원명']) || f['수취인'] || '고객';
+  document.getElementById('greetTitle').textContent = `안녕하세요, ${name}님!`;
+
+  // 이미 응답한 경우
+  if (state.isCompleted) {
+    document.getElementById('completedBanner').style.display = '';
+    document.getElementById('submitBtn').style.display = 'none';
+  }
+
+  // 1. 제품 목록
+  renderProducts();
+  // 2. FTA 계산
+  renderFta();
+  // 3. 박스 정보
+  renderBoxes();
+  // 4. 수취 정보 채우기
+  fillCustomerForm();
+  // 5. 특이사항 (이미 답변이 있으면)
+  if (f['특이사항']) document.getElementById('note').value = f['특이사항'];
+
+  // 이미 응답한 경우 선택값 반영
+  if (state.isCompleted) {
+    if (f['선택FTA']) selectFta(f['선택FTA'].replace('FTA', '').replace('한중', '한중FTA').replace('아태', '아태FTA'));
+    if (f['배송방식']) selectDelivery(f['배송방식']);
+    if (f['원산지증명서신청']) document.getElementById('coRequest').checked = true;
+  }
+
+  log('✓ 로드 완료');
+}
+
+function renderProducts() {
+  const box = document.getElementById('productsBox');
+  if (state.products.length === 0) {
+    box.innerHTML = '<p style="color:#888;">제품 정보가 없습니다.</p>';
+    return;
+  }
+  box.innerHTML = state.products.map(p => {
+    const f = p.fields || {};
+    const imgUrl = (f['상품이미지'] && f['상품이미지'][0]?.thumbnails?.large?.url) || f['이미지URL'] || '';
+    const eng = f['통관품명_영문'] || f['Description'] || '(이름 없음)';
+    const hs = f['HS코드'] || '';
+    const qty = f['수량'] || 0;
+    const unitCny = f['단가CNY'] || 0;
+    const totalCny = f['합계CNY'] || 0;
+    return `
+      <div class="product-row">
+        ${imgUrl ? `<img src="${imgUrl}" />` : '<div style="width:60px; height:60px; background:#f0ebe1; border-radius:6px; display:flex; align-items:center; justify-content:center; color:#aaa; font-size:10px;">no img</div>'}
+        <div class="product-info">
+          <div class="name">${escHtml(eng)} ${hs ? `<span class="hs-badge">${escHtml(hs)}</span>` : ''}</div>
+          <div class="meta">${escHtml(f['통관품명_한글'] || '')}</div>
+          <div class="meta">수량: <strong>${qty.toLocaleString()}</strong> · 단가 ¥${unitCny.toLocaleString()} · 합계 ¥${totalCny.toLocaleString()}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderFta() {
+  // 단순 계산: 각 제품의 합계CNY * 환율 * 세율 = 관세, + 부가세 10%
+  const f = state.shipment.fields || {};
+  const rateUsdKrw = parseFloat(f['환율USD_KRW']) || 1350;
+  const rateCnyUsd = parseFloat(f['환율CNY_USD']) || 0.14;
+  const rateCnyKrw = rateCnyUsd * rateUsdKrw;
+
+  let totalGeneralDuty = 0, totalKcDuty = 0, totalAptaDuty = 0;
+  let totalInvoiceKrw = 0;
+
+  state.products.forEach(p => {
+    const f = p.fields || {};
+    const totalCny = f['합계CNY'] || 0;
+    const totalKrw = totalCny * rateCnyKrw;
+    totalInvoiceKrw += totalKrw;
+
+    // 기본 세율 추정 (HS코드 사전이 외부 페이지에 없으면 0)
+    // 실제로는 백엔드가 세율 정보를 제공해야 함. 여기선 기존 저장된 세율 사용
+    const baseRate = (f['기본세율'] || 0) / 100;
+    const kcRate = (f['FTA_한중'] || 0) / 100;
+    const aptaRate = (f['FTA_아태'] || 0) / 100;
+
+    totalGeneralDuty += totalKrw * baseRate;
+    totalKcDuty += totalKrw * kcRate;
+    totalAptaDuty += totalKrw * aptaRate;
+  });
+
+  // 부가세 (관세 포함 가격의 10%)
+  const generalVat = (totalInvoiceKrw + totalGeneralDuty) * 0.1;
+  const kcVat = (totalInvoiceKrw + totalKcDuty) * 0.1;
+  const aptaVat = (totalInvoiceKrw + totalAptaDuty) * 0.1;
+
+  const generalTotal = totalGeneralDuty + generalVat;
+  const kcTotal = totalKcDuty + kcVat;
+  const aptaTotal = totalAptaDuty + aptaVat;
+
+  // 최저금액에 추천 표시
+  const minAmount = Math.min(generalTotal, kcTotal, aptaTotal);
+
+  const cards = document.getElementById('ftaCards');
+  cards.innerHTML = `
+    <div class="fta-card ${generalTotal === minAmount ? 'recommended' : ''}" data-fta="일반" onclick="selectFta('일반')">
+      <div class="label">일반 세율</div>
+      <div class="amount">₩${Math.round(generalTotal).toLocaleString()}</div>
+      <div style="font-size:11px; color:#666;">관세 ₩${Math.round(totalGeneralDuty).toLocaleString()} + 부가세 ₩${Math.round(generalVat).toLocaleString()}</div>
+    </div>
+    <div class="fta-card ${kcTotal === minAmount ? 'recommended' : ''}" data-fta="한중FTA" onclick="selectFta('한중FTA')">
+      <div class="label">한중 FTA</div>
+      <div class="amount">₩${Math.round(kcTotal).toLocaleString()}</div>
+      <div class="save">${kcTotal < generalTotal ? '↓ ₩' + Math.round(generalTotal - kcTotal).toLocaleString() + ' 절감' : ''}</div>
+      <div style="font-size:10px; color:#888; margin-top:4px;">⚠ 원산지증명서 필요</div>
+    </div>
+    <div class="fta-card ${aptaTotal === minAmount ? 'recommended' : ''}" data-fta="아태FTA" onclick="selectFta('아태FTA')">
+      <div class="label">아태 FTA</div>
+      <div class="amount">₩${Math.round(aptaTotal).toLocaleString()}</div>
+      <div class="save">${aptaTotal < generalTotal ? '↓ ₩' + Math.round(generalTotal - aptaTotal).toLocaleString() + ' 절감' : ''}</div>
+      <div style="font-size:10px; color:#888; margin-top:4px;">⚠ 원산지증명서 필요</div>
+    </div>
+  `;
+}
+
+function selectFta(fta) {
+  state.selectedFta = fta;
+  document.querySelectorAll('.fta-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.fta === fta);
+  });
+  const coRow = document.getElementById('coRow');
+  coRow.style.display = (fta === '한중FTA' || fta === '아태FTA') ? '' : 'none';
+}
+
+function renderBoxes() {
+  const box = document.getElementById('boxSummary');
+  if (state.boxes.length === 0) {
+    box.innerHTML = '<p style="color:#888;">박스 정보가 아직 입력되지 않았습니다. 강하고 무역에서 박스 패킹 후 확인 가능합니다.</p>';
+    return;
+  }
+  let totalCbm = 0, totalKg = 0;
+  state.boxes.forEach(b => {
+    totalCbm += parseFloat(b.fields['부피CBM']) || 0;
+    totalKg += parseFloat(b.fields['무게KG']) || 0;
+  });
+  box.innerHTML = `
+    <div style="background:var(--bg-soft); padding:12px; border-radius:6px;">
+      📦 <strong>박스 ${state.boxes.length}개</strong> · 총 <strong>${totalKg.toFixed(1)}kg</strong> · <strong>${totalCbm.toFixed(3)} CBM</strong>
+    </div>
+  `;
+}
+
+function selectDelivery(type) {
+  state.selectedDelivery = type;
+  document.querySelectorAll('.delivery-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.delivery === type);
+  });
+}
+
+function fillCustomerForm() {
+  const c = state.customer?.fields || {};
+  const s = state.shipment.fields || {};
+  document.getElementById('custName').value = c['회원명'] || s['수취인'] || '';
+  document.getElementById('custCompany').value = c['회사명'] || '';
+  document.getElementById('custPhone').value = c['전화번호'] || '';
+  document.getElementById('custAddress').value = c['주소'] || '';
+}
+
+async function submitResponse() {
+  if (state.isCompleted) {
+    toast('이미 제출되었습니다', 'warn');
+    return;
+  }
+
+  // 검증
+  if (!state.selectedFta) {
+    toast('FTA를 선택해 주세요', 'warn', { title: '⚠ 선택 필요' });
+    return;
+  }
+  if (!state.selectedDelivery) {
+    toast('배송 방식을 선택해 주세요', 'warn', { title: '⚠ 선택 필요' });
+    return;
+  }
+  const name = document.getElementById('custName').value.trim();
+  const phone = document.getElementById('custPhone').value.trim();
+  const address = document.getElementById('custAddress').value.trim();
+  if (!name || !phone || !address) {
+    toast('수취 정보를 모두 입력해 주세요 (이름/전화/주소)', 'warn', { title: '⚠ 필수 정보' });
+    return;
+  }
+
+  // 한중/아태 선택했는데 원산지증명서 체크 안 함
+  if ((state.selectedFta === '한중FTA' || state.selectedFta === '아태FTA') && !document.getElementById('coRequest').checked) {
+    toast('FTA 적용을 위해 원산지증명서 신청 동의가 필요합니다', 'warn', { title: '⚠ 확인 필요', duration: 5000 });
+    return;
+  }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 제출 중...';
+
+  try {
+    const res = await fetch('/api/customer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shipmentId: shipId,
+        token: token,
+        response: {
+          fta: state.selectedFta,
+          deliveryType: state.selectedDelivery,
+          coRequested: document.getElementById('coRequest').checked,
+          note: document.getElementById('note').value.trim(),
+          customer: {
+            name: name,
+            company: document.getElementById('custCompany').value.trim(),
+            phone: phone,
+            address: address
+          }
+        }
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'HTTP ' + res.status }));
+      throw new Error(err.error || 'HTTP ' + res.status);
+    }
+
+    const data = await res.json();
+    toast(data.message || '응답이 정상 저장되었습니다', 'success', { title: '✅ 제출 완료', duration: 6000 });
+    btn.textContent = '✅ 제출 완료';
+    state.isCompleted = true;
+    setTimeout(() => {
+      document.getElementById('completedBanner').style.display = '';
+      btn.style.display = 'none';
+      window.scrollTo({ top:0, behavior:'smooth' });
+    }, 1500);
+  } catch (e) {
+    toast(e.message, 'error', { title: '✗ 제출 실패' });
+    btn.disabled = false;
+    btn.textContent = '✅ 확정 제출';
+  }
+}
+
+function escHtml(s) { return String(s || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]); }
+
+init();
+</script>
+</body>
+</html>

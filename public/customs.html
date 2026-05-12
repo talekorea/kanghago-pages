@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>관세사 확정 - 강하고 무역</title>
+<style>
+  :root {
+    --bg:#F4EFE6; --ivory:#FAF6EE; --gold:#C9973A; --navy:#1B2A3B;
+    --text:#1B2A3B; --text-dim:#666; --border:#d4c5a8; --bg-soft:#f8f5ee;
+  }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,'Segoe UI','Malgun Gothic',sans-serif; background:var(--bg); color:var(--text); margin:0; padding:0; line-height:1.5; }
+  header { background:var(--navy); color:var(--ivory); padding:14px 24px; display:flex; align-items:center; gap:12px; }
+  header h1 { margin:0; font-size:18px; }
+  header .badge { background:var(--gold); color:#fff; padding:3px 10px; border-radius:4px; font-size:11px; font-weight:700; }
+  .container { max-width:1100px; margin:20px auto; padding:0 16px; }
+  .panel { background:#fff; border-radius:8px; padding:16px 20px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+  .panel h2 { font-size:15px; margin:0 0 12px 0; color:var(--navy); border-bottom:2px solid var(--gold); padding-bottom:6px; }
+  input[type=text], input[type=email], textarea, select {
+    width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:5px; font-size:13px; font-family:inherit; background:#fff;
+  }
+  input:focus, textarea:focus, select:focus { outline:2px solid var(--gold); outline-offset:-1px; }
+  button { padding:10px 18px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:600; }
+  .btn-primary { background:var(--navy); color:#fff; }
+  .btn-primary:hover { background:#2c4060; }
+  .btn-primary:disabled { background:#888; cursor:not-allowed; }
+  .btn-secondary { background:#fff; color:var(--navy); border:1px solid var(--border); }
+  .card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:12px; }
+  .card.readonly { background:#f7f5f0; opacity:0.85; }
+  .thumb { width:80px; height:80px; object-fit:cover; border-radius:6px; border:1px solid var(--border); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+  .badge-success { background:#0a7b40; color:#fff; }
+  .badge-warn { background:var(--gold); color:#fff; }
+  .badge-info { background:var(--navy); color:#fff; }
+  .grid { display:grid; gap:8px; grid-template-columns:1fr 1fr; }
+  .label { font-size:11px; color:var(--text-dim); }
+  #log { background:var(--navy); color:#c8e4ff; padding:10px 14px; border-radius:6px; font-family:'Consolas',monospace; font-size:11px; max-height:200px; overflow-y:auto; margin-top:14px; }
+  .log-ok { color:#7be38a; }
+  .log-err { color:#ff8a7b; }
+  .log-dim { color:#7090b0; }
+
+  /* Toast */
+  #toasts { position:fixed; top:20px; right:20px; z-index:9999; display:flex; flex-direction:column; gap:8px; max-width:380px; }
+  .toast { background:#fff; padding:12px 16px; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.15); border-left:4px solid #888; animation:slideIn 0.25s ease; cursor:pointer; }
+  .toast.t-success { border-left-color:#0a7b40; }
+  .toast.t-warn { border-left-color:var(--gold); }
+  .toast.t-error { border-left-color:#cc3333; }
+  @keyframes slideIn { from { transform:translateX(120%); opacity:0; } to { transform:translateX(0); opacity:1; } }
+
+  .reopen-banner { background:#e8f5e9; border:2px solid #0a7b40; border-radius:8px; padding:14px; display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; gap:12px; flex-wrap:wrap; }
+  .rate-display { font-size:11px; padding:7px 8px; background:var(--bg-soft); border:1px solid #e8d8b8; border-radius:4px; min-height:18px; font-family:monospace; }
+  .summary-bar { background:var(--bg-soft); padding:12px 16px; border-radius:6px; margin-bottom:14px; font-size:13px; }
+  .summary-bar strong { color:var(--gold); font-size:15px; }
+</style>
+</head>
+<body>
+
+<div id="toasts"></div>
+
+<header>
+  <span style="background:#fff; color:var(--navy); padding:4px 10px; border-radius:4px; font-size:13px;">🏛 관세사 모드</span>
+  <h1>제품 정보 확정</h1>
+  <span class="badge" style="margin-left:auto; background:rgba(255,255,255,0.15);">강하고 무역 (Kanghago)</span>
+</header>
+
+<div class="container">
+
+  <!-- 사서함 정보 -->
+  <div class="panel">
+    <h2>1. 사서함 정보</h2>
+    <div id="shipmentInfo">로딩 중...</div>
+  </div>
+
+  <!-- 관세사 정보 -->
+  <div class="panel">
+    <h2>2. 관세사 정보 (선택)</h2>
+    <div>
+      <div class="label">관세사 이름/식별자 (학습 데이터에 기록)</div>
+      <input type="text" id="customsName" placeholder="홍길동 (○○관세사)" />
+    </div>
+  </div>
+
+  <!-- 제품 목록 -->
+  <div class="panel" id="productsPanel" style="display:none;">
+    <h2>3. 제품 확정 <span id="productCountBadge" style="font-size:12px; font-weight:normal; color:#666;"></span></h2>
+    <div class="summary-bar" id="hintBox">
+      💡 <strong>HS코드 입력 후 Tab</strong> → 영문명/세율 자동. <strong>영문명 입력 후 Tab</strong> → HS코드 자동.
+    </div>
+    <div id="productsList"></div>
+  </div>
+
+  <!-- 확정 버튼 -->
+  <div class="panel" id="actionsPanel" style="display:none;">
+    <button class="btn-primary" id="confirmAllBtn" onclick="confirmAll()" style="width:100%; padding:14px; font-size:14px;">
+      ✅ 모두 확정 → 강하고 무역에 전달
+    </button>
+  </div>
+
+  <!-- 진행 로그 -->
+  <div id="log"></div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const shipId = params.get('ship');
+
+const state = {
+  shipment: null,
+  products: [],
+  history: [],
+  hsDict: {},
+  matches: {},
+  readonly: false
+};
+
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = cls ? 'log-' + cls : '';
+  const t = new Date().toLocaleTimeString();
+  line.textContent = `[${t}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function toast(msg, type, opts) {
+  opts = opts || {};
+  const el = document.createElement('div');
+  el.className = 'toast t-' + (type || 'info');
+  el.innerHTML = `<strong>${opts.title || ''}</strong>${opts.title ? '<br>' : ''}${msg}${opts.sub ? '<br><small style="color:#666;">' + opts.sub + '</small>' : ''}`;
+  el.onclick = () => el.remove();
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => { try { el.remove(); } catch(e){} }, opts.duration || 4000);
+}
+
+async function init() {
+  if (!shipId) {
+    document.getElementById('shipmentInfo').innerHTML = '<span style="color:#cc3333;">❌ 잘못된 접근입니다. 강하고 무역에서 받은 정확한 링크로 다시 접속해 주세요.</span>';
+    return;
+  }
+
+  log('데이터 로드 중...', 'dim');
+  try {
+    const res = await fetch('/api/customs?ship=' + encodeURIComponent(shipId));
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'HTTP ' + res.status }));
+      throw new Error(err.error || 'HTTP ' + res.status);
+    }
+    const data = await res.json();
+    state.shipment = data.shipment;
+    state.products = data.products || [];
+    state.history = data.history || [];
+    state.hsDict = data.hsDict || {};
+    state.readonly = (data.shipment.fields['상태'] === '관세사확정완료');
+
+    renderShipmentInfo();
+    runAutoMatch();
+    renderProducts();
+    document.getElementById('productsPanel').style.display = '';
+    document.getElementById('actionsPanel').style.display = '';
+    log('✓ 로드 완료. ' + state.products.length + '개 제품', 'ok');
+  } catch (e) {
+    log('✗ ' + e.message, 'err');
+    document.getElementById('shipmentInfo').innerHTML = '<span style="color:#cc3333;">❌ 로드 실패: ' + e.message + '</span>';
+  }
+}
+
+function renderShipmentInfo() {
+  const f = state.shipment.fields || {};
+  const status = f['상태'] || '';
+  const isCompleted = status === '관세사확정완료';
+
+  document.getElementById('shipmentInfo').innerHTML = `
+    <div style="display:grid; grid-template-columns:auto 1fr; gap:8px 16px; font-size:13px;">
+      <div style="color:#666;">사서함</div><div><strong>${f['사서함'] || '-'}</strong></div>
+      <div style="color:#666;">상태</div><div>${isCompleted ? '<span class="badge badge-success">✅ 확정 완료</span>' : '<span class="badge badge-warn">⏳ 확정 대기</span>'}</div>
+      <div style="color:#666;">출고요청일</div><div>${f['출고요청일'] || '-'}</div>
+      <div style="color:#666;">제품 수</div><div>${state.products.length}개</div>
+    </div>
+  `;
+
+  if (isCompleted) {
+    const panel = document.getElementById('productsPanel');
+    const banner = document.createElement('div');
+    banner.className = 'reopen-banner';
+    banner.innerHTML = `
+      <div>
+        <strong style="color:#0a7b40; font-size:14px;">✅ 이미 확정 완료된 사서함입니다 (읽기 전용)</strong>
+        <div style="font-size:12px; color:#555; margin-top:4px;">수정이 필요하면 강하고 무역에 재요청해 주세요.</div>
+      </div>
+    `;
+    panel.insertBefore(banner, panel.querySelector('#hintBox'));
+    document.getElementById('confirmAllBtn').style.display = 'none';
+  }
+}
+
+function runAutoMatch() {
+  if (!state.history || state.history.length === 0) return;
+  let exactCount = 0;
+
+  state.products.forEach(p => {
+    if (p.fields['관세사확정'] === true) return;
+    const link = (p.fields['제품링크'] || '').trim();
+    if (!link) return;
+
+    const matched = state.history.find(h => (h.fields['제품링크'] || '').trim() === link);
+    if (matched) {
+      state.matches[p.id] = { confidence: 'exact', source: matched.fields };
+      // 미리 채움 (UI에서 표시)
+      if (!p.fields['통관품명_영문']) p.fields['통관품명_영문'] = matched.fields['영문명'] || '';
+      if (!p.fields['HS코드']) p.fields['HS코드'] = matched.fields['HS코드'] || '';
+      if (!p.fields['Material']) p.fields['Material'] = matched.fields['Material'] || '';
+      exactCount++;
+    }
+  });
+
+  if (exactCount > 0) log(`✓ 학습 매칭: ${exactCount}건 자동 채움`, 'ok');
+}
+
+function renderProducts() {
+  const list = document.getElementById('productsList');
+  list.innerHTML = '';
+  document.getElementById('productCountBadge').textContent = `(${state.products.length}건)`;
+
+  state.products.forEach((p, idx) => {
+    const f = p.fields || {};
+    const match = state.matches[p.id];
+    const isConfirmed = f['관세사확정'] === true;
+    const readonly = state.readonly;
+
+    const eng = f['통관품명_영문'] || f['Description'] || '';
+    const hs = f['HS코드'] || '';
+    const material = f['Material'] || '';
+    const memo = f['관세사메모'] || '';
+
+    const card = document.createElement('div');
+    card.className = 'card' + (readonly ? ' readonly' : '');
+
+    let badgeHtml = '';
+    if (isConfirmed) badgeHtml = '<span class="badge badge-success">✓ 확정</span>';
+    else if (match && match.confidence === 'exact') badgeHtml = '<span class="badge badge-info">⚡ 학습 매칭</span>';
+
+    const imgUrl = (f['상품이미지'] && f['상품이미지'][0]?.thumbnails?.large?.url) || f['이미지URL'] || '';
+    const productLink = f['제품링크'] || '';
+    const disabled = readonly ? 'disabled' : '';
+
+    card.innerHTML = `
+      <div style="display:flex; gap:12px;">
+        <div style="flex-shrink:0;">
+          ${imgUrl ? `<img class="thumb" src="${imgUrl}" />` : '<div class="thumb" style="display:flex; align-items:center; justify-content:center; color:#aaa;">no img</div>'}
+          ${productLink ? `<a href="${productLink}" target="_blank" style="display:block; font-size:10px; color:var(--gold); text-align:center; margin-top:4px;">🔗 상품</a>` : ''}
+        </div>
+        <div style="flex:1;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+            <div>
+              <div style="font-weight:600; font-size:13px;">${escHtml(f['통관품명_한글'] || '(이름 없음)')}</div>
+              <div style="font-size:11px; color:#666; margin-top:2px;">수량: ${f['수량'] || 0} · 단가: ¥${f['단가CNY'] || 0}</div>
+              <div style="font-size:11px; color:#666;">${escHtml(f['색상사이즈'] || '')}</div>
+            </div>
+            <div>${badgeHtml}</div>
+          </div>
+
+          <div class="grid">
+            <div>
+              <div class="label">영문명 *</div>
+              <input type="text" id="eng_${idx}" value="${escAttr(eng)}" ${disabled} oninput="onEngChange(${idx})" onblur="onEngChange(${idx})" />
+            </div>
+            <div>
+              <div class="label">HS코드 *</div>
+              <input type="text" id="hs_${idx}" value="${escAttr(hs)}" ${disabled} oninput="onHsChange(${idx})" onblur="onHsChange(${idx})" placeholder="0000.00-0000" style="font-family:monospace;" />
+            </div>
+            <div>
+              <div class="label">재질 (Material)</div>
+              <input type="text" id="mat_${idx}" value="${escAttr(material)}" ${disabled} />
+            </div>
+            <div>
+              <div class="label">참고: 적용 세율 <span style="color:#999;">(자동)</span></div>
+              <div id="rates_${idx}" class="rate-display">${renderRates(hs)}</div>
+            </div>
+            <div style="grid-column:1/-1;">
+              <div class="label">메모 (선택)</div>
+              <input type="text" id="memo_${idx}" value="${escAttr(memo)}" ${disabled} placeholder="특이사항 / 분류 근거" />
+            </div>
+          </div>
+
+          <div style="margin-top:10px;">
+            <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:${readonly ? 'default' : 'pointer'};">
+              <input type="checkbox" id="conf_${idx}" ${(readonly || isConfirmed || (match && match.confidence === 'exact')) ? 'checked' : ''} ${disabled} style="width:16px; height:16px;" />
+              <strong>이 제품 확정</strong>
+            </label>
+          </div>
+        </div>
+      </div>
+    `;
+
+    list.appendChild(card);
+  });
+}
+
+function onHsChange(idx) {
+  const hs = document.getElementById('hs_' + idx).value.trim();
+  const dict = state.hsDict[hs];
+  if (dict) {
+    const eng = document.getElementById('eng_' + idx);
+    const mat = document.getElementById('mat_' + idx);
+    if (!eng.value) eng.value = dict.en;
+    if (!mat.value) mat.value = dict.material;
+  }
+  document.getElementById('rates_' + idx).innerHTML = renderRates(hs);
+}
+
+function onEngChange(idx) {
+  const eng = document.getElementById('eng_' + idx).value.trim().toLowerCase();
+  const hsInput = document.getElementById('hs_' + idx);
+  if (hsInput.value.trim()) return;
+  if (eng.length < 3) return;
+
+  // 사전에서 영문명으로 검색
+  let best = null;
+  for (const [code, info] of Object.entries(state.hsDict)) {
+    if (info.en.toLowerCase().includes(eng)) {
+      best = code;
+      break;
+    }
+  }
+  if (best) {
+    hsInput.value = best;
+    onHsChange(idx);
+  }
+}
+
+function renderRates(hs) {
+  if (!hs) return '<span style="color:#aaa;">HS코드 입력 시 자동 표시</span>';
+  const d = state.hsDict[hs];
+  if (d) {
+    return `<span>기본 <b>${d.base}%</b> · 한중 <b style="color:#0a7b40;">${d.kc}%</b> · 아태 <b style="color:#0a7b40;">${d.apta}%</b></span>`;
+  }
+  return '<span style="color:var(--gold);">⚠ 사전에 없는 HS코드 (수동 확인)</span>';
+}
+
+async function confirmAll() {
+  if (state.readonly) {
+    toast('이미 확정 완료된 사서함입니다', 'warn');
+    return;
+  }
+
+  // 검증
+  const errors = [];
+  const submits = [];
+  state.products.forEach((p, idx) => {
+    if (!document.getElementById('conf_' + idx).checked) {
+      errors.push(`제품 ${idx + 1}: 확정 체크 누락`);
+      return;
+    }
+    const eng = document.getElementById('eng_' + idx).value.trim();
+    const hs = document.getElementById('hs_' + idx).value.trim();
+    const mat = document.getElementById('mat_' + idx).value.trim();
+    const memo = document.getElementById('memo_' + idx).value.trim();
+
+    if (!eng) errors.push(`제품 ${idx + 1}: 영문명 누락`);
+    if (!hs) errors.push(`제품 ${idx + 1}: HS코드 누락`);
+
+    submits.push({
+      id: p.id,
+      영문명: eng,
+      HS코드: hs,
+      Material: mat,
+      메모: memo,
+      제품링크: p.fields['제품링크'] || '',
+      한국어명: p.fields['통관품명_한글'] || ''
+    });
+  });
+
+  if (errors.length > 0) {
+    toast(errors.slice(0, 3).join(' / ') + (errors.length > 3 ? ` 외 ${errors.length - 3}건` : ''), 'warn', { title: '⚠ 확인 필요' });
+    return;
+  }
+
+  const btn = document.getElementById('confirmAllBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 저장 중...';
+  log(`━━ ${submits.length}건 확정 시작 ━━`);
+
+  try {
+    const res = await fetch('/api/customs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shipmentId: shipId,
+        products: submits,
+        customsName: document.getElementById('customsName').value.trim()
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'HTTP ' + res.status }));
+      throw new Error(err.error || 'HTTP ' + res.status);
+    }
+    const data = await res.json();
+    log(`✓ ${data.confirmed || submits.length}개 제품 확정 완료`, 'ok');
+    toast(data.message || '확정 완료', 'success', { title: '✅ 완료', duration: 6000 });
+
+    btn.textContent = '✅ 확정 완료';
+    setTimeout(() => location.reload(), 2000);
+  } catch (e) {
+    log('✗ ' + e.message, 'err');
+    toast(e.message, 'error', { title: '✗ 실패' });
+    btn.disabled = false;
+    btn.textContent = '✅ 모두 확정 → 강하고 무역에 전달';
+  }
+}
+
+function escHtml(s) { return String(s || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]); }
+function escAttr(s) { return String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+init();
+</script>
+</body>
+</html>

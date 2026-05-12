@@ -1,0 +1,9 @@
+{
+  "name": "kanghago-pages",
+  "version": "1.0.0",
+  "description": "강하고 무역 외부 페이지 (관세사 + 고객 확인)",
+  "private": true,
+  "engines": {
+    "node": ">=18.x"
+  }
+}
