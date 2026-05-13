@@ -111,10 +111,19 @@ async function handlePost(req, res) {
     });
   }
 
-  // ProductHistory + HSMapping 학습 누적 (도구 v2.9.10의 learnFromConfirmation과 동일 로직)
+  // Phase 2: 사서함 정보 조회 (사용처 누적용)
+  let shipName = '';
+  try {
+    const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
+    shipName = ship.fields['사서함'] || '';
+  } catch (e) {
+    console.log('shipment name lookup fail:', e.message);
+  }
+
+  // ProductHistory + HSMapping 학습 누적
   // Products 업데이트 실패해도 사서함 상태 변경은 진행하기 위해 try/catch로 보호
   try {
-    await learnFromConfirmation(products, customsName, today);
+    await learnFromConfirmation(products, customsName, today, shipName);
   } catch (e) {
     console.error('learn step failed (continuing):', e.message);
   }
@@ -131,10 +140,11 @@ async function handlePost(req, res) {
   });
 }
 
-// 도구 v2.9.10의 learnFromConfirmation 로직 (3603~3700번 줄)과 동기화
-// ProductHistory: 제품링크 키로 upsert (한국어명_별칭, 사용횟수, 마지막사용일 누적)
-// HSMapping: HS코드 키로 upsert (사용횟수, 마지막사용일 갱신)
-async function learnFromConfirmation(products, customsName, today) {
+// Phase 2 강화: HSMapping 누적 정책
+// - HS코드 unique (사장님 정책: 같은 HS 중복 누적 X)
+// - 같은 HS코드 → 사용횟수 +1, 마지막사용일 갱신, 영문명 변형이면 영문명_별칭에 추가, 사용처에 사서함 추가
+// - 신규 HS코드 → INSERT (출처='관세사확정(YYYY-MM-DD)')
+async function learnFromConfirmation(products, customsName, today, shipName) {
   // ── 1) ProductHistory 누적 ──
   try {
     const meta = await atRequest('GET', `/meta/bases/${BASE_ID}/tables`);
@@ -193,7 +203,7 @@ async function learnFromConfirmation(products, customsName, today) {
     console.error('ProductHistory learn error:', e.message);
   }
 
-  // ── 2) HSMapping 누적 ──
+  // ── 2) HSMapping 누적 (Phase 2 강화) ──
   try {
     const hsRecords = await atListAll(`/${TABLES.HSMapping}?pageSize=100`);
     const byCode = {};
@@ -205,29 +215,52 @@ async function learnFromConfirmation(products, customsName, today) {
     for (const p of products) {
       const code = (p.HS코드 || '').trim();
       if (!code) continue;
+      const eng = (p.영문명 || '').trim();
+      const mat = (p.Material || '').trim();
 
       const existingRec = byCode[code];
       if (existingRec) {
+        // 같은 HS코드 → 사용횟수 +1, 별칭/사용처 누적
         const cur = existingRec.fields['사용횟수'] || 0;
+        const fields = { '사용횟수': cur + 1, '마지막사용일': today };
+
+        // 영문명 변형이면 별칭에 누적
+        const existingEng = (existingRec.fields['영문명'] || '').trim();
+        if (eng && eng !== existingEng) {
+          const aliases = (existingRec.fields['영문명_별칭'] || '').split('\n').map(s => s.trim()).filter(Boolean);
+          if (existingEng && !aliases.includes(existingEng) && existingEng !== eng) aliases.push(existingEng);
+          if (!aliases.includes(eng)) aliases.push(eng);
+          if (aliases.length > 0) fields['영문명_별칭'] = aliases.join('\n');
+        }
+
+        // 사용처에 사서함 누적
+        if (shipName) {
+          const uses = new Set((existingRec.fields['사용처'] || '').split(',').map(s => s.trim()).filter(Boolean));
+          uses.add(shipName);
+          fields['사용처'] = [...uses].join(', ');
+        }
+
         try {
-          await atRequest('PATCH', `/${TABLES.HSMapping}/${existingRec.id}`, {
-            fields: { '사용횟수': cur + 1, '마지막사용일': today }
-          });
+          await atRequest('PATCH', `/${TABLES.HSMapping}/${existingRec.id}`, { fields });
         } catch (e) {
           console.log('HS update fail:', code, e.message);
         }
       } else {
+        // 신규 HS코드 → INSERT
+        const fields = {
+          'HS코드': code,
+          '영문명': eng,
+          '한국어명': p.한국어명 || '',
+          'Material': mat,
+          '사용횟수': 1,
+          '첫사용일': today,
+          '마지막사용일': today,
+          '출처': '관세사확정(' + today + ')'
+        };
+        if (shipName) fields['사용처'] = shipName;
+
         try {
-          await atRequest('POST', `/${TABLES.HSMapping}`, {
-            fields: {
-              'HS코드': code,
-              '영문명': p.영문명 || '',
-              '한국어명': p.한국어명 || '',
-              'Material': p.Material || '',
-              '사용횟수': 1,
-              '마지막사용일': today
-            }
-          });
+          await atRequest('POST', `/${TABLES.HSMapping}`, { fields });
         } catch (e) {
           console.log('HS create fail:', code, e.message);
         }
@@ -239,7 +272,7 @@ async function learnFromConfirmation(products, customsName, today) {
 }
 
 // HSMapping 테이블 전체를 Airtable에서 동적 로드 (관세사 페이지 자동완성용)
-// 도구가 누적한 HS 사전(현재 175개+)을 그대로 활용. 실패 시 핵심 5개 폴백.
+// Phase 2 강화: 신뢰도 메타(마지막사용일/출처/영문명_별칭) 같이 반환
 async function getHsDict() {
   try {
     const records = await atListAll(`/${TABLES.HSMapping}?pageSize=100`);
@@ -254,7 +287,10 @@ async function getHsDict() {
         base: r.fields['기본세율'] || 0,
         kc: r.fields['FTA_한중'] || 0,
         apta: r.fields['FTA_아태'] || 0,
-        uses: r.fields['사용횟수'] || 0
+        uses: r.fields['사용횟수'] || 0,
+        lastUsed: r.fields['마지막사용일'] || '',
+        source: r.fields['출처'] || '',
+        aliases: r.fields['영문명_별칭'] || ''
       };
     }
     if (Object.keys(dict).length > 0) return dict;
