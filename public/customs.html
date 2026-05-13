@@ -160,6 +160,24 @@ async function init() {
     document.getElementById('productsPanel').style.display = '';
     document.getElementById('actionsPanel').style.display = '';
     log('✓ 로드 완료. ' + state.products.length + '개 제품', 'ok');
+
+    // ━━━━━━━━━━ [PHASE 1 DIAGNOSTIC] ━━━━━━━━━━
+    window._dbg = state;
+    console.log('%c[init done]', 'color:#0a7b40;font-weight:bold', {
+      productCount: state.products.length,
+      historyCount: state.history.length,
+      hsDictCount: Object.keys(state.hsDict).length,
+      matches: state.matches,
+      products: state.products.map((p, i) => ({
+        i, id: p.id,
+        eng: p.fields['통관품명_영문'] || p.fields['Description'] || '',
+        hs: p.fields['HS코드'] || '',
+        mat: p.fields['Material'] || '',
+        link: p.fields['제품링크'] || '',
+        confirmed: p.fields['관세사확정'] === true
+      }))
+    });
+    console.log('%c💡 콘솔에서 _dbg 입력하면 state 전체 검사 가능', 'color:#C9973A');
   } catch (e) {
     log('✗ ' + e.message, 'err');
     document.getElementById('shipmentInfo').innerHTML = '<span style="color:#cc3333;">❌ 로드 실패: ' + e.message + '</span>';
@@ -196,25 +214,30 @@ function renderShipmentInfo() {
 }
 
 function runAutoMatch() {
-  if (!state.history || state.history.length === 0) return;
+  console.log('%c[runAutoMatch] start', 'color:#1B2A3B;font-weight:bold', { productCount: state.products.length, historyCount: state.history?.length || 0 });
+  if (!state.history || state.history.length === 0) { console.log('[runAutoMatch] no history'); return; }
   let exactCount = 0;
 
-  state.products.forEach(p => {
-    if (p.fields['관세사확정'] === true) return;
+  state.products.forEach((p, i) => {
+    if (p.fields['관세사확정'] === true) { console.log('[runAutoMatch] skip (already confirmed)', i, p.id); return; }
     const link = (p.fields['제품링크'] || '').trim();
-    if (!link) return;
+    if (!link) { console.log('[runAutoMatch] skip (no link)', i, p.id); return; }
 
     const matched = state.history.find(h => (h.fields['제품링크'] || '').trim() === link);
     if (matched) {
       state.matches[p.id] = { confidence: 'exact', source: matched.fields };
       // 미리 채움 (UI에서 표시)
+      const beforeEng = p.fields['통관품명_영문'];
+      const beforeHs = p.fields['HS코드'];
       if (!p.fields['통관품명_영문']) p.fields['통관품명_영문'] = matched.fields['영문명'] || '';
       if (!p.fields['HS코드']) p.fields['HS코드'] = matched.fields['HS코드'] || '';
       if (!p.fields['Material']) p.fields['Material'] = matched.fields['Material'] || '';
+      console.log('[runAutoMatch] match', i, p.id, { link, beforeEng, beforeHs, set_eng: matched.fields['영문명'], set_hs: matched.fields['HS코드'], set_mat: matched.fields['Material'] });
       exactCount++;
     }
   });
 
+  console.log('%c[runAutoMatch] done', 'color:#1B2A3B;font-weight:bold', { exactCount, matches: state.matches });
   if (exactCount > 0) log(`✓ 학습 매칭: ${exactCount}건 자동 채움`, 'ok');
 }
 
@@ -233,6 +256,8 @@ function renderProducts() {
     const hs = f['HS코드'] || '';
     const material = f['Material'] || '';
     const memo = f['관세사메모'] || '';
+
+    console.log('[renderProducts] idx=' + idx, 'p.id=' + p.id, { eng_prefill: eng, hs_prefill: hs, mat_prefill: material, isConfirmed, match: match?.confidence });
 
     const card = document.createElement('div');
     card.className = 'card' + (readonly ? ' readonly' : '');
@@ -299,34 +324,48 @@ function renderProducts() {
 }
 
 function onHsChange(idx) {
-  const hs = document.getElementById('hs_' + idx).value.trim();
+  const hsEl = document.getElementById('hs_' + idx);
+  const hs = (hsEl?.value || '').trim();
+  console.log('%c[onHsChange] enter', 'color:#C9973A', { idx, hs, hsEl_id: hsEl?.id, activeElement: document.activeElement?.id, event_type: 'unknown(input/blur)' });
   const dict = state.hsDict[hs];
   if (dict) {
     const eng = document.getElementById('eng_' + idx);
     const mat = document.getElementById('mat_' + idx);
-    if (!eng.value) eng.value = dict.en;
-    if (!mat.value) mat.value = dict.material;
+    console.log('[onHsChange] dict found', { dict_en: dict.en, dict_mat: dict.material, eng_id: eng?.id, mat_id: mat?.id, eng_curr: eng?.value, mat_curr: mat?.value });
+    if (!eng.value) { eng.value = dict.en; console.log('%c[onHsChange] SET eng_' + idx + '=' + dict.en, 'color:#0a7b40'); }
+    if (!mat.value) { mat.value = dict.material; console.log('%c[onHsChange] SET mat_' + idx + '=' + dict.material, 'color:#0a7b40'); }
+  } else {
+    console.log('[onHsChange] no dict for', hs);
   }
   document.getElementById('rates_' + idx).innerHTML = renderRates(hs);
 }
 
 function onEngChange(idx) {
-  const eng = document.getElementById('eng_' + idx).value.trim().toLowerCase();
+  const engEl = document.getElementById('eng_' + idx);
   const hsInput = document.getElementById('hs_' + idx);
-  if (hsInput.value.trim()) return;
-  if (eng.length < 3) return;
+  const eng = (engEl?.value || '').trim().toLowerCase();
+  console.log('%c[onEngChange] enter', 'color:#C9973A;font-weight:bold', { idx, eng, eng_raw: engEl?.value, engEl_id: engEl?.id, hsInput_id: hsInput?.id, hs_value: hsInput?.value, activeElement: document.activeElement?.id });
+  if (hsInput.value.trim()) { console.log('%c[onEngChange] EARLY RETURN: hs already filled =' + hsInput.value, 'color:#cc3333'); return; }
+  if (eng.length < 3) { console.log('[onEngChange] EARLY RETURN: eng too short (' + eng.length + ')'); return; }
 
   // 사전에서 영문명으로 검색
   let best = null;
+  const candidates = [];
   for (const [code, info] of Object.entries(state.hsDict)) {
     if (info.en.toLowerCase().includes(eng)) {
-      best = code;
+      if (!best) best = code;
+      if (candidates.length < 3) candidates.push({ code, en: info.en });
+      // 원본 동작 보존: 첫 매칭에서 break
       break;
     }
   }
+  console.log('[onEngChange] match result', { idx, eng, best, candidates });
   if (best) {
     hsInput.value = best;
+    console.log('%c[onEngChange] SET hs_' + idx + '=' + best, 'color:#0a7b40', '/ DOM 재확인:', document.getElementById('hs_' + idx)?.value);
     onHsChange(idx);
+  } else {
+    console.log('[onEngChange] no match for', eng);
   }
 }
 
