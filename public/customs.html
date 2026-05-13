@@ -264,15 +264,31 @@ function renderProducts() {
           <div class="grid">
             <div>
               <div class="label">영문명 *</div>
-              <input type="text" id="eng_${idx}" value="${escAttr(eng)}" ${disabled} oninput="onEngChange(${idx})" onblur="onEngChange(${idx})" />
+              <input type="text" id="eng_${idx}" value="${escAttr(eng)}"
+                data-prev-value="${escAttr(eng)}"
+                data-auto-source="${eng ? 'prefilled' : ''}"
+                ${disabled}
+                onbeforeinput="this.dataset.autoSource='manual'"
+                onchange="onEngChange(${idx})" onblur="onEngChange(${idx})" />
             </div>
             <div>
               <div class="label">HS코드 *</div>
-              <input type="text" id="hs_${idx}" value="${escAttr(hs)}" ${disabled} oninput="onHsChange(${idx})" onblur="onHsChange(${idx})" placeholder="0000.00-0000" style="font-family:monospace;" />
+              <input type="text" id="hs_${idx}" value="${escAttr(hs)}"
+                data-prev-value="${escAttr(hs)}"
+                data-auto-source="${hs ? 'prefilled' : ''}"
+                ${disabled}
+                onbeforeinput="this.dataset.autoSource='manual'"
+                onchange="onHsChange(${idx})" onblur="onHsChange(${idx})"
+                placeholder="0000.00-0000" style="font-family:monospace;" />
             </div>
             <div>
               <div class="label">재질 (Material)</div>
-              <input type="text" id="mat_${idx}" value="${escAttr(material)}" ${disabled} />
+              <input type="text" id="mat_${idx}" value="${escAttr(material)}"
+                data-prev-value="${escAttr(material)}"
+                data-auto-source="${material ? 'prefilled' : ''}"
+                ${disabled}
+                onbeforeinput="this.dataset.autoSource='manual'"
+                onchange="onMatChange(${idx})" onblur="onMatChange(${idx})" />
             </div>
             <div>
               <div class="label">참고: 적용 세율 <span style="color:#999;">(자동)</span></div>
@@ -298,35 +314,186 @@ function renderProducts() {
   });
 }
 
-function onHsChange(idx) {
-  const hs = document.getElementById('hs_' + idx).value.trim();
-  const dict = state.hsDict[hs];
-  if (dict) {
-    const eng = document.getElementById('eng_' + idx);
-    const mat = document.getElementById('mat_' + idx);
-    if (!eng.value) eng.value = dict.en;
-    if (!mat.value) mat.value = dict.material;
-  }
-  document.getElementById('rates_' + idx).innerHTML = renderRates(hs);
+// ━━━━━━━━━━ Phase 2: 양방향 강제 매칭 (manual 보호 폐지) ━━━━━━━━━━
+// data-auto-source 값: '', 'prefilled', 'eng', 'mat', 'hs', 'manual'
+//   - 사장님 결정 2026-05-14: 데이터 무결성 > 사용자 의도 보호 (무역 신고 휴먼 에러 방지)
+//   - manual 보호 폐지 — 어느 칸이든 변경 시 나머지 강제 갱신
+//   - data-auto-source 마킹은 통계용으로 유지 (Phase 3 ChangeLog의 "변경유형" 판단)
+
+// HS코드 정규화: 6109100000 / 6109.10.0000 → 6109.10-0000 (10자리 아니면 원본 유지)
+function normalizeHsCode(s) {
+  if (!s) return '';
+  const digits = String(s).replace(/\D/g, '');
+  if (digits.length !== 10) return String(s).trim();
+  return digits.slice(0,4) + '.' + digits.slice(4,6) + '-' + digits.slice(6);
 }
 
-function onEngChange(idx) {
-  const eng = document.getElementById('eng_' + idx).value.trim().toLowerCase();
-  const hsInput = document.getElementById('hs_' + idx);
-  if (hsInput.value.trim()) return;
-  if (eng.length < 3) return;
+// HS 매칭 키 = 영문명 + 재질 (둘 다 매칭 우선, 영문명만 폴백)
+// 점수: 영문명 완전일치 100 / 시작 60 / 포함 35 / 단어 12×N + 사용횟수 보너스 + 재질 완전 50 / 포함 30
+function findHsByEngMat(eng, mat) {
+  const engL = (eng || '').toLowerCase().trim();
+  const matL = (mat || '').toLowerCase().trim();
+  if (engL.length < 3 && !matL) return '';
 
-  // 사전에서 영문명으로 검색
-  let best = null;
+  let bestBoth = '', bestEng = '';
+  let bestBothScore = 0, bestEngScore = 0;
+
   for (const [code, info] of Object.entries(state.hsDict)) {
-    if (info.en.toLowerCase().includes(eng)) {
-      best = code;
-      break;
+    const enL = (info.en || '').toLowerCase();
+    const mL = (info.material || '').toLowerCase();
+    if (!enL) continue;
+
+    let engScore = 0;
+    if (engL) {
+      if (enL === engL) engScore = 100;
+      else if (enL.startsWith(engL)) engScore = 60;
+      else if (enL.includes(engL)) engScore = 35;
+      else {
+        const qWords = engL.split(/\s+/).filter(w => w.length >= 2);
+        const matched = qWords.filter(w => enL.includes(w)).length;
+        if (matched > 0) engScore = matched * 12;
+      }
+    }
+
+    let matScore = 0;
+    if (matL && mL) {
+      if (mL === matL) matScore = 50;
+      else if (mL.includes(matL)) matScore = 30;
+      else if (matL.includes(mL)) matScore = 20;
+    }
+
+    const uses = info.uses || 0;
+    const usesBonus = Math.min(uses, 10);
+
+    // 영문명+재질 둘 다 매칭 (가장 정확)
+    if (engScore > 0 && matScore > 0) {
+      const score = engScore + matScore + usesBonus;
+      if (score > bestBothScore) { bestBothScore = score; bestBoth = code; }
+    }
+    // 영문명만 (폴백)
+    if (engScore > 0) {
+      const score = engScore + usesBonus;
+      if (score > bestEngScore) { bestEngScore = score; bestEng = code; }
     }
   }
-  if (best) {
-    hsInput.value = best;
-    onHsChange(idx);
+
+  return bestBoth || bestEng;
+}
+
+// HS코드 변경 → 영문명 + 재질 갱신 (manual 아닐 때)
+function onHsChange(idx) {
+  const hsInput = document.getElementById('hs_' + idx);
+  const engInput = document.getElementById('eng_' + idx);
+  const matInput = document.getElementById('mat_' + idx);
+  const ratesDiv = document.getElementById('rates_' + idx);
+  if (!hsInput) return;
+
+  let hs = (hsInput.value || '').trim();
+  const formatted = normalizeHsCode(hs);
+  if (formatted !== hs) {
+    hsInput.value = formatted;
+    hs = formatted;
+  }
+
+  const prev = hsInput.dataset.prevValue || '';
+  const hsChanged = hs !== prev;
+  hsInput.dataset.prevValue = hs;
+
+  if (!hs) {
+    if (ratesDiv) ratesDiv.innerHTML = '<span style="color:#aaa;">HS코드 입력 시 자동 표시</span>';
+    return;
+  }
+
+  const dict = state.hsDict[hs];
+  const engSuggest = dict ? (dict.en || '') : '';
+  const matSuggest = dict ? (dict.material || '') : '';
+
+  if (hsChanged) {
+    // HS 변경됨 → 영문명/재질 강제 갱신 (manual 보호 폐지, 데이터 무결성 우선)
+    if (engInput && engSuggest) {
+      engInput.value = engSuggest;
+      engInput.dataset.autoSource = 'hs';
+      engInput.dataset.prevValue = engSuggest;
+    }
+    if (matInput && matSuggest) {
+      matInput.value = matSuggest;
+      matInput.dataset.autoSource = 'hs';
+      matInput.dataset.prevValue = matSuggest;
+    }
+  } else {
+    // 변경 없으면 빈 칸만 채움
+    if (engInput && !engInput.value && engSuggest) {
+      engInput.value = engSuggest;
+      engInput.dataset.autoSource = 'hs';
+      engInput.dataset.prevValue = engSuggest;
+    }
+    if (matInput && !matInput.value && matSuggest) {
+      matInput.value = matSuggest;
+      matInput.dataset.autoSource = 'hs';
+      matInput.dataset.prevValue = matSuggest;
+    }
+  }
+
+  if (ratesDiv) ratesDiv.innerHTML = renderRates(hs);
+}
+
+// 영문명 변경 → HS 갱신 (영문명+재질 결합 매칭, HS가 manual이면 보호)
+function onEngChange(idx) {
+  const engInput = document.getElementById('eng_' + idx);
+  const hsInput = document.getElementById('hs_' + idx);
+  const matInput = document.getElementById('mat_' + idx);
+  const ratesDiv = document.getElementById('rates_' + idx);
+  if (!engInput || !hsInput) return;
+
+  const engName = (engInput.value || '').trim();
+  if (!engName || engName.length < 3) return;
+
+  const prev = engInput.dataset.prevValue || '';
+  if (engName === prev) return;
+  engInput.dataset.prevValue = engName;
+
+  // 영문명 + 재질로 강제 매칭 (manual 보호 폐지)
+  const matValue = matInput?.value?.trim() || '';
+  const bestCode = findHsByEngMat(engName, matValue);
+
+  if (bestCode) {
+    hsInput.value = bestCode;
+    hsInput.dataset.autoSource = 'eng';
+    hsInput.dataset.prevValue = bestCode;
+    if (ratesDiv) ratesDiv.innerHTML = renderRates(bestCode);
+    // 재질이 비어있고 사전에 있으면 자동 채움
+    const dict = state.hsDict[bestCode];
+    if (matInput && !matInput.value && dict && dict.material) {
+      matInput.value = dict.material;
+      matInput.dataset.autoSource = 'eng';
+      matInput.dataset.prevValue = dict.material;
+    }
+  }
+}
+
+// 재질 변경 → HS 강제 갱신 (영문명+재질 결합 매칭, manual 보호 폐지)
+function onMatChange(idx) {
+  const matInput = document.getElementById('mat_' + idx);
+  const engInput = document.getElementById('eng_' + idx);
+  const hsInput = document.getElementById('hs_' + idx);
+  const ratesDiv = document.getElementById('rates_' + idx);
+  if (!matInput || !hsInput) return;
+
+  const matValue = (matInput.value || '').trim();
+
+  const prev = matInput.dataset.prevValue || '';
+  if (matValue === prev) return;
+  matInput.dataset.prevValue = matValue;
+
+  const engValue = engInput?.value?.trim() || '';
+  if (!engValue && !matValue) return;
+
+  const bestCode = findHsByEngMat(engValue, matValue);
+  if (bestCode) {
+    hsInput.value = bestCode;
+    hsInput.dataset.autoSource = 'mat';
+    hsInput.dataset.prevValue = bestCode;
+    if (ratesDiv) ratesDiv.innerHTML = renderRates(bestCode);
   }
 }
 
@@ -334,7 +501,15 @@ function renderRates(hs) {
   if (!hs) return '<span style="color:#aaa;">HS코드 입력 시 자동 표시</span>';
   const d = state.hsDict[hs];
   if (d) {
-    return `<span>기본 <b>${d.base}%</b> · 한중 <b style="color:#0a7b40;">${d.kc}%</b> · 아태 <b style="color:#0a7b40;">${d.apta}%</b></span>`;
+    // 신뢰도 메타 표시 (사용횟수 · 마지막사용 · 출처)
+    const meta = [];
+    if (d.uses) meta.push(`${d.uses}회 사용`);
+    if (d.lastUsed) meta.push(d.lastUsed);
+    if (d.source) meta.push(d.source);
+    const metaStr = meta.length > 0
+      ? `<div style="font-size:10px; color:#999; margin-top:2px;">${escHtml(meta.join(' · '))}</div>`
+      : '';
+    return `<span>기본 <b>${d.base ?? '?'}%</b> · 한중 <b style="color:#0a7b40;">${d.kc ?? '?'}%</b> · 아태 <b style="color:#0a7b40;">${d.apta ?? '?'}%</b></span>${metaStr}`;
   }
   return '<span style="color:var(--gold);">⚠ 사전에 없는 HS코드 (수동 확인)</span>';
 }
