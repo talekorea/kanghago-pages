@@ -328,33 +328,45 @@ function normalizeHsCode(s) {
   return digits.slice(0,4) + '.' + digits.slice(4,6) + '-' + digits.slice(6);
 }
 
-// HS 매칭 키 = 영문명 + 재질 (둘 다 매칭 우선, 영문명만 폴백)
-// 점수: 영문명 완전일치 100 / 시작 60 / 포함 35 / 단어 12×N + 사용횟수 보너스 + 재질 완전 50 / 포함 30
+// HS 매칭 = 영문명 (정식 표준값) + 재질 결합. 영문명_별칭은 매칭에서 완전 제외 (2026-05-14 결정)
+// 우선순위 (사장님 정의):
+//   1순위: 영문명 정확 매칭 (대소문자 무시)        — 정확 매칭 100점, 부분 매칭 무시
+//   2순위: 영문명 부분 매칭 (시작 60 / 포함 35)    — 정확 없을 때만 활용
+//   3순위: 영문명 단어 매칭 (2단어 이상만, 노이즈 제거) — 1·2순위 없을 때만
+// 재질: 영문명 매칭 점수에 가산 (정확 50 / 포함 30 / 역포함 20)
+// 사용횟수: 동점 처리용 +5 (가중치 축소 — 노이즈 영향 최소화)
 function findHsByEngMat(eng, mat) {
   const engL = (eng || '').toLowerCase().trim();
   const matL = (mat || '').toLowerCase().trim();
   if (engL.length < 3 && !matL) return '';
 
-  let bestBoth = '', bestEng = '';
-  let bestBothScore = 0, bestEngScore = 0;
+  // 3-tier 후보 분리 — 1순위 있으면 2/3순위 무시 (사장님 정의 그대로)
+  let exactBoth = '', exactEng = '';   // 1순위: 영문명 정확
+  let partBoth = '',  partEng = '';    // 2순위: 영문명 부분 (시작/포함)
+  let wordBoth = '',  wordEng = '';    // 3순위: 영문명 단어 (2단어 이상)
+  let exactBothS = 0, exactEngS = 0, partBothS = 0, partEngS = 0, wordBothS = 0, wordEngS = 0;
 
   for (const [code, info] of Object.entries(state.hsDict)) {
     const enL = (info.en || '').toLowerCase();
     const mL = (info.material || '').toLowerCase();
     if (!enL) continue;
 
-    let engScore = 0;
+    // 영문명 매칭 점수 (1·2·3순위 구분)
+    let engScore = 0, tier = 0;
     if (engL) {
-      if (enL === engL) engScore = 100;
-      else if (enL.startsWith(engL)) engScore = 60;
-      else if (enL.includes(engL)) engScore = 35;
+      if (enL === engL) { engScore = 100; tier = 1; }
+      else if (enL.startsWith(engL)) { engScore = 60; tier = 2; }
+      else if (enL.includes(engL)) { engScore = 35; tier = 2; }
       else {
         const qWords = engL.split(/\s+/).filter(w => w.length >= 2);
         const matched = qWords.filter(w => enL.includes(w)).length;
-        if (matched > 0) engScore = matched * 12;
+        // 노이즈 방지 — 2단어 이상 매칭만 (단일 단어 우연 매칭 제외)
+        if (matched >= 2) { engScore = matched * 15; tier = 3; }
       }
     }
+    if (engScore === 0) continue;
 
+    // 재질 가산점
     let matScore = 0;
     if (matL && mL) {
       if (mL === matL) matScore = 50;
@@ -362,22 +374,25 @@ function findHsByEngMat(eng, mat) {
       else if (matL.includes(mL)) matScore = 20;
     }
 
-    const uses = info.uses || 0;
-    const usesBonus = Math.min(uses, 10);
+    // 사용횟수 보너스 (동점 tiebreaker — 가중치 축소)
+    const usesBonus = Math.min(info.uses || 0, 5);
+    const totalScore = engScore + matScore + usesBonus;
+    const hasMat = matScore > 0;
 
-    // 영문명+재질 둘 다 매칭 (가장 정확)
-    if (engScore > 0 && matScore > 0) {
-      const score = engScore + matScore + usesBonus;
-      if (score > bestBothScore) { bestBothScore = score; bestBoth = code; }
-    }
-    // 영문명만 (폴백)
-    if (engScore > 0) {
-      const score = engScore + usesBonus;
-      if (score > bestEngScore) { bestEngScore = score; bestEng = code; }
+    if (tier === 1) {
+      if (hasMat && totalScore > exactBothS) { exactBothS = totalScore; exactBoth = code; }
+      if (totalScore > exactEngS) { exactEngS = totalScore; exactEng = code; }
+    } else if (tier === 2) {
+      if (hasMat && totalScore > partBothS) { partBothS = totalScore; partBoth = code; }
+      if (totalScore > partEngS) { partEngS = totalScore; partEng = code; }
+    } else if (tier === 3) {
+      if (hasMat && totalScore > wordBothS) { wordBothS = totalScore; wordBoth = code; }
+      if (totalScore > wordEngS) { wordEngS = totalScore; wordEng = code; }
     }
   }
 
-  return bestBoth || bestEng;
+  // 우선순위 적용: 1순위 있으면 1순위만, 없으면 2순위, 없으면 3순위
+  return exactBoth || exactEng || partBoth || partEng || wordBoth || wordEng;
 }
 
 // HS코드 변경 → 영문명 + 재질 갱신 (manual 아닐 때)
