@@ -74,6 +74,18 @@ async function handleGet(req, res) {
     console.log('Boxes fetch failed:', e.message);
   }
 
+  // 4-1. BoxAssignments 조회 (박스-제품 매핑)
+  let boxAssignments = [];
+  if (boxes.length > 0) {
+    const boxIds = boxes.map(b => b.id);
+    const baFilter = 'OR(' + boxIds.map(id => `SEARCH('${id}',ARRAYJOIN({Box}))`).join(',') + ')';
+    try {
+      boxAssignments = await atListAll(`/${TABLES.BoxAssignments}?filterByFormula=${encodeURIComponent(baFilter)}`);
+    } catch (e) {
+      console.log('BoxAssignments fetch failed:', e.message);
+    }
+  }
+
   // 5. Customers 정보 조회 (Customers 테이블이 있으면)
   let customer = null;
   try {
@@ -92,6 +104,7 @@ async function handleGet(req, res) {
     shipment: ship,
     products: products,
     boxes: boxes,
+    boxAssignments: boxAssignments,
     customer: customer
   });
 }
