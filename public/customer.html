@@ -341,7 +341,7 @@ function renderFta() {
     // 실제로는 백엔드가 세율 정보를 제공해야 함. 여기선 기존 저장된 세율 사용
     const baseRate = (f['기본세율'] || 0) / 100;
     const kcRate = (f['FTA_한중'] || 0) / 100;
-    const aptaRate = (f['FTA_아태'] || 0) / 100;
+    const aptaRate = (f['FTA_RCEP중국'] || 0) / 100;
 
     totalGeneralDuty += totalKrw * baseRate;
     totalKcDuty += totalKrw * kcRate;

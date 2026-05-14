@@ -286,7 +286,7 @@ async function getHsDict() {
         material: r.fields['Material'] || '',
         base: r.fields['기본세율'] || 0,
         kc: r.fields['FTA_한중'] || 0,
-        apta: r.fields['FTA_아태'] || 0,
+        apta: r.fields['FTA_RCEP중국'] || 0,
         uses: r.fields['사용횟수'] || 0,
         lastUsed: r.fields['마지막사용일'] || '',
         source: r.fields['출처'] || '',
