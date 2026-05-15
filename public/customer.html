@@ -16,6 +16,41 @@
   input.prefilled { background: #faf6ee !important; color: #888; border-color: #d4c5a8; }
   input.prefilled:focus { background: #fff !important; color: #1B2A3B; }
   input.edited { background: #fff !important; color: #1B2A3B; border-color: #C9973A; box-shadow: 0 0 0 1px rgba(201, 151, 58, 0.15); }
+
+  /* v2.9.18 H2: 제품 카드 2열 그리드 + 이미지 + 박스 배지 */
+  .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  @media (max-width: 640px) { .product-grid { grid-template-columns: 1fr; } }
+  .product-card { background: #fff; border: 1px solid #e8d8b8; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: box-shadow .15s; }
+  .product-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .product-card-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+  .product-card-meta { flex: 1; min-width: 0; }
+  .box-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; margin-bottom: 6px; }
+  .product-name { font-size: 14px; font-weight: 600; color: #1B2A3B; line-height: 1.4; word-break: break-word; margin-bottom: 4px; }
+  .hs-line { font-size: 11px; color: #666; }
+  .hs-line code { background: #f4efe6; padding: 1px 6px; border-radius: 3px; font-family: 'SF Mono', Consolas, monospace; }
+  .product-card-figures { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 10px 12px; background: #f8f5ee; border-radius: 6px; font-size: 11px; color: #555; margin-bottom: 10px; text-align: center; }
+  .product-card-figures strong { display: block; font-size: 13px; color: #1B2A3B; margin-top: 2px; }
+  .product-card-fta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #555; padding-top: 8px; border-top: 1px dashed #d4c5a8; }
+  .product-card-fta strong { color: #0a7b40; }
+
+  /* v2.9.18 H3: 박스 카드 */
+  .box-card { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-left: 4px solid var(--box-color, #888); }
+  .box-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .box-card-title { font-size: 15px; font-weight: 700; color: #1B2A3B; }
+  .box-card-figures { display: flex; gap: 14px; font-size: 12px; color: #555; flex-wrap: wrap; }
+  .box-card-figures strong { color: #1B2A3B; }
+  .box-card-items { padding: 10px 12px; background: #f8f5ee; border-radius: 6px; margin: 10px 0; }
+  .box-card-items-title { font-size: 11px; color: #888; margin-bottom: 6px; font-weight: 600; letter-spacing: 0.3px; }
+  .box-card-item { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: 12px; color: #1B2A3B; border-bottom: 1px dashed #e8d8b8; }
+  .box-card-item:last-child { border-bottom: none; }
+  .box-card-item .name { flex: 1; word-break: break-word; }
+  .box-card-item .qty { color: #888; white-space: nowrap; }
+  .box-delivery-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .box-delivery-pick label { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid #d4c5a8; border-radius: 6px; cursor: pointer; font-size: 13px; background: #fff; transition: all .15s; }
+  .box-delivery-pick label:hover { border-color: var(--box-color, #C9973A); }
+  .box-delivery-pick input[type=radio] { accent-color: var(--box-color, #C9973A); }
+  .box-delivery-pick label.selected { border-color: var(--box-color, #0a7b40); background: #f0fdf4; font-weight: 600; }
+  .box-recommend-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--box-color, #0a7b40); color: #fff; margin-left: 6px; }
   body { font-family:-apple-system,'Segoe UI','Malgun Gothic',sans-serif; background:var(--bg); color:var(--text); margin:0; padding:0; line-height:1.6; }
   header { background:linear-gradient(135deg, var(--navy) 0%, #2c4060 100%); color:var(--ivory); padding:20px 24px; text-align:center; }
   header h1 { margin:0; font-size:22px; color:var(--gold); }
@@ -134,30 +169,11 @@
     </label>
   </div>
 
-  <!-- v2.9.18: 3. 박스 정보 (물리적 사실만 표시) -->
+  <!-- v2.9.18 H3: 3. 박스 정보 + 박스별 배송방식 (통합) -->
   <div class="section">
-    <h2><span class="num">3</span> 박스 정보</h2>
-    <div class="summary-info" id="boxSummary"></div>
-  </div>
-
-  <!-- v2.9.18: 4. 배송방식 선택 (박스와 분리 — 사장님 UX 통찰) -->
-  <div class="section">
-    <h2><span class="num">4</span> 배송방식 선택</h2>
-    <div id="deliveryRecommendHint" style="padding:10px 14px; background:#fff8e1; border:1px solid #C9973A; border-radius:6px; font-size:12px; color:#555; margin-bottom:12px; line-height:1.6;">
-      💡 박스 정보 로딩 중...
-    </div>
-    <div class="delivery-options">
-      <div class="delivery-card" data-delivery="택배" onclick="selectDelivery('택배')">
-        <div class="icon">📦</div>
-        <div class="name">택배</div>
-        <div class="desc">CJ대한통운, 경동택배 등<br>적정 업체 자동 배정 · 2-3일</div>
-      </div>
-      <div class="delivery-card" data-delivery="화물" onclick="selectDelivery('화물')">
-        <div class="icon">🚚</div>
-        <div class="name">화물</div>
-        <div class="desc">1톤/5톤 등<br>업체 자동 배정 · 1-2일</div>
-      </div>
-    </div>
+    <h2><span class="num">3</span> 박스 및 배송방식 선택</h2>
+    <div id="boxSummaryHeader" style="padding:10px 14px; background:var(--bg-soft); border-radius:6px; margin-bottom:12px; font-size:13px; color:#1B2A3B;"></div>
+    <div id="boxesContainer"></div>
   </div>
 
   <!-- 4. 수취 정보 -->
@@ -302,7 +318,8 @@ async function init() {
           // FTA·박스 세부는 별도 state로
         },
       };
-      state.products = (payload.products || []).map(p => ({
+      state.products = (payload.products || []).map((p, idx) => ({
+        id: 'url:p:' + idx,
         fields: {
           'Description': p.d || '',
           '영문명': p.d || '',
@@ -314,6 +331,9 @@ async function init() {
           '수량': p.q || 0,
           '단가CNY': p.u || 0,
           '합계CNY': (p.q || 0) * (p.u || 0),
+          // v2.9.18 H1/H2: 이미지 + 박스번호
+          '이미지URL': p.img || '',
+          '박스번호': p.bn || '',
         },
       }));
       state.boxes = (payload.boxes || []).map(b => ({
@@ -520,31 +540,73 @@ function renderAll() {
   log('✓ 로드 완료');
 }
 
+// v2.9.18 H2: 제품 카드 2열 그리드 + 이미지 + 박스 색상 배지
 function renderProducts() {
   const box = document.getElementById('productsBox');
   if (state.products.length === 0) {
     box.innerHTML = '<p style="color:#888;">제품 정보가 없습니다.</p>';
     return;
   }
-  box.innerHTML = state.products.map(p => {
+  const cards = state.products.map(p => {
     const f = p.fields || {};
     const imgUrl = (f['상품이미지'] && f['상품이미지'][0]?.thumbnails?.large?.url) || f['이미지URL'] || '';
     const eng = f['통관품명_영문'] || f['Description'] || '(이름 없음)';
     const hs = f['HS코드'] || '';
     const qty = f['수량'] || 0;
     const unitCny = f['단가CNY'] || 0;
-    const totalCny = f['합계CNY'] || 0;
+    const totalCny = f['합계CNY'] || (qty * unitCny);
+    const fta = f['적용FTA'] || '없음';
+    const boxN = (f['박스번호'] || '').toString().split(/[,\-]/)[0].trim();
+    const color = boxColor(boxN);
+
+    const baseR = f['기본세율'];
+    const kcR = f['FTA_한중'];
+    const rcR = f['FTA_RCEP중국'];
+    const rateText = [
+      typeof baseR === 'number' ? `기본 ${baseR}%` : null,
+      typeof kcR === 'number' ? `한중 ${kcR}%` : null,
+      typeof rcR === 'number' ? `RCEP ${rcR}%` : null,
+    ].filter(Boolean).join(' / ');
+
+    const boxBadge = boxN
+      ? `<span class="box-badge" style="background:${color}; color:#fff;">${boxN}번 박스</span>`
+      : '';
+    const imgBlock = imgUrl
+      ? `<img src="${imgUrl}" loading="lazy" style="width:80px; height:80px; object-fit:cover; border-radius:6px; background:#f0ebe1;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><div class="img-placeholder" style="display:none; width:80px; height:80px; background:#f0ebe1; border-radius:6px; align-items:center; justify-content:center; color:#aaa; font-size:10px;">no img</div>`
+      : '<div style="width:80px; height:80px; background:#f0ebe1; border-radius:6px; display:flex; align-items:center; justify-content:center; color:#aaa; font-size:10px;">no img</div>';
+
     return `
-      <div class="product-row">
-        ${imgUrl ? `<img src="${imgUrl}" />` : '<div style="width:60px; height:60px; background:#f0ebe1; border-radius:6px; display:flex; align-items:center; justify-content:center; color:#aaa; font-size:10px;">no img</div>'}
-        <div class="product-info">
-          <div class="name">${escHtml(eng)} ${hs ? `<span class="hs-badge">${escHtml(hs)}</span>` : ''}</div>
-          <div class="meta">${escHtml(f['통관품명_한글'] || '')}</div>
-          <div class="meta">수량: <strong>${qty.toLocaleString()}</strong> · 단가 ¥${unitCny.toLocaleString()} · 합계 ¥${totalCny.toLocaleString()}</div>
+      <div class="product-card">
+        <div class="product-card-head">
+          ${imgBlock}
+          <div class="product-card-meta">
+            ${boxBadge}
+            <div class="product-name">${escHtml(eng)}</div>
+            ${hs ? `<div class="hs-line">HS: <code>${escHtml(hs)}</code></div>` : ''}
+          </div>
+        </div>
+        <div class="product-card-figures">
+          <div>수량 <strong>${qty.toLocaleString()}</strong></div>
+          <div>단가 <strong>¥${unitCny.toLocaleString()}</strong></div>
+          <div>합계 <strong>¥${totalCny.toLocaleString()}</strong></div>
+        </div>
+        <div class="product-card-fta">
+          <span>적용 FTA: <strong>${fta}</strong></span>
+          ${rateText ? `<small style="color:#888;">${rateText}</small>` : ''}
         </div>
       </div>
     `;
   }).join('');
+
+  box.innerHTML = `<div class="product-grid">${cards}</div>`;
+}
+
+// v2.9.18: 박스 번호별 색상 코딩
+const BOX_PALETTE = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#EF4444', '#84CC16', '#6366F1', '#F97316'];
+function boxColor(n) {
+  if (!n) return '#888';
+  const idx = (parseInt(n) - 1) % BOX_PALETTE.length;
+  return BOX_PALETTE[idx < 0 ? 0 : idx];
 }
 
 function renderFta() {
@@ -660,13 +722,14 @@ function selectFta(fta) {
   coRow.style.display = (fta === '한중FTA' || fta === '아태FTA') ? '' : 'none';
 }
 
-// v2.9.18: 박스 정보 = 물리적 사실 (배송방식은 별도 영역으로 분리)
+// v2.9.18 H3: 박스 카드 통합 — 사실(크기/무게/부피) + 담긴 제품 + 박스별 배송방식 선택
 function renderBoxes() {
-  const box = document.getElementById('boxSummary');
+  const header = document.getElementById('boxSummaryHeader');
+  const container = document.getElementById('boxesContainer');
+
   if (state.boxes.length === 0) {
-    box.innerHTML = '<p style="color:#888;">박스 정보가 아직 입력되지 않았습니다. 강하고에서 박스 패킹 후 확인 가능합니다.</p>';
-    // 빈 박스라도 권장 적용 (기본 택배)
-    applyDeliveryRecommendation(0, 0);
+    if (header) header.innerHTML = '<span style="color:#888;">박스 정보가 아직 입력되지 않았습니다. 강하고에서 박스 패킹 후 확인 가능합니다.</span>';
+    if (container) container.innerHTML = '';
     return;
   }
 
@@ -676,25 +739,32 @@ function renderBoxes() {
     totalKg += parseFloat(b.fields['무게KG']) || 0;
   });
 
-  // 박스별 제품 매핑 (BoxAssignments 활용, URL 모드면 비어 있음)
-  const productMap = {};
-  state.products.forEach(p => { productMap[p.id] = p.fields; });
-  const boxToProducts = {};
-  (state.boxAssignments || []).forEach(ba => {
-    const f = ba.fields || {};
-    const boxLink = (f['Box'] || [])[0];
-    const prodLink = (f['Product'] || [])[0];
-    if (!boxLink || !prodLink) return;
-    if (!boxToProducts[boxLink]) boxToProducts[boxLink] = [];
-    boxToProducts[boxLink].push({ productId: prodLink, qty: f['수량'] || f['Quantity'] || null });
-  });
-
   // 박스순번 정렬
   const sortedBoxes = [...state.boxes].sort((a, b) => {
     return (parseInt(a.fields['박스순번']) || 0) - (parseInt(b.fields['박스순번']) || 0);
   });
 
-  // v2.9.18: 박스 카드 디자인 (배송방식 표시 제거 — 별도 영역)
+  // 박스 → 담긴 제품 매핑 (URL 모드: products.fields['박스번호'] / 옛 모드: BoxAssignments)
+  function productsInBox(seq) {
+    // URL 모드 — products.fields['박스번호'] 기준
+    if (state.urlMode) {
+      return state.products.filter(p => {
+        const bn = (p.fields['박스번호'] || '').toString().split(/[,\-]/)[0].trim();
+        return bn === String(seq);
+      });
+    }
+    // 옛 모드 — BoxAssignments
+    const boxRecord = state.boxes.find(b => String(b.fields['박스순번']) === String(seq));
+    if (!boxRecord) return [];
+    const productIds = (state.boxAssignments || [])
+      .filter(ba => (ba.fields['Box'] || []).includes(boxRecord.id))
+      .map(ba => (ba.fields['Product'] || [])[0])
+      .filter(Boolean);
+    return state.products.filter(p => productIds.includes(p.id));
+  }
+
+  state.boxDeliveries = state.boxDeliveries || {};
+
   const cardsHtml = sortedBoxes.map(b => {
     const f = b.fields || {};
     const w = parseFloat(f['가로cm']) || 0;
@@ -703,98 +773,108 @@ function renderBoxes() {
     const dimText = (w && h && d) ? `${w} × ${h} × ${d} cm` : '치수 미입력';
     const kg = parseFloat(f['무게KG']);
     const cbm = parseFloat(f['부피CBM']);
-    const seq = f['박스순번'] || '-';
+    const seq = String(f['박스순번'] || '-');
+    const boxNo = f['박스번호'] || '-';
+    const color = boxColor(seq);
 
-    const items = boxToProducts[b.id] || [];
-    const itemHtml = items.length === 0 ? '' :
-      '<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #d4c5a8; font-size:11px; color:#666;">' +
-      items.map(it => {
-        const pf = productMap[it.productId] || {};
-        const name = pf['영문명'] || pf['한글명'] || pf['Name'] || '제품';
-        const qty = it.qty ? ` ×${it.qty}` : '';
-        return `<span style="display:inline-block;background:#f4efe6;padding:2px 6px;border-radius:3px;margin:2px 4px 2px 0;">${name}${qty}</span>`;
-      }).join('') + '</div>';
+    // 박스별 권장 (해당 박스 무게/부피 + URL 모드 작업자 method)
+    const HEAVY_KG = 20, LARGE_CBM = 0.01;
+    let recommended = (kg >= HEAVY_KG || cbm >= LARGE_CBM) ? '화물' : '택배';
+    let reason = kg >= HEAVY_KG ? `무게 ${kg.toFixed(1)}kg ≥ ${HEAVY_KG}kg`
+      : cbm >= LARGE_CBM ? `부피 ${cbm.toFixed(4)} CBM ≥ ${LARGE_CBM}`
+      : '소형/경량';
+    // URL 모드 — 도구가 명시한 박스별 method 우선
+    if (state.urlData?.boxes) {
+      const urlBox = state.urlData.boxes.find(x => String(x.n) === seq);
+      if (urlBox?.m === 'cargo') { recommended = '화물'; reason = '작업자가 화물 지정'; }
+      else if (urlBox?.m === 'parcel') { recommended = '택배'; reason = '작업자가 택배 지정'; }
+    }
+
+    // 박스별 사전 선택 (사용자가 명시 선택 X 시 권장값)
+    if (!state.boxDeliveries[seq]) state.boxDeliveries[seq] = recommended;
+    const currentChoice = state.boxDeliveries[seq];
+
+    // 담긴 제품 목록
+    const items = productsInBox(seq);
+    const itemsHtml = items.length === 0
+      ? '<div style="color:#aaa; font-size:11px; padding:6px 0;">매핑된 제품 없음</div>'
+      : items.map(p => {
+          const pf = p.fields || {};
+          const name = pf['통관품명_영문'] || pf['Description'] || pf['영문명'] || '제품';
+          const hs = pf['HS코드'] || '';
+          const qty = pf['수량'] || 0;
+          return `
+            <div class="box-card-item">
+              <span class="name">${escHtml(name)}${hs ? ` <code style="font-size:10px; color:#888; background:#fff; padding:1px 4px; border-radius:3px;">${escHtml(hs)}</code>` : ''}</span>
+              <span class="qty">×${qty.toLocaleString()}</span>
+            </div>
+          `;
+        }).join('');
 
     return `
-      <div style="background:#fff; border:1px solid #d4c5a8; border-radius:8px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-        <div style="font-weight:700; color:#1B2A3B; font-size:14px; margin-bottom:8px; display:flex; align-items:center; gap:8px;">
-          <span style="background:#1B2A3B; color:#F4EFE6; width:24px; height:24px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">${seq}</span>
-          <span>Box ${seq}</span>
+      <div class="box-card" style="--box-color: ${color};">
+        <div class="box-card-head">
+          <div class="box-card-title">
+            <span style="background:${color}; color:#fff; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:700; margin-right:8px;">${seq}번 박스</span>
+            <span style="font-family:'SF Mono',Consolas,monospace; font-size:12px; color:#666;">${escHtml(boxNo)}</span>
+          </div>
+          <div class="box-card-figures">
+            <span>무게 <strong>${isNaN(kg) ? '-' : kg.toFixed(1) + ' kg'}</strong></span>
+            <span>부피 <strong>${isNaN(cbm) ? '-' : cbm.toFixed(4) + ' CBM'}</strong></span>
+            <span>치수 <strong>${dimText}</strong></span>
+          </div>
         </div>
-        <div style="display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:12px; color:#1B2A3B;">
-          <span style="color:#888;">크기</span><span><strong>${dimText}</strong></span>
-          <span style="color:#888;">무게</span><span><strong>${isNaN(kg) ? '-' : kg.toFixed(1) + ' kg'}</strong></span>
-          <span style="color:#888;">부피</span><span><strong>${isNaN(cbm) ? '-' : cbm.toFixed(4) + ' CBM'}</strong></span>
+
+        <div class="box-card-items">
+          <div class="box-card-items-title">담긴 제품 (${items.length}개)</div>
+          ${itemsHtml}
         </div>
-        ${itemHtml}
+
+        <div style="margin-top:10px;">
+          <div style="font-size:11px; color:#888; margin-bottom:6px; font-weight:600;">배송방식 선택 <span class="box-recommend-tag" style="--box-color: ${color};">권장: ${recommended} (${reason})</span></div>
+          <div class="box-delivery-pick">
+            <label class="${currentChoice === '택배' ? 'selected' : ''}" style="--box-color: ${color};">
+              <input type="radio" name="boxDelivery_${seq}" value="택배" ${currentChoice === '택배' ? 'checked' : ''} onchange="setBoxDelivery('${seq}','택배')" />
+              📦 택배
+            </label>
+            <label class="${currentChoice === '화물' ? 'selected' : ''}" style="--box-color: ${color};">
+              <input type="radio" name="boxDelivery_${seq}" value="화물" ${currentChoice === '화물' ? 'checked' : ''} onchange="setBoxDelivery('${seq}','화물')" />
+              🚚 화물
+            </label>
+          </div>
+        </div>
       </div>
     `;
   }).join('');
 
-  box.innerHTML = `
-    <div style="background:var(--bg-soft); padding:12px 14px; border-radius:6px; margin-bottom:14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-      <span>📦 <strong>박스 ${state.boxes.length}개</strong></span>
-      <span style="color:#888;">·</span>
-      <span>총 <strong>${totalKg.toFixed(1)} kg</strong></span>
-      <span style="color:#888;">·</span>
-      <span><strong>${totalCbm.toFixed(4)} CBM</strong></span>
-    </div>
-    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:12px;">
-      ${cardsHtml}
-    </div>
-  `;
+  if (header) {
+    header.innerHTML = `📦 <strong>박스 ${state.boxes.length}개</strong> · 총 <strong>${totalKg.toFixed(1)} kg</strong> · <strong>${totalCbm.toFixed(4)} CBM</strong>
+      <span style="float:right; font-size:11px; color:#888;">박스별 배송방식을 선택해 주세요</span>`;
+  }
+  if (container) container.innerHTML = cardsHtml;
 
-  // v2.9.18: 박스 사실 기반으로 배송방식 권장 적용 (별도 영역)
-  applyDeliveryRecommendation(totalKg, totalCbm);
+  // 전체 selectedDelivery 자동 계산 (다수결, 호환)
+  syncOverallDelivery();
 }
 
-// v2.9.18: 배송방식 작업자 권장 — 무게 ≥20kg 또는 부피 ≥0.01 CBM = 화물 권장
-function applyDeliveryRecommendation(totalKg, totalCbm) {
-  const HEAVY_KG = 20;
-  const LARGE_CBM = 0.01;
-  const recommended = (totalKg >= HEAVY_KG || totalCbm >= LARGE_CBM) ? '화물' : '택배';
-  const reason = totalKg >= HEAVY_KG
-    ? `총 무게 ${totalKg.toFixed(1)}kg ≥ ${HEAVY_KG}kg`
-    : totalCbm >= LARGE_CBM
-      ? `총 부피 ${totalCbm.toFixed(4)} CBM ≥ ${LARGE_CBM}`
-      : '소형/경량';
-
-  state.recommendedDelivery = recommended;
-
-  // 사장님(작업자)의 박스별 method가 있으면 그쪽 우선 적용 — URL 모드 payload.boxes[].m
-  let workerRecommended = recommended;
-  if (state.urlData?.boxes?.length) {
-    const cargoCount = state.urlData.boxes.filter(b => b.m === 'cargo').length;
-    workerRecommended = cargoCount > state.urlData.boxes.length / 2 ? '화물' : '택배';
-  }
-
-  // 배지 표시 + 사전 선택 (사용자가 명시 선택 전까지)
-  document.querySelectorAll('.delivery-card').forEach(c => {
-    c.classList.remove('recommended');
-    const dt = c.dataset.delivery;
-    let badge = c.querySelector('.recommend-badge');
-    if (badge) badge.remove();
-    if (dt === workerRecommended) {
-      c.classList.add('recommended');
-      badge = document.createElement('div');
-      badge.className = 'recommend-badge';
-      badge.style.cssText = 'position:absolute; top:8px; right:8px; background:#0a7b40; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px; font-weight:600;';
-      badge.textContent = '✓ 작업자 권장';
-      c.style.position = 'relative';
-      c.appendChild(badge);
-    }
+// v2.9.18: 박스별 배송방식 설정
+function setBoxDelivery(seq, type) {
+  state.boxDeliveries = state.boxDeliveries || {};
+  state.boxDeliveries[seq] = type;
+  // UI 업데이트
+  document.querySelectorAll(`input[name="boxDelivery_${seq}"]`).forEach(inp => {
+    inp.closest('label').classList.toggle('selected', inp.value === type);
   });
+  syncOverallDelivery();
+}
 
-  // 사장님 권장 메시지 영역
-  const hint = document.getElementById('deliveryRecommendHint');
-  if (hint) {
-    hint.innerHTML = `💡 <strong>작업자 권장: ${workerRecommended}</strong> <small style="color:#888;">(${reason})</small><br>고객이 최종 결정합니다.`;
-  }
-
-  // 사용자가 아직 선택 안 했으면 권장값으로 사전 선택
-  if (!state.selectedDelivery) {
-    selectDelivery(workerRecommended);
-  }
+// 호환성: 박스별 결정을 전체 selectedDelivery로 다수결 합산
+function syncOverallDelivery() {
+  if (!state.boxDeliveries) return;
+  const values = Object.values(state.boxDeliveries);
+  if (values.length === 0) return;
+  const cargoCount = values.filter(v => v === '화물').length;
+  state.selectedDelivery = cargoCount > values.length / 2 ? '화물' : '택배';
 }
 
 function selectDelivery(type) {
@@ -918,6 +998,18 @@ async function submitResponse() {
     toast('FTA를 선택해 주세요', 'warn', { title: '⚠ 선택 필요' });
     return;
   }
+  // v2.9.18 H3: 박스별 배송방식 검증
+  if (state.boxes.length > 0) {
+    state.boxDeliveries = state.boxDeliveries || {};
+    const missing = state.boxes
+      .map(b => String(b.fields['박스순번']))
+      .filter(seq => !state.boxDeliveries[seq]);
+    if (missing.length > 0) {
+      toast(`박스 ${missing.join(', ')}번의 배송방식을 선택해 주세요`, 'warn', { title: '⚠ 박스별 배송 필요' });
+      return;
+    }
+    syncOverallDelivery();
+  }
   if (!state.selectedDelivery) {
     toast('배송 방식을 선택해 주세요', 'warn', { title: '⚠ 선택 필요' });
     return;
@@ -952,6 +1044,7 @@ async function submitResponse() {
   const response = {
     fta: state.selectedFta,
     deliveryType: state.selectedDelivery,
+    boxDeliveries: state.boxDeliveries || {},  // v2.9.18 H3: 박스별 배송방식
     coRequested: document.getElementById('coRequest').checked,
     note: document.getElementById('note').value.trim(),
     customer: {
