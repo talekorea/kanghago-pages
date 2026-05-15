@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>강하고 무역 - 통관 정보 확인</title>
-<!-- v2.9.16: 다음 우편번호 API (Daum Postcode v2) -->
-<script src="//t1.daumcdn.net/mapjsdoc/postcode.v2.js"></script>
+<!-- v2.9.18: 다음 우편번호 API (Daum Postcode v2) — 정식 URL -->
+<script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
 <style>
   :root {
     --bg:#F4EFE6; --ivory:#FAF6EE; --gold:#C9973A; --navy:#1B2A3B;
@@ -134,10 +134,18 @@
     </label>
   </div>
 
-  <!-- 3. 박스 정보 + 배송 방식 -->
+  <!-- v2.9.18: 3. 박스 정보 (물리적 사실만 표시) -->
   <div class="section">
-    <h2><span class="num">3</span> 배송 방식 선택</h2>
+    <h2><span class="num">3</span> 박스 정보</h2>
     <div class="summary-info" id="boxSummary"></div>
+  </div>
+
+  <!-- v2.9.18: 4. 배송방식 선택 (박스와 분리 — 사장님 UX 통찰) -->
+  <div class="section">
+    <h2><span class="num">4</span> 배송방식 선택</h2>
+    <div id="deliveryRecommendHint" style="padding:10px 14px; background:#fff8e1; border:1px solid #C9973A; border-radius:6px; font-size:12px; color:#555; margin-bottom:12px; line-height:1.6;">
+      💡 박스 정보 로딩 중...
+    </div>
     <div class="delivery-options">
       <div class="delivery-card" data-delivery="택배" onclick="selectDelivery('택배')">
         <div class="icon">📦</div>
@@ -652,19 +660,23 @@ function selectFta(fta) {
   coRow.style.display = (fta === '한중FTA' || fta === '아태FTA') ? '' : 'none';
 }
 
+// v2.9.18: 박스 정보 = 물리적 사실 (배송방식은 별도 영역으로 분리)
 function renderBoxes() {
   const box = document.getElementById('boxSummary');
   if (state.boxes.length === 0) {
     box.innerHTML = '<p style="color:#888;">박스 정보가 아직 입력되지 않았습니다. 강하고에서 박스 패킹 후 확인 가능합니다.</p>';
+    // 빈 박스라도 권장 적용 (기본 택배)
+    applyDeliveryRecommendation(0, 0);
     return;
   }
+
   let totalCbm = 0, totalKg = 0;
   state.boxes.forEach(b => {
     totalCbm += parseFloat(b.fields['부피CBM']) || 0;
     totalKg += parseFloat(b.fields['무게KG']) || 0;
   });
 
-  // 박스별 제품 매핑 (BoxAssignments 활용)
+  // 박스별 제품 매핑 (BoxAssignments 활용, URL 모드면 비어 있음)
   const productMap = {};
   state.products.forEach(p => { productMap[p.id] = p.fields; });
   const boxToProducts = {};
@@ -682,65 +694,107 @@ function renderBoxes() {
     return (parseInt(a.fields['박스순번']) || 0) - (parseInt(b.fields['박스순번']) || 0);
   });
 
-  let rowsHtml = '';
-  sortedBoxes.forEach(b => {
+  // v2.9.18: 박스 카드 디자인 (배송방식 표시 제거 — 별도 영역)
+  const cardsHtml = sortedBoxes.map(b => {
     const f = b.fields || {};
     const w = parseFloat(f['가로cm']) || 0;
     const h = parseFloat(f['세로cm']) || 0;
     const d = parseFloat(f['높이cm']) || 0;
-    const dimText = (w && h && d) ? `${w}×${h}×${d} cm` : '-';
+    const dimText = (w && h && d) ? `${w} × ${h} × ${d} cm` : '치수 미입력';
     const kg = parseFloat(f['무게KG']);
     const cbm = parseFloat(f['부피CBM']);
-    const delivery = f['배송방식'] || '-';
-    const boxNo = f['박스번호'] || '-';
     const seq = f['박스순번'] || '-';
 
-    // 이 박스에 든 제품 목록
     const items = boxToProducts[b.id] || [];
-    const itemHtml = items.length === 0 ? '<span style="color:#aaa;font-size:11px;">매핑 정보 없음</span>' :
+    const itemHtml = items.length === 0 ? '' :
+      '<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #d4c5a8; font-size:11px; color:#666;">' +
       items.map(it => {
         const pf = productMap[it.productId] || {};
         const name = pf['영문명'] || pf['한글명'] || pf['Name'] || '제품';
         const qty = it.qty ? ` ×${it.qty}` : '';
-        return `<span style="font-size:11px;display:inline-block;background:#f4efe6;padding:2px 6px;border-radius:3px;margin:2px 4px 2px 0;">${name}${qty}</span>`;
-      }).join('');
+        return `<span style="display:inline-block;background:#f4efe6;padding:2px 6px;border-radius:3px;margin:2px 4px 2px 0;">${name}${qty}</span>`;
+      }).join('') + '</div>';
 
-    rowsHtml += `
-      <tr>
-        <td style="text-align:center;font-weight:600;">${seq}</td>
-        <td style="font-family:monospace;font-size:11px;">${boxNo}</td>
-        <td style="text-align:right;">${isNaN(kg) ? '-' : kg.toFixed(1) + ' kg'}</td>
-        <td style="text-align:right;">${isNaN(cbm) ? '-' : cbm.toFixed(3) + ' CBM'}</td>
-        <td style="text-align:center;font-size:11px;">${dimText}</td>
-        <td style="text-align:center;font-size:11px;">${delivery}</td>
-        <td>${itemHtml}</td>
-      </tr>
+    return `
+      <div style="background:#fff; border:1px solid #d4c5a8; border-radius:8px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+        <div style="font-weight:700; color:#1B2A3B; font-size:14px; margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+          <span style="background:#1B2A3B; color:#F4EFE6; width:24px; height:24px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">${seq}</span>
+          <span>Box ${seq}</span>
+        </div>
+        <div style="display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:12px; color:#1B2A3B;">
+          <span style="color:#888;">크기</span><span><strong>${dimText}</strong></span>
+          <span style="color:#888;">무게</span><span><strong>${isNaN(kg) ? '-' : kg.toFixed(1) + ' kg'}</strong></span>
+          <span style="color:#888;">부피</span><span><strong>${isNaN(cbm) ? '-' : cbm.toFixed(4) + ' CBM'}</strong></span>
+        </div>
+        ${itemHtml}
+      </div>
     `;
-  });
+  }).join('');
 
   box.innerHTML = `
-    <div style="background:var(--bg-soft); padding:12px; border-radius:6px; margin-bottom:10px;">
-      📦 <strong>박스 ${state.boxes.length}개</strong> · 총 <strong>${totalKg.toFixed(1)}kg</strong> · <strong>${totalCbm.toFixed(3)} CBM</strong>
+    <div style="background:var(--bg-soft); padding:12px 14px; border-radius:6px; margin-bottom:14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <span>📦 <strong>박스 ${state.boxes.length}개</strong></span>
+      <span style="color:#888;">·</span>
+      <span>총 <strong>${totalKg.toFixed(1)} kg</strong></span>
+      <span style="color:#888;">·</span>
+      <span><strong>${totalCbm.toFixed(4)} CBM</strong></span>
     </div>
-    <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead>
-          <tr style="background:#1B2A3B;color:#fff;">
-            <th style="padding:8px 6px;text-align:center;">#</th>
-            <th style="padding:8px 6px;text-align:left;">박스번호</th>
-            <th style="padding:8px 6px;text-align:right;">무게</th>
-            <th style="padding:8px 6px;text-align:right;">부피</th>
-            <th style="padding:8px 6px;text-align:center;">치수 (W×D×H)</th>
-            <th style="padding:8px 6px;text-align:center;">배송방식</th>
-            <th style="padding:8px 6px;text-align:left;">포함 제품</th>
-          </tr>
-        </thead>
-        <tbody style="background:#fff;">
-          ${rowsHtml}
-        </tbody>
-      </table>
+    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:12px;">
+      ${cardsHtml}
     </div>
   `;
+
+  // v2.9.18: 박스 사실 기반으로 배송방식 권장 적용 (별도 영역)
+  applyDeliveryRecommendation(totalKg, totalCbm);
+}
+
+// v2.9.18: 배송방식 작업자 권장 — 무게 ≥20kg 또는 부피 ≥0.01 CBM = 화물 권장
+function applyDeliveryRecommendation(totalKg, totalCbm) {
+  const HEAVY_KG = 20;
+  const LARGE_CBM = 0.01;
+  const recommended = (totalKg >= HEAVY_KG || totalCbm >= LARGE_CBM) ? '화물' : '택배';
+  const reason = totalKg >= HEAVY_KG
+    ? `총 무게 ${totalKg.toFixed(1)}kg ≥ ${HEAVY_KG}kg`
+    : totalCbm >= LARGE_CBM
+      ? `총 부피 ${totalCbm.toFixed(4)} CBM ≥ ${LARGE_CBM}`
+      : '소형/경량';
+
+  state.recommendedDelivery = recommended;
+
+  // 사장님(작업자)의 박스별 method가 있으면 그쪽 우선 적용 — URL 모드 payload.boxes[].m
+  let workerRecommended = recommended;
+  if (state.urlData?.boxes?.length) {
+    const cargoCount = state.urlData.boxes.filter(b => b.m === 'cargo').length;
+    workerRecommended = cargoCount > state.urlData.boxes.length / 2 ? '화물' : '택배';
+  }
+
+  // 배지 표시 + 사전 선택 (사용자가 명시 선택 전까지)
+  document.querySelectorAll('.delivery-card').forEach(c => {
+    c.classList.remove('recommended');
+    const dt = c.dataset.delivery;
+    let badge = c.querySelector('.recommend-badge');
+    if (badge) badge.remove();
+    if (dt === workerRecommended) {
+      c.classList.add('recommended');
+      badge = document.createElement('div');
+      badge.className = 'recommend-badge';
+      badge.style.cssText = 'position:absolute; top:8px; right:8px; background:#0a7b40; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px; font-weight:600;';
+      badge.textContent = '✓ 작업자 권장';
+      c.style.position = 'relative';
+      c.appendChild(badge);
+    }
+  });
+
+  // 사장님 권장 메시지 영역
+  const hint = document.getElementById('deliveryRecommendHint');
+  if (hint) {
+    hint.innerHTML = `💡 <strong>작업자 권장: ${workerRecommended}</strong> <small style="color:#888;">(${reason})</small><br>고객이 최종 결정합니다.`;
+  }
+
+  // 사용자가 아직 선택 안 했으면 권장값으로 사전 선택
+  if (!state.selectedDelivery) {
+    selectDelivery(workerRecommended);
+  }
 }
 
 function selectDelivery(type) {
