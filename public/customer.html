@@ -261,11 +261,16 @@ async function init() {
     }
   }
 
-  // v2.9.17: URL 파라미터 모드 (작업자 도구 [📦 인쇄+고객전송]에서 생성)
+  // v2.9.17/v2.9.18: URL 파라미터 모드 (작업자 도구 [🔗 고객에게 전송]에서 생성)
   if (dataParam) {
+    console.log('[customer.html v2.9.18] dataParam length:', dataParam.length);
+    log('URL 모드 진입 (data 길이 ' + dataParam.length + '자)');
     try {
       const payload = decodeUrlPayload(dataParam);
-      if (!payload) throw new Error('데이터를 해석할 수 없습니다');
+      console.log('[customer.html v2.9.18] decoded payload:', payload);
+      if (!payload) throw new Error('Base64 디코딩 또는 JSON 파싱 실패 (콘솔 확인)');
+      if (!payload.v) throw new Error('payload.v(버전) 누락 — 잘못된 형식');
+      log('payload v=' + payload.v + ' / 제품 ' + (payload.products?.length || 0) + ' / 박스 ' + (payload.boxes?.length || 0));
 
       // 만료 검사
       if (payload.exp) {
@@ -329,11 +334,17 @@ async function init() {
 
       document.getElementById('loadingBox').style.display = 'none';
       document.getElementById('content').style.display = '';
-      renderAll();
-      log('v2.9.17 URL 모드 로드 완료');
+      try {
+        renderAll();
+        log('v2.9.18 URL 모드 로드 완료');
+      } catch (renderErr) {
+        console.error('[customer.html v2.9.18] renderAll 실패:', renderErr);
+        showError('화면 렌더링 실패.<br><small>' + (renderErr.message || renderErr) + '</small><br><small>콘솔 (F12) 확인 후 강하고 무역에 알려 주세요.</small>');
+      }
       return;
     } catch (e) {
-      showError('URL 데이터를 해석할 수 없습니다.<br><small>' + (e.message || e) + '</small>');
+      console.error('[customer.html v2.9.18] URL 모드 실패:', e);
+      showError('URL 데이터를 해석할 수 없습니다.<br><small>' + (e.message || e) + '</small><br><small>콘솔 (F12) 에서 자세한 오류를 확인할 수 있습니다.</small>');
       return;
     }
   }
@@ -529,6 +540,11 @@ function renderProducts() {
 }
 
 function renderFta() {
+  // v2.9.18: URL 모드일 때 미리 계산된 tariff 우선 사용 (신뢰성 ↑)
+  if (state.urlMode && state.urlData?.tariff) {
+    return renderFtaFromPayload(state.urlData.tariff);
+  }
+
   // 단순 계산: 각 제품의 합계CNY * 환율 * 세율 = 관세, + 부가세 10%
   const f = state.shipment.fields || {};
   const rateUsdKrw = parseFloat(f['환율USD_KRW']) || 1350;
@@ -587,6 +603,44 @@ function renderFta() {
       <div style="font-size:10px; color:#888; margin-top:4px;">⚠ 원산지증명서 필요</div>
     </div>
   `;
+}
+
+// v2.9.18: URL 모드 — 미리 계산된 tariff 사용
+function renderFtaFromPayload(tariff) {
+  const base = tariff.base || { duty: 0, vat: 0, total: 0 };
+  const kc = tariff.kc || { duty: 0, vat: 0, total: 0 };
+  const rcep = tariff.rcep || { duty: 0, vat: 0, total: 0 };
+  const minAmount = Math.min(base.total || Infinity, kc.total || Infinity, rcep.total || Infinity);
+
+  const cards = document.getElementById('ftaCards');
+  cards.innerHTML = `
+    <div class="fta-card ${base.total === minAmount ? 'recommended' : ''}" data-fta="일반" onclick="selectFta('일반')">
+      <div class="label">일반 세율</div>
+      <div class="amount">₩${Math.round(base.total).toLocaleString()}</div>
+      <div style="font-size:11px; color:#666;">관세 ₩${Math.round(base.duty).toLocaleString()} + 부가세 ₩${Math.round(base.vat).toLocaleString()}</div>
+    </div>
+    <div class="fta-card ${kc.total === minAmount ? 'recommended' : ''}" data-fta="한중FTA" onclick="selectFta('한중FTA')">
+      <div class="label">한중 FTA</div>
+      <div class="amount">₩${Math.round(kc.total).toLocaleString()}</div>
+      <div class="save">${kc.total < base.total ? '↓ ₩' + Math.round(base.total - kc.total).toLocaleString() + ' 절감' : ''}</div>
+      <div style="font-size:10px; color:#888; margin-top:4px;">⚠ 원산지증명서 필요</div>
+    </div>
+    <div class="fta-card ${rcep.total === minAmount ? 'recommended' : ''}" data-fta="아태FTA" onclick="selectFta('아태FTA')">
+      <div class="label">RCEP중국 FTA</div>
+      <div class="amount">₩${Math.round(rcep.total).toLocaleString()}</div>
+      <div class="save">${rcep.total < base.total ? '↓ ₩' + Math.round(base.total - rcep.total).toLocaleString() + ' 절감' : ''}</div>
+      <div style="font-size:10px; color:#888; margin-top:4px;">⚠ 원산지증명서 필요</div>
+    </div>
+  `;
+
+  // suggested 사전 선택 반영
+  if (state.selectedFta) {
+    document.querySelectorAll('.fta-card').forEach(c => {
+      c.classList.toggle('selected', c.dataset.fta === state.selectedFta);
+    });
+    const coRow = document.getElementById('coRow');
+    if (coRow) coRow.style.display = (state.selectedFta === '한중FTA' || state.selectedFta === '아태FTA') ? '' : 'none';
+  }
 }
 
 function selectFta(fta) {

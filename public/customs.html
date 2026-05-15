@@ -524,7 +524,7 @@ function renderRates(hs) {
     const metaStr = meta.length > 0
       ? `<div style="font-size:10px; color:#999; margin-top:2px;">${escHtml(meta.join(' · '))}</div>`
       : '';
-    return `<span>기본 <b>${d.base ?? '?'}%</b> · 한중 <b style="color:#0a7b40;">${d.kc ?? '?'}%</b> · 아태 <b style="color:#0a7b40;">${d.apta ?? '?'}%</b></span>${metaStr}`;
+    return `<span>기본 <b>${d.base ?? '?'}%</b> · 한중 <b style="color:#0a7b40;">${d.kc ?? '?'}%</b> · RCEP중국 <b style="color:#0a7b40;">${d.apta ?? '?'}%</b></span>${metaStr}`;
   }
   return '<span style="color:var(--gold);">⚠ 사전에 없는 HS코드 (수동 확인)</span>';
 }
