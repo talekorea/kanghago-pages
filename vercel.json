@@ -3,6 +3,7 @@
   "rewrites": [
     { "source": "/customs", "destination": "/customs.html" },
     { "source": "/customer", "destination": "/customer.html" },
+    { "source": "/c/(.*)", "destination": "/customer.html" },
     { "source": "/", "destination": "/index.html" }
   ],
   "headers": [

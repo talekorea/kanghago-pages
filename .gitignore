@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# 의존성 / 빌드 산출물
+node_modules/
+.vercel/
+
+# 로컬 환경 변수 (시크릿 — 절대 커밋 금지)
+.env
+.env.local
+.env.*.local

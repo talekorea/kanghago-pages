@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>강하고 무역 - 통관 정보 확인</title>
+<!-- 강하고 고객 페이지 v3.0.0 — Supabase consultations 모드(/c/{short_id}) + 고객 확정 토글 추가 -->
 <!-- v2.9.18: 다음 우편번호 API (Daum Postcode v2) — 정식 URL -->
 <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
 <style>
@@ -230,6 +231,10 @@ const params = new URLSearchParams(location.search);
 const shipId = params.get('ship');
 const token = params.get('t');
 const dataParam = params.get('data');  // v2.9.17: URL 모드 (base64 JSON)
+// v3.0.0: Supabase consultations 모드 — /c/{short_id} 경로 또는 ?c=short_id
+const consultId = params.get('c')
+  || (location.pathname.match(/^\/c\/([0-9a-zA-Z]+)/) || [])[1]
+  || null;
 
 const state = {
   shipment: null,
@@ -243,6 +248,10 @@ const state = {
   urlMode: false,
   urlData: null,
   urlExpiresAt: null,
+  // v3.0.0: Supabase consultations 모드
+  consultMode: false,
+  consultId: null,
+  consultRow: null,
 };
 
 function log(msg) {
@@ -285,6 +294,53 @@ async function init() {
     }
   }
 
+  // v3.0.0: Supabase consultations 모드 (/c/{short_id} 또는 ?c=short_id)
+  if (consultId) {
+    log('Supabase 모드 진입 (short_id ' + consultId + ')');
+    try {
+      const res = await fetch('/api/consultation?c=' + encodeURIComponent(consultId));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showError(data.error || ('상담 정보를 불러올 수 없습니다 (HTTP ' + res.status + ').'));
+        return;
+      }
+      const row = data.consultation;
+      if (!row || !row.payload) throw new Error('상담 데이터가 비어 있습니다');
+      const payload = row.payload;
+      if (!payload.v) throw new Error('payload 형식 오류 (v 누락)');
+      log('payload v=' + payload.v + ' / 제품 ' + (payload.products?.length || 0) + ' / 박스 ' + (payload.boxes?.length || 0));
+
+      applyPayloadToState(payload);
+      state.consultMode = true;
+      state.consultId = consultId;
+      state.consultRow = row;
+
+      // 이미 고객 확정한 경우 — 이전 응답값 복원
+      if (row.customer_approved && row.customer_data) {
+        const cd = row.customer_data;
+        if (cd.fta) state.selectedFta = cd.fta;
+        if (cd.boxDeliveries) state.boxDeliveries = Object.assign({}, cd.boxDeliveries);
+        if (cd.deliveryType) state.selectedDelivery = cd.deliveryType;
+      }
+
+      document.getElementById('loadingBox').style.display = 'none';
+      document.getElementById('content').style.display = '';
+      try {
+        renderAll();
+        renderConsultStatus();
+        log('v3.0.0 Supabase 모드 로드 완료');
+      } catch (renderErr) {
+        console.error('[customer.html v3.0.0] renderAll 실패:', renderErr);
+        showError('화면 렌더링 실패.<br><small>' + (renderErr.message || renderErr) + '</small><br><small>콘솔 (F12) 확인 후 강하고 무역에 알려 주세요.</small>');
+      }
+      return;
+    } catch (e) {
+      console.error('[customer.html v3.0.0] Supabase 모드 실패:', e);
+      showError('상담 정보를 불러올 수 없습니다.<br><small>' + (e.message || e) + '</small>');
+      return;
+    }
+  }
+
   // v2.9.17/v2.9.18: URL 파라미터 모드 (작업자 도구 [🔗 고객에게 전송]에서 생성)
   if (dataParam) {
     console.log('[customer.html v2.9.18] dataParam length:', dataParam.length);
@@ -306,59 +362,8 @@ async function init() {
         state.urlExpiresAt = exp;
       }
 
-      // URL payload → state 매핑 (기존 코드 호환)
-      state.urlMode = true;
-      state.urlData = payload;
-      state.shipment = {
-        id: payload.sid,
-        fields: {
-          '사서함': payload.sname || '',
-          '수취인': payload.customer?.name || '',
-          '환율CNY_USD': payload.rate?.cnyKrw ? null : 0.14,
-          // FTA·박스 세부는 별도 state로
-        },
-      };
-      state.products = (payload.products || []).map((p, idx) => ({
-        id: 'url:p:' + idx,
-        fields: {
-          'Description': p.d || '',
-          '영문명': p.d || '',
-          'HS코드': p.h || '',
-          '기본세율': p.b,
-          'FTA_한중': p.k,
-          'FTA_RCEP중국': p.r,
-          '적용FTA': p.f || '없음',
-          '수량': p.q || 0,
-          '단가CNY': p.u || 0,
-          '합계CNY': (p.q || 0) * (p.u || 0),
-          // v2.9.18 H1/H2: 이미지 + 박스번호
-          '이미지URL': p.img || '',
-          '박스번호': p.bn || '',
-        },
-      }));
-      state.boxes = (payload.boxes || []).map(b => ({
-        id: 'url:' + b.n,
-        fields: {
-          '박스번호': `${payload.sname}-${b.n}`,
-          '박스순번': parseInt(b.n) || 0,
-          '무게KG': b.kg || 0,
-          '부피CBM': b.cbm || 0,
-          '가로cm': b.w || 0,
-          '세로cm': b.h || 0,
-          '높이cm': b.d || 0,
-          '배송방식': b.m === 'parcel' ? '택배' : '화물',
-        },
-      }));
-      state.boxAssignments = [];
-      state.customer = payload.customer ? { fields: {
-        '회원명': payload.customer.name || '',
-        '전화번호': payload.customer.phone || '',
-      } } : null;
-
-      // FTA 사전 선택 힌트
-      if (payload.suggested === 'kc') state.selectedFta = '한중FTA';
-      else if (payload.suggested === 'rcep') state.selectedFta = '아태FTA';
-      else if (payload.suggested === 'base') state.selectedFta = '일반';
+      // URL payload → state 매핑 (v3.0.0: Supabase 모드와 공용 함수)
+      applyPayloadToState(payload);
 
       document.getElementById('loadingBox').style.display = 'none';
       document.getElementById('content').style.display = '';
@@ -416,6 +421,65 @@ function decodeUrlPayload(b64) {
   } catch (e) {
     console.error('[decodeUrlPayload]', e);
     return null;
+  }
+}
+
+// v3.0.0: payload(v=1 JSON) → state 매핑 — URL 모드(?data=)·Supabase 모드(/c/) 공용
+function applyPayloadToState(payload) {
+  state.urlMode = true;
+  state.urlData = payload;
+  state.shipment = {
+    id: payload.sid,
+    fields: {
+      '사서함': payload.sname || '',
+      '수취인': payload.customer?.name || '',
+      '환율CNY_USD': payload.rate?.cnyKrw ? null : 0.14,
+    },
+  };
+  state.products = (payload.products || []).map((p, idx) => ({
+    id: 'url:p:' + idx,
+    fields: {
+      'Description': p.d || '',
+      '영문명': p.d || '',
+      'HS코드': p.h || '',
+      '기본세율': p.b,
+      'FTA_한중': p.k,
+      'FTA_RCEP중국': p.r,
+      '적용FTA': p.f || '없음',
+      '수량': p.q || 0,
+      '단가CNY': p.u || 0,
+      '합계CNY': (p.q || 0) * (p.u || 0),
+      // v2.9.18 H1/H2: 이미지 + 박스번호
+      '이미지URL': p.img || '',
+      '박스번호': p.bn || '',
+    },
+  }));
+  state.boxes = (payload.boxes || []).map(b => ({
+    id: 'url:' + b.n,
+    fields: {
+      '박스번호': `${payload.sname}-${b.n}`,
+      '박스순번': parseInt(b.n) || 0,
+      '무게KG': b.kg || 0,
+      '부피CBM': b.cbm || 0,
+      '가로cm': b.w || 0,
+      '세로cm': b.h || 0,
+      '높이cm': b.d || 0,
+      '배송방식': b.m === 'parcel' ? '택배' : '화물',
+    },
+  }));
+  state.boxAssignments = [];
+  state.customer = payload.customer ? { fields: {
+    '회원명': payload.customer.name || '',
+    '전화번호': payload.customer.phone || '',
+  } } : null;
+  // FTA 사전 선택 힌트
+  if (payload.suggested === 'kc') state.selectedFta = '한중FTA';
+  else if (payload.suggested === 'rcep') state.selectedFta = '아태FTA';
+  else if (payload.suggested === 'base') state.selectedFta = '일반';
+  // 만료 시각
+  if (payload.exp) {
+    const exp = new Date(payload.exp);
+    if (!isNaN(exp.getTime())) state.urlExpiresAt = exp;
   }
 }
 
@@ -495,7 +559,10 @@ function showReplyUrlModal(replyUrl, response) {
 
 function renderAll() {
   const f = state.shipment.fields || {};
-  state.isCompleted = !!f['고객응답일시'];
+  // v3.0.0: Supabase 모드는 consultRow.customer_approved 기준
+  state.isCompleted = state.consultMode
+    ? !!(state.consultRow && state.consultRow.customer_approved)
+    : !!f['고객응답일시'];
 
   // 인사말
   const name = (state.customer?.fields?.['회원명']) || f['수취인'] || '고객';
@@ -532,12 +599,54 @@ function renderAll() {
 
   // 이미 응답한 경우 선택값 반영
   if (state.isCompleted) {
-    if (f['선택FTA']) selectFta(f['선택FTA'].replace('FTA', '').replace('한중', '한중FTA').replace('아태', '아태FTA'));
-    if (f['배송방식']) selectDelivery(f['배송방식']);
-    if (f['원산지증명서신청']) document.getElementById('coRequest').checked = true;
+    if (state.consultMode) {
+      // v3.0.0: Supabase 모드 — customer_data 에서 복원
+      const cd = (state.consultRow && state.consultRow.customer_data) || {};
+      const co = document.getElementById('coRequest');
+      if (cd.coRequested && co) co.checked = true;
+      if (cd.note) document.getElementById('note').value = cd.note;
+      if (cd.customer) {
+        const setV = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+        setV('custName', cd.customer.name);
+        setV('custCompany', cd.customer.company);
+        setV('custPhone', cd.customer.phone);
+        setV('custZipcode', cd.customer.zipcode);
+        setV('custAddress', cd.customer.baseAddress || cd.customer.address);
+        setV('custAddressDetail', cd.customer.detailAddress);
+      }
+    } else {
+      if (f['선택FTA']) selectFta(f['선택FTA'].replace('FTA', '').replace('한중', '한중FTA').replace('아태', '아태FTA'));
+      if (f['배송방식']) selectDelivery(f['배송방식']);
+      if (f['원산지증명서신청']) document.getElementById('coRequest').checked = true;
+    }
   }
 
   log('✓ 로드 완료');
+}
+
+// v3.0.0: 양방향 확정 상태 배너 (강하고 / 고객 / 최종) — Supabase 모드 전용
+function renderConsultStatus() {
+  if (!state.consultMode || !state.consultRow) return;
+  const row = state.consultRow;
+  const greet = document.getElementById('greetTitle')?.parentElement;
+  if (!greet) return;
+  let banner = document.getElementById('consultStatusBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'consultStatusBanner';
+    banner.style.cssText = 'margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;';
+    greet.appendChild(banner);
+  }
+  const chip = (label, done, waitText) =>
+    `<span style="flex:1; min-width:130px; text-align:center; padding:9px 10px; border-radius:6px;`
+    + ` font-size:12px; font-weight:700; background:${done ? '#e8f5e9' : '#fff8e1'};`
+    + ` border:1px solid ${done ? '#0a7b40' : '#C9973A'}; color:${done ? '#0a7b40' : '#9a7b2a'};">`
+    + `${done ? '✅' : '⏳'} ${label}<br><span style="font-weight:500; font-size:11px;">`
+    + `${done ? '완료' : waitText}</span></span>`;
+  banner.innerHTML =
+    chip('강하고 확정', row.customs_approved, '확인 중') +
+    chip('고객 확정', row.customer_approved, '확인 부탁드려요') +
+    chip('최종 확정', row.finalized, '양쪽 확정 시 완료');
 }
 
 // v2.9.18 H2: 제품 카드 2열 그리드 + 이미지 + 박스 색상 배지
@@ -1057,6 +1166,50 @@ async function submitResponse() {
       detailAddress: detailAddr,
     },
   };
+
+  // v3.0.0: Supabase consultations 모드 — 고객 확정 저장 (customer_approved 토글)
+  if (state.consultMode) {
+    try {
+      const res = await fetch('/api/consultation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ c: state.consultId, response }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.alreadyApproved) {
+          state.isCompleted = true;
+          if (state.consultRow) state.consultRow.customer_approved = true;
+          renderConsultStatus();
+          document.getElementById('completedBanner').style.display = '';
+          btn.style.display = 'none';
+          toast('이미 응답이 제출되었습니다', 'warn', { title: '확인' });
+          return;
+        }
+        throw new Error(data.error || 'HTTP ' + res.status);
+      }
+      state.isCompleted = true;
+      if (state.consultRow) {
+        state.consultRow.customer_approved = true;
+        state.consultRow.customer_approved_at = new Date().toISOString();
+        state.consultRow.finalized = !!data.finalized;
+      }
+      renderConsultStatus();
+      toast(data.message || '응답이 정상 저장되었습니다', 'success', { title: '✅ 제출 완료', duration: 6000 });
+      btn.textContent = '✅ 제출 완료';
+      setTimeout(() => {
+        document.getElementById('completedBanner').style.display = '';
+        btn.style.display = 'none';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 1500);
+      return;
+    } catch (e) {
+      toast(e.message, 'error', { title: '✗ 제출 실패' });
+      btn.disabled = false;
+      btn.textContent = '✅ 확정 제출';
+      return;
+    }
+  }
 
   // v2.9.17: URL 모드 — Airtable POST 대신 회신 URL 생성 (Phase 1 임시)
   if (state.urlMode) {
