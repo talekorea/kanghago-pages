@@ -1,18 +1,24 @@
-// 통관 상담 API (v3.0.0 — Supabase consultations 양방향 토글)
-// GET  /api/consultation?c=shortId        → 상담 데이터 조회 (고객 페이지용)
-// POST /api/consultation { c, response }   → 고객 확정 저장 (customer_approved 토글)
+// 통관 상담 API (v3.0.1 — Supabase consultations 양방향 토글, 도구·고객 모두 API 경유)
 //
-// Supabase 키는 Vercel 환경 변수에만 저장 — 페이지 소스/URL 노출 X
-//   SUPABASE_URL          예: https://xxxxxxxx.supabase.co
-//   SUPABASE_SERVICE_KEY  service_role (sb_secret_*) 키 — 서버 전용
+// 고객용 (인증 불필요 — short_id를 아는 사람 = 고객 본인):
+//   GET  /api/consultation?c=shortId                          → 상담 데이터 조회
+//   POST /api/consultation { op:'customer_approve', c, response }  → 고객 확정
 //
-// 작업자 도구(인보이스 통합 v3.0.0)는 Supabase REST에 직접 INSERT.
-// 이 엔드포인트는 고객 페이지(customer.html)의 조회/확정 전용.
+// 작업자용 (Authorization: Bearer <CONSULTATION_WRITE_TOKEN> 필수):
+//   POST /api/consultation { op:'create', payload }           → 상담 생성 (short_id 발급)
+//   POST /api/consultation { op:'customs_approve', c }        → 관세사/강하고 확정
+//
+// Supabase 키는 Vercel 환경 변수에만 — 브라우저(작업자 도구·고객 페이지)에 키 노출 0
+//   SUPABASE_URL              예: https://xxxx.supabase.co
+//   SUPABASE_SERVICE_KEY      service_role(sb_secret_*) 키 — 서버 전용
+//   CONSULTATION_WRITE_TOKEN  작업자 도구 쓰기 인증용 임의 토큰 (Supabase 키 아님)
 
+const crypto = require('crypto');
 const { handleCors, readBody } = require('./_lib');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const WRITE_TOKEN = process.env.CONSULTATION_WRITE_TOKEN;
 
 // Supabase PostgREST 요청
 async function sbRequest(method, path, opts) {
@@ -34,14 +40,34 @@ async function sbRequest(method, path, opts) {
   });
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(`Supabase ${res.status}: ${text.slice(0, 300)}`);
+    const err = new Error(`Supabase ${res.status}: ${text.slice(0, 300)}`);
+    err.status = res.status;
+    err.bodyText = text;
+    throw err;
   }
   return text ? JSON.parse(text) : null;
 }
 
-// short_id 형식 검증 (도구 generateShortId: 12자 nanoid)
+// short_id 형식 검증 (12자 nanoid)
 function isValidShortId(c) {
   return typeof c === 'string' && /^[0-9a-zA-Z]{8,24}$/.test(c);
+}
+
+// 12자 short_id 생성 (모호 문자 0/O/1/I/l 제외)
+const SHORT_ID_ALPHABET = '23456789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ';
+function generateShortId(len) {
+  len = len || 12;
+  const bytes = crypto.randomBytes(len);
+  let out = '';
+  for (let i = 0; i < len; i++) out += SHORT_ID_ALPHABET[bytes[i] % SHORT_ID_ALPHABET.length];
+  return out;
+}
+
+// 작업자 인증 — Bearer write-token
+function isWorker(req) {
+  if (!WRITE_TOKEN) return false;
+  const auth = req.headers.authorization || '';
+  return auth === `Bearer ${WRITE_TOKEN}`;
 }
 
 module.exports = async (req, res) => {
@@ -57,7 +83,7 @@ module.exports = async (req, res) => {
   }
 };
 
-// 상담 조회
+// 상담 조회 (고객 페이지)
 async function handleGet(req, res) {
   const c = req.query.c;
   if (!isValidShortId(c)) {
@@ -79,8 +105,6 @@ async function handleGet(req, res) {
   if (!row) {
     return res.status(404).json({ error: '존재하지 않는 상담 링크입니다. 강하고 무역에 문의해 주세요.' });
   }
-
-  // 만료 검사
   if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
     const expStr = new Date(row.expires_at).toLocaleDateString('ko-KR');
     return res.status(410).json({
@@ -93,10 +117,95 @@ async function handleGet(req, res) {
   res.json({ consultation: row });
 }
 
-// 고객 확정 저장
+// POST 분기 — op 기준
 async function handlePost(req, res) {
   const body = await readBody(req);
-  const { c, response } = body || {};
+  const op = (body && body.op) || 'customer_approve';
+
+  if (op === 'create') return await handleCreate(req, res, body);
+  if (op === 'customs_approve') return await handleCustomsApprove(req, res, body);
+  if (op === 'customer_approve') return await handleCustomerApprove(req, res, body);
+  return res.status(400).json({ error: '알 수 없는 요청(op)입니다.' });
+}
+
+// [작업자] 상담 생성 — short_id 발급
+async function handleCreate(req, res, body) {
+  if (!isWorker(req)) {
+    return res.status(401).json({ error: '작업자 인증 실패 — 도구의 write-token을 확인해 주세요.' });
+  }
+  const payload = body && body.payload;
+  if (!payload || typeof payload !== 'object' || !payload.v) {
+    return res.status(400).json({ error: 'payload(v=1)가 필요합니다.' });
+  }
+
+  // short_id 중복(unique_violation) 시 재시도
+  let lastErr = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const shortId = generateShortId(12);
+    try {
+      const rows = await sbRequest('POST', '/consultations', {
+        body: {
+          short_id: shortId,
+          airtable_sid: payload.sid || null,
+          mailbox_id: payload.sname || '',
+          payload,
+        },
+        prefer: 'return=representation',
+      });
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      return res.json({ success: true, short_id: row.short_id, id: row.id });
+    } catch (e) {
+      if (e.status === 409 || (e.bodyText && e.bodyText.includes('23505'))) {
+        lastErr = e;  // short_id 충돌 → 새 id로 재시도
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr || new Error('상담 생성 실패 (short_id 충돌)');
+}
+
+// [작업자] 관세사/강하고 확정
+async function handleCustomsApprove(req, res, body) {
+  if (!isWorker(req)) {
+    return res.status(401).json({ error: '작업자 인증 실패 — 도구의 write-token을 확인해 주세요.' });
+  }
+  const c = body && body.c;
+  if (!isValidShortId(c)) {
+    return res.status(400).json({ error: '잘못된 short_id입니다.' });
+  }
+
+  const patch = {
+    customs_approved: true,
+    customs_approved_at: new Date().toISOString(),
+  };
+  if (body.by) patch.customs_approved_by = String(body.by).slice(0, 120);
+
+  const updated = await sbRequest('PATCH',
+    `/consultations?short_id=eq.${encodeURIComponent(c)}&customs_approved=is.false`,
+    { body: patch, prefer: 'return=representation' }
+  );
+  const row = Array.isArray(updated) ? updated[0] : updated;
+
+  if (!row) {
+    // 이미 확정됐거나 미존재 — 현재 상태 조회
+    const cur = await sbRequest('GET',
+      `/consultations?short_id=eq.${encodeURIComponent(c)}&select=customs_approved,customer_approved,finalized&limit=1`
+    );
+    const curRow = Array.isArray(cur) ? cur[0] : null;
+    if (!curRow) return res.status(404).json({ error: '존재하지 않는 상담입니다.' });
+    return res.json({
+      success: true, alreadyApproved: true,
+      finalized: !!curRow.finalized, customer_approved: !!curRow.customer_approved,
+    });
+  }
+  res.json({ success: true, finalized: !!row.finalized, customer_approved: !!row.customer_approved });
+}
+
+// [고객] 고객 확정 — 인증 불필요 (short_id 자체가 자격증명)
+async function handleCustomerApprove(req, res, body) {
+  const c = body && body.c;
+  const response = body && body.response;
 
   if (!isValidShortId(c)) {
     return res.status(400).json({ error: '잘못된 요청입니다.' });
@@ -105,7 +214,7 @@ async function handlePost(req, res) {
     return res.status(400).json({ error: '응답 데이터가 없습니다.' });
   }
 
-  // 현재 상태 확인 (404 / 410 / 409 구분용)
+  // 현재 상태 확인 (404 / 410 / 409 구분)
   const rows = await sbRequest('GET',
     `/consultations?short_id=eq.${encodeURIComponent(c)}&select=short_id,customer_approved,expires_at&limit=1`
   );
@@ -121,8 +230,7 @@ async function handlePost(req, res) {
     return res.status(409).json({ error: '이미 응답을 제출하셨습니다.', alreadyApproved: true });
   }
 
-  // 고객 확정 — customer_approved=false 인 행만 UPDATE (중복 제출 방지)
-  // 양쪽(customs+customer) 확정 시 DB 트리거가 finalized 자동 설정
+  // customer_approved=false 인 행만 UPDATE (중복 제출 방지). 양쪽 확정 시 DB 트리거가 finalized 설정
   const updated = await sbRequest('PATCH',
     `/consultations?short_id=eq.${encodeURIComponent(c)}&customer_approved=is.false`,
     {
@@ -137,7 +245,6 @@ async function handlePost(req, res) {
   const result = Array.isArray(updated) ? updated[0] : updated;
 
   if (!result) {
-    // 그 사이 다른 제출이 먼저 처리됨
     return res.status(409).json({ error: '이미 응답을 제출하셨습니다.', alreadyApproved: true });
   }
 
