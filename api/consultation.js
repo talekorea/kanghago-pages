@@ -108,7 +108,7 @@ async function syncCustomerResponseToAirtable(shipmentId, response) {
           '사서함번호': shipName,
           '회원명': c.name || '',
           '회사명': c.company || '',
-          '전화번호': c.phone || '',
+          '연락처': c.phone || '',           // Bug5 수정: Customers 전화 필드명은 '연락처' (옛 '전화번호'는 미존재 → 422)
           '주소': c.address || '',
           '통관고유부호': c.customsId || '',   // B4
           '마지막사용일': today,
