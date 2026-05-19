@@ -76,7 +76,7 @@ function isWorker(req) {
 async function syncCustomerResponseToAirtable(shipmentId, response) {
   const today = new Date().toISOString().slice(0, 10);
 
-  // 1. Shipments — 고객 응답 (핵심)
+  // 1. Shipments — 고객 응답 (핵심: 실패 시 throw → 호출부 airtableSynced=false)
   await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, {
     fields: {
       '고객응답일시': today,
@@ -88,36 +88,72 @@ async function syncCustomerResponseToAirtable(shipmentId, response) {
     typecast: true,
   });
 
-  // 2. Customers — 수취 정보 upsert (보조: 실패해도 Shipments 동기화는 성공으로 간주)
-  if (response.customer && typeof response.customer === 'object') {
+  // 사서함명 — Customers/Boxes 동기화에 공통으로 필요
+  let shipName = null;
+  try {
+    const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
+    shipName = (ship.fields && ship.fields['사서함']) || null;
+  } catch (e) {
+    console.error('[consultation] Shipment 조회 경고:', e.message);
+  }
+
+  // 2. Customers — 수취 정보 + 통관고유부호 upsert (B4) (보조: 실패해도 진행)
+  if (response.customer && typeof response.customer === 'object' && shipName) {
     try {
-      const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
-      const shipName = ship.fields && ship.fields['사서함'];
-      if (shipName) {
-        const meta = await atRequest('GET', `/meta/bases/${BASE_ID}/tables`);
-        const custTable = (meta.tables || []).find(t => t.name === 'Customers');
-        if (custTable) {
-          const c = response.customer;
-          const custFields = {
-            '사서함번호': shipName,
-            '회원명': c.name || '',
-            '회사명': c.company || '',
-            '전화번호': c.phone || '',
-            '주소': c.address || '',
-            '마지막사용일': today,
-          };
-          const existRes = await atRequest('GET',
-            `/${custTable.id}?filterByFormula=${encodeURIComponent(`{사서함번호}='${shipName}'`)}&maxRecords=1`);
-          const existing = existRes.records && existRes.records[0];
-          if (existing) {
-            await atRequest('PATCH', `/${custTable.id}/${existing.id}`, { fields: custFields, typecast: true });
-          } else {
-            await atRequest('POST', `/${custTable.id}`, { fields: custFields, typecast: true });
-          }
+      const meta = await atRequest('GET', `/meta/bases/${BASE_ID}/tables`);
+      const custTable = (meta.tables || []).find(t => t.name === 'Customers');
+      if (custTable) {
+        const c = response.customer;
+        const custFields = {
+          '사서함번호': shipName,
+          '회원명': c.name || '',
+          '회사명': c.company || '',
+          '전화번호': c.phone || '',
+          '주소': c.address || '',
+          '통관고유부호': c.customsId || '',   // B4
+          '마지막사용일': today,
+        };
+        const existRes = await atRequest('GET',
+          `/${custTable.id}?filterByFormula=${encodeURIComponent(`{사서함번호}='${shipName}'`)}&maxRecords=1`);
+        const existing = existRes.records && existRes.records[0];
+        if (existing) {
+          await atRequest('PATCH', `/${custTable.id}/${existing.id}`, { fields: custFields, typecast: true });
+        } else {
+          await atRequest('POST', `/${custTable.id}`, { fields: custFields, typecast: true });
         }
       }
     } catch (e) {
       console.error('[consultation] Customers 동기화 경고 (Shipments는 완료):', e.message);
+    }
+  }
+
+  // 3. Boxes — 박스별 배송방식 동기화 (B2) (보조: 실패해도 진행)
+  //    response.boxDeliveries = { 박스순번: '택배'|'화물' }
+  if (response.boxDeliveries && typeof response.boxDeliveries === 'object' && shipName) {
+    try {
+      const filter = `SEARCH('${shipName}',ARRAYJOIN({Shipment}))`;
+      const boxRes = await atRequest('GET',
+        `/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(filter)}&pageSize=100`);
+      const boxes = (boxRes && boxRes.records) || [];
+      const updates = [];
+      boxes.forEach(box => {
+        const seq = String((box.fields && box.fields['박스순번']) ?? '');
+        const delivery = response.boxDeliveries[seq];
+        if (delivery === '택배' || delivery === '화물') {
+          updates.push({ id: box.id, fields: { '배송방식': delivery } });
+        }
+      });
+      for (let i = 0; i < updates.length; i += 10) {
+        await atRequest('PATCH', `/${TABLES.Boxes}`, {
+          records: updates.slice(i, i + 10),
+          typecast: true,
+        });
+      }
+      if (boxes.length > 0 && updates.length === 0) {
+        console.error('[consultation] Boxes 동기화 — 매칭 0건 (boxDeliveries 키 ↔ 박스순번 불일치 가능). shipment:', shipmentId);
+      }
+    } catch (e) {
+      console.error('[consultation] Boxes 동기화 경고 (Shipments는 완료):', e.message);
     }
   }
 }
