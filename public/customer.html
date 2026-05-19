@@ -470,7 +470,7 @@ function applyPayloadToState(payload) {
       '가로cm': b.w || 0,
       '세로cm': b.h || 0,
       '높이cm': b.d || 0,
-      '배송방식': b.m === 'parcel' ? '택배' : '화물',
+      '배송방식': (b.m === '택배' || b.m === 'parcel') ? '택배' : '화물',
     },
   }));
   state.boxAssignments = [];
@@ -884,8 +884,8 @@ function renderBoxes() {
     // URL 모드 — 도구가 명시한 박스별 method 우선
     if (state.urlData?.boxes) {
       const urlBox = state.urlData.boxes.find(x => String(x.n) === seq);
-      if (urlBox?.m === 'cargo') { recommended = '화물'; reason = '작업자가 화물 지정'; }
-      else if (urlBox?.m === 'parcel') { recommended = '택배'; reason = '작업자가 택배 지정'; }
+      if (urlBox?.m === '화물' || urlBox?.m === 'cargo') { recommended = '화물'; reason = '작업자가 화물 지정'; }
+      else if (urlBox?.m === '택배' || urlBox?.m === 'parcel') { recommended = '택배'; reason = '작업자가 택배 지정'; }
     }
 
     // 박스별 사전 선택 (사용자가 명시 선택 X 시 권장값)
