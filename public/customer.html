@@ -1175,6 +1175,8 @@ async function submitResponse() {
         state.consultRow.finalized = !!data.finalized;
       }
       renderConsultStatus();
+      // v3.0.4: Airtable 동기화 결과 — 침묵 실패 방지 breadcrumb (디버그 로그)
+      log('Airtable 동기화: ' + (data.airtableSynced ? '✓ 완료' : '⚠ 미완 — 강하고 무역 확인 필요'));
       toast(data.message || '응답이 정상 저장되었습니다', 'success', { title: '✅ 제출 완료', duration: 6000 });
       btn.textContent = '✅ 제출 완료';
       setTimeout(() => {

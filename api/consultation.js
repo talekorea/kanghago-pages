@@ -14,7 +14,7 @@
 //   CONSULTATION_WRITE_TOKEN  작업자 도구 쓰기 인증용 임의 토큰 (Supabase 키 아님)
 
 const crypto = require('crypto');
-const { handleCors, readBody } = require('./_lib');
+const { handleCors, readBody, atRequest, TABLES, BASE_ID } = require('./_lib');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -68,6 +68,58 @@ function isWorker(req) {
   if (!WRITE_TOKEN) return false;
   const auth = req.headers.authorization || '';
   return auth === `Bearer ${WRITE_TOKEN}`;
+}
+
+// v3.0.4: 고객 응답을 Airtable에 동기화 — Shipments(응답 필드) + Customers(수취 정보)
+// consultMode 고객 응답은 Supabase에만 저장되던 것을, 작업자가 보는 Airtable에도 반영한다.
+// Shipments PATCH 실패 시 throw(호출부가 airtableSynced=false 처리), Customers는 보조(실패해도 진행).
+async function syncCustomerResponseToAirtable(shipmentId, response) {
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 1. Shipments — 고객 응답 (핵심)
+  await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, {
+    fields: {
+      '고객응답일시': today,
+      '선택FTA': response.fta || '미선택',
+      '배송방식': response.deliveryType || '미선택',
+      '원산지증명서신청': !!response.coRequested,
+      '특이사항': response.note || '',
+    },
+    typecast: true,
+  });
+
+  // 2. Customers — 수취 정보 upsert (보조: 실패해도 Shipments 동기화는 성공으로 간주)
+  if (response.customer && typeof response.customer === 'object') {
+    try {
+      const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
+      const shipName = ship.fields && ship.fields['사서함'];
+      if (shipName) {
+        const meta = await atRequest('GET', `/meta/bases/${BASE_ID}/tables`);
+        const custTable = (meta.tables || []).find(t => t.name === 'Customers');
+        if (custTable) {
+          const c = response.customer;
+          const custFields = {
+            '사서함번호': shipName,
+            '회원명': c.name || '',
+            '회사명': c.company || '',
+            '전화번호': c.phone || '',
+            '주소': c.address || '',
+            '마지막사용일': today,
+          };
+          const existRes = await atRequest('GET',
+            `/${custTable.id}?filterByFormula=${encodeURIComponent(`{사서함번호}='${shipName}'`)}&maxRecords=1`);
+          const existing = existRes.records && existRes.records[0];
+          if (existing) {
+            await atRequest('PATCH', `/${custTable.id}/${existing.id}`, { fields: custFields, typecast: true });
+          } else {
+            await atRequest('POST', `/${custTable.id}`, { fields: custFields, typecast: true });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[consultation] Customers 동기화 경고 (Shipments는 완료):', e.message);
+    }
+  }
 }
 
 module.exports = async (req, res) => {
@@ -248,10 +300,26 @@ async function handleCustomerApprove(req, res, body) {
     return res.status(409).json({ error: '이미 응답을 제출하셨습니다.', alreadyApproved: true });
   }
 
+  // v3.0.4: Supabase 저장 완료 → Airtable Shipments/Customers에도 동기화 (best-effort).
+  //   Airtable 동기화 실패해도 고객 제출 자체는 성공(Supabase 저장됨). 단 침묵 실패 방지 —
+  //   서버 로그 + 응답의 airtableSynced 플래그로 노출.
+  let airtableSynced = false;
+  if (result.airtable_sid) {
+    try {
+      await syncCustomerResponseToAirtable(result.airtable_sid, response);
+      airtableSynced = true;
+    } catch (e) {
+      console.error('[consultation] Airtable 동기화 실패 (Supabase 저장은 완료됨):', e.message);
+    }
+  } else {
+    console.error('[consultation] airtable_sid 없음 — Airtable 동기화 건너뜀. short_id:', c);
+  }
+
   res.json({
     success: true,
     finalized: !!result.finalized,
     customs_approved: !!result.customs_approved,
+    airtableSynced,
     message: result.finalized
       ? '양쪽 확정이 완료되었습니다. 강하고 무역이 곧 진행 안내드리겠습니다.'
       : '응답이 정상 저장되었습니다. 강하고 무역이 곧 진행 안내드리겠습니다.',
