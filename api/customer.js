@@ -125,53 +125,44 @@ async function handlePost(req, res) {
 
   const today = new Date().toISOString();
 
-  // 1. Shipments 업데이트 (고객 응답 정보)
+  // 1. Shipments 업데이트 (고객 응답 + 이번 배송 수취정보 — P0-A 3-Tier)
+  const rc = response.customer || {};
   const shipFields = {
     '고객응답일시': today.slice(0, 10),
     '선택FTA': response.fta || '미선택',
     '배송방식': response.deliveryType || '미선택',
     '원산지증명서신청': !!response.coRequested,
-    '특이사항': response.note || ''
+    '특이사항': response.note || '',
+    '수취_수취인': rc.name || '',
+    '수취_회사': rc.company || '',
+    '수취_전화': rc.phone || '',
+    '수취_주소': rc.address || '',
+    '수취_우편번호': rc.zipcode || '',
+    '수취_통관부호': rc.customsId || ''
   };
 
   await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, {
-    fields: shipFields
+    fields: shipFields,
+    typecast: true
   });
 
-  // 2. Customers 업데이트 (수취 정보 변경 시)
-  if (response.customer) {
-    const c = response.customer;
-    try {
-      const meta = await atRequest('GET', `/meta/bases/${BASE_ID}/tables`);
-      const custTable = (meta.tables || []).find(t => t.name === 'Customers');
-      if (custTable) {
-        const shipName = ship.fields['사서함'];
-        const custUrl = `/${custTable.id}?filterByFormula=${encodeURIComponent(`{사서함번호}='${shipName}'`)}&maxRecords=1`;
-        const existRes = await atRequest('GET', custUrl);
-        const existingCust = existRes.records && existRes.records[0];
-
-        const custFields = {
-          '사서함번호': shipName,
-          '회원명': c.name || '',
-          '회사명': c.company || '',
-          '연락처': c.phone || '',           // Bug5 수정: Customers 전화 필드명은 '연락처'
-          '주소': c.address || '',
-          '마지막사용일': today.slice(0, 10)
-        };
-
-        if (existingCust) {
-          await atRequest('PATCH', `/${custTable.id}/${existingCust.id}`, {
-            fields: custFields
-          });
-        } else {
-          await atRequest('POST', `/${custTable.id}`, {
-            fields: custFields
-          });
-        }
+  // 2. Customers — P0-A 3-Tier: 회원 정보 불변. 마지막사용일만 갱신.
+  try {
+    const meta = await atRequest('GET', `/meta/bases/${BASE_ID}/tables`);
+    const custTable = (meta.tables || []).find(t => t.name === 'Customers');
+    if (custTable) {
+      const shipName = ship.fields['사서함'];
+      const custUrl = `/${custTable.id}?filterByFormula=${encodeURIComponent(`{사서함번호}='${shipName}'`)}&maxRecords=1`;
+      const existRes = await atRequest('GET', custUrl);
+      const existingCust = existRes.records && existRes.records[0];
+      if (existingCust) {
+        await atRequest('PATCH', `/${custTable.id}/${existingCust.id}`, {
+          fields: { '마지막사용일': today.slice(0, 10) }
+        });
       }
-    } catch (e) {
-      console.log('Customer update warning:', e.message);
     }
+  } catch (e) {
+    console.log('Customer 마지막사용일 갱신 warning:', e.message);
   }
 
   res.json({

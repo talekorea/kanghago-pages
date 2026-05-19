@@ -75,8 +75,9 @@ function isWorker(req) {
 // Shipments PATCH 실패 시 throw(호출부가 airtableSynced=false 처리), Customers는 보조(실패해도 진행).
 async function syncCustomerResponseToAirtable(shipmentId, response) {
   const today = new Date().toISOString().slice(0, 10);
+  const rc = (response && response.customer) || {};
 
-  // 1. Shipments — 고객 응답 (핵심: 실패 시 throw → 호출부 airtableSynced=false)
+  // 1. Shipments — 고객 응답 + 이번 배송 수취정보 (P0-A 3-Tier) (핵심: 실패 시 throw)
   await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, {
     fields: {
       '고객응답일시': today,
@@ -84,6 +85,12 @@ async function syncCustomerResponseToAirtable(shipmentId, response) {
       '배송방식': response.deliveryType || '미선택',
       '원산지증명서신청': !!response.coRequested,
       '특이사항': response.note || '',
+      '수취_수취인': rc.name || '',
+      '수취_회사': rc.company || '',
+      '수취_전화': rc.phone || '',
+      '수취_주소': rc.address || '',
+      '수취_우편번호': rc.zipcode || '',
+      '수취_통관부호': rc.customsId || '',
     },
     typecast: true,
   });
@@ -97,33 +104,21 @@ async function syncCustomerResponseToAirtable(shipmentId, response) {
     console.error('[consultation] Shipment 조회 경고:', e.message);
   }
 
-  // 2. Customers — 수취 정보 + 통관고유부호 upsert (B4) (보조: 실패해도 진행)
-  if (response.customer && typeof response.customer === 'object' && shipName) {
+  // 2. Customers — P0-A 3-Tier: 회원 정보(사업장·기본 배송지)는 불변. 마지막사용일만 갱신.
+  if (shipName) {
     try {
       const meta = await atRequest('GET', `/meta/bases/${BASE_ID}/tables`);
       const custTable = (meta.tables || []).find(t => t.name === 'Customers');
       if (custTable) {
-        const c = response.customer;
-        const custFields = {
-          '사서함번호': shipName,
-          '회원명': c.name || '',
-          '회사명': c.company || '',
-          '연락처': c.phone || '',           // Bug5 수정: Customers 전화 필드명은 '연락처' (옛 '전화번호'는 미존재 → 422)
-          '주소': c.address || '',
-          '통관고유부호': c.customsId || '',   // B4
-          '마지막사용일': today,
-        };
         const existRes = await atRequest('GET',
           `/${custTable.id}?filterByFormula=${encodeURIComponent(`{사서함번호}='${shipName}'`)}&maxRecords=1`);
         const existing = existRes.records && existRes.records[0];
         if (existing) {
-          await atRequest('PATCH', `/${custTable.id}/${existing.id}`, { fields: custFields, typecast: true });
-        } else {
-          await atRequest('POST', `/${custTable.id}`, { fields: custFields, typecast: true });
+          await atRequest('PATCH', `/${custTable.id}/${existing.id}`, { fields: { '마지막사용일': today } });
         }
       }
     } catch (e) {
-      console.error('[consultation] Customers 동기화 경고 (Shipments는 완료):', e.message);
+      console.error('[consultation] Customers 마지막사용일 갱신 경고:', e.message);
     }
   }
 
