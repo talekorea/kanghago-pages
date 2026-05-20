@@ -7,8 +7,8 @@
 
 const { handleCors } = require('./_lib');
 
-// 인천항 보세창고 (기준점)
-const ORIGIN = { lat: 37.4505, lng: 126.6588, address: '인천광역시 중구 항동7가' };
+// 인천 신항 (기준점 — 사장님 명시 2026-05-20)
+const ORIGIN = { lat: 37.3825, lng: 126.6356, address: '인천 신항 (인천광역시 연수구)' };
 
 let _cache = new Map();        // address → { km, sec, at }
 const CACHE_TTL = 12 * 3600 * 1000;  // 12시간
