@@ -77,7 +77,38 @@ async function syncCustomerResponseToAirtable(shipmentId, response) {
   const today = new Date().toISOString().slice(0, 10);
   const rc = (response && response.customer) || {};
 
-  // 1. Shipments — 고객 응답 + 이번 배송 수취정보 (P0-A 3-Tier) (핵심: 실패 시 throw)
+  // 사서함명 + Customers 사전 조회 (작업1 안전망: 수취_* 빈값 → 회원 정보 폴백)
+  let shipName = null, existingCust = null, custTable = null;
+  let custFields = {};
+  try {
+    const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
+    shipName = (ship.fields && ship.fields['사서함']) || null;
+  } catch (e) { console.error('[consultation] Shipment 조회 경고:', e.message); }
+
+  if (shipName) {
+    try {
+      const meta = await atRequest('GET', `/meta/bases/${BASE_ID}/tables`);
+      custTable = (meta.tables || []).find(t => t.name === 'Customers');
+      if (custTable) {
+        const r = await atRequest('GET',
+          `/${custTable.id}?filterByFormula=${encodeURIComponent(`{사서함번호}='${shipName}'`)}&maxRecords=1`);
+        existingCust = r.records && r.records[0];
+        if (existingCust) custFields = existingCust.fields || {};
+      }
+    } catch (e) { console.error('[consultation] Customers 조회 경고:', e.message); }
+  }
+
+  // 작업1 안전망: rc.X 비어 있으면 Customers의 동일 의미 필드로 보충
+  const safe = (rcVal, ...cKeys) => {
+    if (rcVal && String(rcVal).trim()) return rcVal;
+    for (const k of cKeys) {
+      const v = custFields[k];
+      if (v && String(v).trim()) return v;
+    }
+    return '';
+  };
+
+  // 1. Shipments — 고객 응답 + 이번 배송 수취정보 (3-Tier + 안전망)
   await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, {
     fields: {
       '고객응답일시': today,
@@ -85,41 +116,21 @@ async function syncCustomerResponseToAirtable(shipmentId, response) {
       '배송방식': response.deliveryType || '미선택',
       '원산지증명서신청': !!response.coRequested,
       '특이사항': response.note || '',
-      '수취_수취인': rc.name || '',
-      '수취_회사': rc.company || '',
-      '수취_전화': rc.phone || '',
-      '수취_주소': rc.address || '',
-      '수취_우편번호': rc.zipcode || '',
-      '수취_통관부호': rc.customsId || '',
+      '수취_수취인':   safe(rc.name,      '회원명'),
+      '수취_회사':     safe(rc.company,   '회사명'),
+      '수취_전화':     safe(rc.phone,     '연락처', '전화번호'),
+      '수취_주소':     safe(rc.address,   '주소'),
+      '수취_우편번호': safe(rc.zipcode,   '우편번호'),
+      '수취_통관부호': safe(rc.customsId, '통관고유부호'),
     },
     typecast: true,
   });
 
-  // 사서함명 — Customers/Boxes 동기화에 공통으로 필요
-  let shipName = null;
-  try {
-    const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
-    shipName = (ship.fields && ship.fields['사서함']) || null;
-  } catch (e) {
-    console.error('[consultation] Shipment 조회 경고:', e.message);
-  }
-
-  // 2. Customers — P0-A 3-Tier: 회원 정보(사업장·기본 배송지)는 불변. 마지막사용일만 갱신.
-  if (shipName) {
+  // 2. Customers — 3-Tier 원칙: 회원 정보 불변, 마지막사용일만 갱신
+  if (custTable && existingCust) {
     try {
-      const meta = await atRequest('GET', `/meta/bases/${BASE_ID}/tables`);
-      const custTable = (meta.tables || []).find(t => t.name === 'Customers');
-      if (custTable) {
-        const existRes = await atRequest('GET',
-          `/${custTable.id}?filterByFormula=${encodeURIComponent(`{사서함번호}='${shipName}'`)}&maxRecords=1`);
-        const existing = existRes.records && existRes.records[0];
-        if (existing) {
-          await atRequest('PATCH', `/${custTable.id}/${existing.id}`, { fields: { '마지막사용일': today } });
-        }
-      }
-    } catch (e) {
-      console.error('[consultation] Customers 마지막사용일 갱신 경고:', e.message);
-    }
+      await atRequest('PATCH', `/${custTable.id}/${existingCust.id}`, { fields: { '마지막사용일': today } });
+    } catch (e) { console.error('[consultation] Customers 마지막사용일 갱신 경고:', e.message); }
   }
 
   // 3. Boxes — 박스별 배송방식 동기화 (B2) (보조: 실패해도 진행)

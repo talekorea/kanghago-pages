@@ -1017,10 +1017,11 @@ function fillCustomerForm() {
     }
   };
 
+  // 작업1: 회원 정보 자동 채움 (필드명 호환 — 연락처/전화번호 양쪽)
   setPrefilled('custName', c['회원명'] || s['수취인'] || '');
-  setPrefilled('custCustomsId', c['통관고유부호'] || '');  // A2: 통관고유부호 자동 로드 (없으면 빈칸)
+  setPrefilled('custCustomsId', c['통관고유부호'] || '');
   setPrefilled('custCompany', c['회사명'] || '');
-  setPrefilled('custPhone', c['전화번호'] || '');
+  setPrefilled('custPhone', c['연락처'] || c['전화번호'] || '');
 
   // 주소 분리: 우편번호 / 기본주소 / 상세주소 분리 저장 시 사용. 옛 형식이면 단일 필드로.
   const fullAddr = c['주소'] || '';
