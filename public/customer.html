@@ -569,6 +569,30 @@ function renderAll() {
     ? !!(state.consultRow && state.consultRow.customer_approved)
     : !!f['고객응답일시'];
 
+  // 작업1: 응답 데이터 존재 여부 — isCompleted와 별개로 "이전 응답이 있다"의 판정
+  const cd = state.consultMode ? ((state.consultRow && state.consultRow.customer_data) || {}) : {};
+  const hasPriorResponse = state.consultMode
+    ? !!(state.consultRow && state.consultRow.customer_data)
+    : !!(f['고객응답일시'] || f['선택FTA'] || f['배송방식'] || f['수취_수취인']);
+
+  // 작업1: 박스별 배송방식 — 박스 레코드의 '배송방식' 필드를 state.boxDeliveries에 사전 채움
+  // (renderBoxes() 이전에 채워야 권장값이 아닌 이전 선택이 반영됨)
+  if (hasPriorResponse) {
+    state.boxDeliveries = state.boxDeliveries || {};
+    (state.boxes || []).forEach(b => {
+      const seq = String((b.fields && b.fields['박스순번']) ?? '');
+      const dlv = b.fields && b.fields['배송방식'];
+      if (seq && dlv && !state.boxDeliveries[seq]) state.boxDeliveries[seq] = dlv;
+    });
+    // FTA — renderFta가 state.selectedFta로 자동 강조하므로 사전 세팅
+    if (state.consultMode) {
+      if (cd.fta) state.selectedFta = cd.fta;
+    } else if (f['선택FTA']) {
+      state.selectedFta = f['선택FTA']
+        .replace('FTA', '').replace('한중', '한중FTA').replace('아태', '아태FTA');
+    }
+  }
+
   // 인사말 (A1: "고객님" + 사서함 번호)
   const name = (state.customer?.fields?.['회원명']) || f['수취인'] || '고객';
   const mailbox = f['사서함'] || '';
@@ -587,49 +611,68 @@ function renderAll() {
     }
   }
 
-  // 이미 응답한 경우
+  // 작업1: 이미 응답한 경우 — 배너만 표시, 수정 후 재제출 가능 (submit 버튼 유지)
   if (state.isCompleted) {
-    document.getElementById('completedBanner').style.display = '';
-    document.getElementById('submitBtn').style.display = 'none';
+    const banner = document.getElementById('completedBanner');
+    if (banner) {
+      banner.style.display = '';
+      // 배너 텍스트 갱신 (수정 가능 안내)
+      const inner = banner.querySelector('.text') || banner;
+      if (inner && !inner.dataset.editMode) {
+        inner.dataset.editMode = '1';
+        inner.innerHTML = '✓ 이전 응답이 복원되었습니다. <strong>수정 후 다시 제출</strong>하실 수 있습니다.';
+      }
+    }
+    // submitBtn 라벨만 갱신 (작업1: 숨기지 않음)
+    const sb = document.getElementById('submitBtn');
+    if (sb && !sb.dataset.editMode) {
+      sb.dataset.editMode = '1';
+      sb.textContent = '수정 사항 저장 / 재제출';
+    }
   }
 
   // 1. 제품 목록
   renderProducts();
-  // 2. FTA 계산
+  // 2. FTA 계산 (state.selectedFta 미리 세팅됨 → 카드 자동 강조 + coRow 표시)
   renderFta();
-  // 3. 박스 정보
+  // 3. 박스 정보 (state.boxDeliveries 미리 채워짐 → 박스별 라디오 자동 선택)
   renderBoxes();
-  // 4. 수취 정보 채우기
+  // 4. 수취 정보 채우기 (이전 응답 우선, 없으면 회원 정보 — 작업1)
   fillCustomerForm();
-  // 5. 특이사항 (이미 답변이 있으면)
+  // 5. 특이사항
   if (f['특이사항']) document.getElementById('note').value = f['특이사항'];
+  if (cd.note) document.getElementById('note').value = cd.note;
 
-  // 이미 응답한 경우 선택값 반영
-  if (state.isCompleted) {
+  // 작업1: 응답 복원 — isCompleted 게이트 제거 (hasPriorResponse 기준)
+  if (hasPriorResponse) {
     if (state.consultMode) {
-      // v3.0.0: Supabase 모드 — customer_data 에서 복원
-      const cd = (state.consultRow && state.consultRow.customer_data) || {};
+      if (cd.fta) selectFta(cd.fta);  // coRow 표시 동기화
       const co = document.getElementById('coRequest');
       if (cd.coRequested && co) co.checked = true;
-      if (cd.note) document.getElementById('note').value = cd.note;
       if (cd.customer) {
         const setV = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
-        setV('custName', cd.customer.name);
-        setV('custCustomsId', cd.customer.customsId);
-        setV('custCompany', cd.customer.company);
-        setV('custPhone', cd.customer.phone);
-        setV('custZipcode', cd.customer.zipcode);
-        setV('custAddress', cd.customer.baseAddress || cd.customer.address);
-        setV('custAddressDetail', cd.customer.detailAddress);
+        setV('custName',         cd.customer.name);
+        setV('custCustomsId',    cd.customer.customsId);
+        setV('custCompany',      cd.customer.company);
+        setV('custPhone',        cd.customer.phone);
+        setV('custZipcode',      cd.customer.zipcode);
+        setV('custAddress',      cd.customer.baseAddress || cd.customer.address);
+        setV('custAddressDetail',cd.customer.detailAddress);
       }
     } else {
-      if (f['선택FTA']) selectFta(f['선택FTA'].replace('FTA', '').replace('한중', '한중FTA').replace('아태', '아태FTA'));
+      if (f['선택FTA']) {
+        const fta = f['선택FTA'].replace('FTA', '').replace('한중', '한중FTA').replace('아태', '아태FTA');
+        selectFta(fta);  // 카드 강조 + coRow 표시 동기화
+      }
       if (f['배송방식']) selectDelivery(f['배송방식']);
-      if (f['원산지증명서신청']) document.getElementById('coRequest').checked = true;
+      if (f['원산지증명서신청']) {
+        const co = document.getElementById('coRequest');
+        if (co) co.checked = true;
+      }
     }
   }
 
-  log('✓ 로드 완료');
+  log('✓ 로드 완료' + (hasPriorResponse ? ' · 이전 응답 복원' : ''));
 }
 
 // v3.0.0: 양방향 확정 상태 배너 (강하고 / 고객 / 최종) — Supabase 모드 전용
@@ -1017,20 +1060,25 @@ function fillCustomerForm() {
     }
   };
 
-  // 작업1: 회원 정보 자동 채움 (필드명 호환 — 연락처/전화번호 양쪽)
-  setPrefilled('custName', c['회원명'] || s['수취인'] || '');
-  setPrefilled('custCustomsId', c['통관고유부호'] || '');
-  setPrefilled('custCompany', c['회사명'] || '');
-  setPrefilled('custPhone', c['연락처'] || c['전화번호'] || '');
+  // 작업1: 자동 채움 — 이전 응답(수취_*) 우선, 없으면 회원 정보(연락처/전화번호 양쪽 호환)
+  setPrefilled('custName',     s['수취_수취인']   || c['회원명']         || s['수취인'] || '');
+  setPrefilled('custCustomsId',s['수취_통관부호'] || c['통관고유부호']    || '');
+  setPrefilled('custCompany',  s['수취_회사']     || c['회사명']         || '');
+  setPrefilled('custPhone',    s['수취_전화']     || c['연락처']         || c['전화번호'] || '');
 
-  // 주소 분리: 우편번호 / 기본주소 / 상세주소 분리 저장 시 사용. 옛 형식이면 단일 필드로.
+  // 주소 — 이전 응답 우선, 없으면 회원 기본 주소
+  const priorAddr = s['수취_주소'];
+  const priorZip  = s['수취_우편번호'];
   const fullAddr = c['주소'] || '';
-  if (c['우편번호']) {
+  if (priorAddr || priorZip) {
+    setPrefilled('custZipcode', priorZip || c['우편번호'] || '');
+    setPrefilled('custAddress', priorAddr || fullAddr);
+    setPrefilled('custAddressDetail', c['상세주소'] || '');
+  } else if (c['우편번호']) {
     setPrefilled('custZipcode', c['우편번호']);
     setPrefilled('custAddress', c['주소'] || '');
     setPrefilled('custAddressDetail', c['상세주소'] || '');
   } else if (fullAddr) {
-    // 옛 단일 주소 → 기본주소로 표시
     setPrefilled('custAddress', fullAddr);
   }
 }
