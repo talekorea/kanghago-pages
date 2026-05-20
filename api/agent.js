@@ -21,9 +21,12 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 // PATCH 가능 필드 화이트리스트 (Products 테이블)
+// 작업2: 아태세율(E1, APTA) 추가 + 관세사확정일시 + 사용횟수/마지막사용일시(자동완성 누적)
 const ALLOWED_PRODUCT_FIELDS = new Set([
   'Description', '영문명', 'HS코드', '적용FTA', '기본세율', 'FTA_한중',
-  'FTA_RCEP중국', 'Material', '재질', '관세사확정', '통관품명_영문', '품명_확정',
+  'FTA_RCEP중국', '아태세율', 'Material', '재질', '관세사확정',
+  '관세사확정일시', '관세사메모', '통관품명_영문', '품명_확정',
+  '사용횟수', '마지막사용일시',
 ]);
 
 // Supabase Auth: access_token 검증 → user 객체

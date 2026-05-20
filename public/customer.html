@@ -795,7 +795,7 @@ function renderFta() {
   const rateCnyUsd = parseFloat(f['환율CNY_USD']) || 0.14;
   const rateCnyKrw = rateCnyUsd * rateUsdKrw;
 
-  let totalGeneralDuty = 0, totalKcDuty = 0;
+  let totalGeneralDuty = 0, totalKcDuty = 0, totalAptaDuty = 0;
   let totalInvoiceKrw = 0;
 
   state.products.forEach(p => {
@@ -804,61 +804,68 @@ function renderFta() {
     const totalKrw = totalCny * rateCnyKrw;
     totalInvoiceKrw += totalKrw;
 
-    // 기본 세율 추정 (HS코드 사전이 외부 페이지에 없으면 0)
-    // 실제로는 백엔드가 세율 정보를 제공해야 함. 여기선 기존 저장된 세율 사용
     const baseRate = (f['기본세율'] || 0) / 100;
     const kcRate = (f['FTA_한중'] || 0) / 100;
+    const aptaRate = (f['아태세율'] || 0) / 100;   // 작업5: 아태협정 E1
 
     totalGeneralDuty += totalKrw * baseRate;
     totalKcDuty += totalKrw * kcRate;
+    totalAptaDuty += totalKrw * aptaRate;
   });
 
-  // 부가세 (관세 포함 가격의 10%)
   const generalVat = (totalInvoiceKrw + totalGeneralDuty) * 0.1;
   const kcVat = (totalInvoiceKrw + totalKcDuty) * 0.1;
+  const aptaVat = (totalInvoiceKrw + totalAptaDuty) * 0.1;
 
   const generalTotal = totalGeneralDuty + generalVat;
   const kcTotal = totalKcDuty + kcVat;
+  const aptaTotal = totalAptaDuty + aptaVat;
 
-  // 최저금액에 추천 표시
-  const minAmount = Math.min(generalTotal, kcTotal);
-
+  const minAmount = Math.min(generalTotal, kcTotal, aptaTotal);
   const cards = document.getElementById('ftaCards');
-  cards.innerHTML = `
-    <div class="fta-card ${generalTotal === minAmount ? 'recommended' : ''}" data-fta="일반" onclick="selectFta('일반')">
-      <div class="label">일반 세율</div>
-      <div class="amount">₩${Math.round(generalTotal).toLocaleString()}</div>
-      <div style="font-size:11px; color:#666;">관세 ₩${Math.round(totalGeneralDuty).toLocaleString()} + 부가세 ₩${Math.round(generalVat).toLocaleString()}</div>
-    </div>
-    <div class="fta-card ${kcTotal === minAmount ? 'recommended' : ''}" data-fta="한중FTA" onclick="selectFta('한중FTA')">
-      <div class="label">한중 FTA</div>
-      <div class="amount">₩${Math.round(kcTotal).toLocaleString()}</div>
-      <div class="save">${kcTotal < generalTotal ? '↓ ₩' + Math.round(generalTotal - kcTotal).toLocaleString() + ' 절감' : ''}</div>
-      <div style="font-size:10px; color:#888; margin-top:4px;">⚠ 원산지증명서 필요</div>
-    </div>
-  `;
+  cards.innerHTML = build3FtaCards(
+    { duty: totalGeneralDuty, vat: generalVat, total: generalTotal },
+    { duty: totalKcDuty,      vat: kcVat,      total: kcTotal },
+    { duty: totalAptaDuty,    vat: aptaVat,    total: aptaTotal },
+    minAmount
+  );
 }
 
-// v2.9.18: URL 모드 — 미리 계산된 tariff 사용
-function renderFtaFromPayload(tariff) {
-  const base = tariff.base || { duty: 0, vat: 0, total: 0 };
-  const kc = tariff.kc || { duty: 0, vat: 0, total: 0 };
-  const minAmount = Math.min(base.total || Infinity, kc.total || Infinity);
-
-  const cards = document.getElementById('ftaCards');
-  cards.innerHTML = `
+// 작업5: 3옵션 FTA 카드 빌드 — 일반(A) / 한중FTA(FCN1) / 아태협정(E1) + ★ 추천
+function build3FtaCards(base, kc, apta, minAmount) {
+  const star = (v) => v === minAmount ? '<span style="color:#C9973A; font-weight:800;">★ 추천</span>' : '';
+  const saveLabel = (v, baseV) => v < baseV ? `↓ ₩${Math.round(baseV - v).toLocaleString()} 절감` : '';
+  return `
     <div class="fta-card ${base.total === minAmount ? 'recommended' : ''}" data-fta="일반" onclick="selectFta('일반')">
-      <div class="label">일반 세율</div>
+      <div class="label">일반 세율 ${star(base.total)}</div>
       <div class="amount">₩${Math.round(base.total).toLocaleString()}</div>
       <div style="font-size:11px; color:#666;">관세 ₩${Math.round(base.duty).toLocaleString()} + 부가세 ₩${Math.round(base.vat).toLocaleString()}</div>
     </div>
     <div class="fta-card ${kc.total === minAmount ? 'recommended' : ''}" data-fta="한중FTA" onclick="selectFta('한중FTA')">
-      <div class="label">한중 FTA</div>
+      <div class="label">한중 FTA (FCN1) ${star(kc.total)}</div>
       <div class="amount">₩${Math.round(kc.total).toLocaleString()}</div>
-      <div class="save">${kc.total < base.total ? '↓ ₩' + Math.round(base.total - kc.total).toLocaleString() + ' 절감' : ''}</div>
-      <div style="font-size:10px; color:#888; margin-top:4px;">⚠ 원산지증명서 필요</div>
+      <div class="save">${saveLabel(kc.total, base.total)}</div>
+      <div style="font-size:10px; color:#888; margin-top:4px;">⚠ 원산지증명서 필요 (한중 양식)</div>
+    </div>
+    <div class="fta-card ${apta.total === minAmount ? 'recommended' : ''}" data-fta="아태FTA" onclick="selectFta('아태FTA')">
+      <div class="label">아태협정 (E1) ${star(apta.total)}</div>
+      <div class="amount">₩${Math.round(apta.total).toLocaleString()}</div>
+      <div class="save">${saveLabel(apta.total, base.total)}</div>
+      <div style="font-size:10px; color:#888; margin-top:4px;">⚠ 원산지증명서 필요 <strong style="color:#c0392b;">(아태 양식 — 한중과 다름)</strong></div>
     </div>
   `;
+}
+
+// v2.9.18→작업5: URL 모드 — 미리 계산된 tariff 3옵션 사용 (tariff.apta 있으면 아태도 표시)
+function renderFtaFromPayload(tariff) {
+  const base = tariff.base || { duty: 0, vat: 0, total: 0 };
+  const kc = tariff.kc || { duty: 0, vat: 0, total: 0 };
+  const apta = tariff.apta || tariff.rcep || { duty: 0, vat: 0, total: 0 };
+  const totals = [base.total || Infinity, kc.total || Infinity, apta.total || Infinity];
+  const minAmount = Math.min(...totals);
+
+  const cards = document.getElementById('ftaCards');
+  cards.innerHTML = build3FtaCards(base, kc, apta, minAmount);
 
   // suggested 사전 선택 반영
   if (state.selectedFta) {
@@ -866,7 +873,8 @@ function renderFtaFromPayload(tariff) {
       c.classList.toggle('selected', c.dataset.fta === state.selectedFta);
     });
     const coRow = document.getElementById('coRow');
-    if (coRow) coRow.style.display = (state.selectedFta === '한중FTA') ? '' : 'none';
+    const needsCO = (state.selectedFta === '한중FTA' || state.selectedFta === '아태FTA');
+    if (coRow) coRow.style.display = needsCO ? '' : 'none';
   }
 }
 
@@ -876,7 +884,24 @@ function selectFta(fta) {
     c.classList.toggle('selected', c.dataset.fta === fta);
   });
   const coRow = document.getElementById('coRow');
-  coRow.style.display = (fta === '한중FTA') ? '' : 'none';
+  // 작업5: 한중·아태 모두 CO 필요. 양식 안내 동적 갱신
+  const needsCO = (fta === '한중FTA' || fta === '아태FTA');
+  if (coRow) {
+    coRow.style.display = needsCO ? '' : 'none';
+    // 양식 안내 — 한중 vs 아태 분리
+    const noteEl = coRow.querySelector('.text');
+    if (noteEl && needsCO) {
+      const formLabel = fta === '아태FTA' ? '아태협정 (APTA) 양식' : '한중 FTA 양식';
+      const colorWarn = fta === '아태FTA' ? '<strong style="color:#c0392b;">※ 한중 FTA와 양식 다름 — 별도 신청</strong><br>' : '';
+      noteEl.innerHTML = `
+        <strong style="color:#c0392b; font-size:16px; font-weight:800;">📜 원산지증명서 신청 요청</strong>
+        <div style="margin-top:6px; line-height:1.5;">
+          ${colorWarn}
+          ${formLabel} 혜택을 받으려면 원산지증명서가 필요합니다. 강하고 무역에서 발급 대행해 드립니다.<br>
+          <span style="color:#c0392b; font-weight:700;">(발급 수수료 별도, 약 1-2일 소요)</span>
+        </div>`;
+    }
+  }
 }
 
 // 박스번호 파싱 — 다음 모두 처리:

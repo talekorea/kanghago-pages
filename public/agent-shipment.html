@@ -70,12 +70,13 @@
           <th style="width:40px;">#</th>
           <th style="width:80px;">상품ID</th>
           <th>영문명 (Description)</th>
-          <th style="width:130px;">HS 코드</th>
-          <th style="width:140px;">Material/재질</th>
-          <th style="width:90px;">기본세율 %</th>
-          <th style="width:90px;">한중 %</th>
-          <th style="width:100px;">적용FTA</th>
-          <th style="width:130px;">저장</th>
+          <th style="width:120px;">HS 코드</th>
+          <th style="width:120px;">Material/재질</th>
+          <th style="width:75px;">기본 (A)</th>
+          <th style="width:80px;">한중 (FCN1)</th>
+          <th style="width:80px;">아태 (E1)</th>
+          <th style="width:120px;">적용FTA <span style="font-size:9px; color:#888;">(★ 최저)</span></th>
+          <th style="width:115px;">저장</th>
         </tr>
       </thead>
       <tbody id="prodBody"></tbody>
@@ -147,27 +148,47 @@
     return data;
   }
 
+  // 작업2: 셋 중 가장 낮은 세율 자동 추천
+  function recommendFta(baseR, kcR, aptaR) {
+    const opts = [
+      { key: '없음', rate: baseR },
+      { key: '한중', rate: kcR },
+      { key: '아태', rate: aptaR },
+    ].filter(o => typeof o.rate === 'number');
+    if (!opts.length) return null;
+    opts.sort((a, b) => a.rate - b.rate);
+    return opts[0].key;
+  }
+
   function renderProducts() {
     const tbody = document.getElementById('prodBody');
     tbody.innerHTML = products.map((p, idx) => {
       const f = p.fields || {};
       const confirmed = !!f['관세사확정'];
+      const baseR = (typeof f['기본세율'] === 'number') ? f['기본세율'] : null;
+      const kcR = (typeof f['FTA_한중'] === 'number') ? f['FTA_한중'] : null;
+      const aptaR = (typeof f['아태세율'] === 'number') ? f['아태세율'] : null;
+      const recommended = recommendFta(baseR, kcR, aptaR);
+      const currentFta = f['적용FTA'] || '없음';
+      const star = (key) => recommended === key ? '★' : '';
       return `<tr data-id="${p.id}" data-idx="${idx}">
         <td>${idx + 1}</td>
         <td style="font-family:'SF Mono',Consolas,monospace; font-size:11px;">${escapeHtml(f['상품ID'] || '-')}</td>
         <td><input data-field="Description" value="${escapeAttr(f['Description'] || '')}" placeholder="영문명" /></td>
         <td><input data-field="HS코드" value="${escapeAttr(f['HS코드'] || '')}" placeholder="0000.00-0000" /></td>
         <td><input data-field="Material" value="${escapeAttr(f['Material'] || '')}" placeholder="재질" /></td>
-        <td><input data-field="기본세율" type="number" step="0.1" value="${f['기본세율'] ?? ''}" /></td>
-        <td><input data-field="FTA_한중" type="number" step="0.1" value="${f['FTA_한중'] ?? ''}" /></td>
+        <td><input data-field="기본세율" type="number" step="0.1" value="${f['기본세율'] ?? ''}" placeholder="A" /></td>
+        <td><input data-field="FTA_한중" type="number" step="0.1" value="${f['FTA_한중'] ?? ''}" placeholder="FCN1" /></td>
+        <td><input data-field="아태세율" type="number" step="0.1" value="${f['아태세율'] ?? ''}" placeholder="E1" /></td>
         <td>
           <select data-field="적용FTA">
-            <option value="없음"${(f['적용FTA'] || '없음') === '없음' ? ' selected' : ''}>없음</option>
-            <option value="한중"${f['적용FTA'] === '한중' ? ' selected' : ''}>한중</option>
+            <option value="없음"${currentFta === '없음' ? ' selected' : ''}>${star('없음')} 일반</option>
+            <option value="한중"${currentFta === '한중' ? ' selected' : ''}>${star('한중')} 한중</option>
+            <option value="아태"${currentFta === '아태' ? ' selected' : ''}>${star('아태')} 아태</option>
           </select>
         </td>
         <td>
-          ${confirmed ? '<span class="confirmed">✓ 확정됨</span>' : ''}
+          ${confirmed ? '<span class="confirmed">✓ 확정됨</span> ' : ''}
           <button class="save-btn" onclick="saveRow('${p.id}')">💾 저장</button>
         </td>
       </tr>`;
@@ -192,6 +213,11 @@
     // 관세사확정 = true 추가 (저장 시 자동 확정 토글)
     fields['관세사확정'] = true;
     fields['관세사확정일시'] = new Date().toISOString().slice(0, 10);
+    // 작업3·4 자동완성 누적: 사용횟수 +1, 마지막사용일시 = 오늘
+    const curP = products.find(p => p.id === pid);
+    const curUsage = (curP && curP.fields && curP.fields['사용횟수']) || 0;
+    fields['사용횟수'] = curUsage + 1;
+    fields['마지막사용일시'] = new Date().toISOString().slice(0, 10);
     const btn = tr.querySelector('.save-btn');
     btn.disabled = true; btn.textContent = '저장 중...';
     try {
