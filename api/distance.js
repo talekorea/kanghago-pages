@@ -40,10 +40,25 @@ module.exports = async (req, res) => {
 
   try {
     const key = process.env.KAKAO_REST_API_KEY;
+
+    // 진단 모드 — ?debug=1 (사장님이 키 적용 여부 확인용, 키 값 자체는 노출 X)
+    if (req.query.debug) {
+      return res.json({
+        diag: true,
+        keyPresent: !!key,
+        keyLength: key ? key.length : 0,
+        keyPrefix: key ? key.slice(0, 6) + '...' : null,
+        envSampleNames: Object.keys(process.env).filter(k => /KAKAO|SUPABASE|UNIPASS/i.test(k)),
+        origin: ORIGIN,
+        deployedAt: new Date().toISOString(),
+      });
+    }
+
     if (!key) {
       return res.status(503).json({
-        error: 'KAKAO_REST_API_KEY 미설정 — Mock 모드로 폴백하세요',
+        error: 'KAKAO_REST_API_KEY 미설정 — Vercel env 추가 후 Redeploy 클릭 필요',
         hint: 'mock_fallback',
+        diagnose: 'GET /api/distance?debug=1 로 키 적용 여부 확인 가능',
         origin: ORIGIN,
       });
     }
