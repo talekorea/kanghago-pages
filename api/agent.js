@@ -84,10 +84,111 @@ async function logAction(agent, shipmentId, productId, before, after) {
   } catch (e) { console.warn('[agent] audit log 실패:', e.message); }
 }
 
+// ===== Stage 2: 관리자(사장님) op — Authorization: Admin <ADMIN_INVITE_TOKEN> =====
+const ADMIN_TOKEN = process.env.ADMIN_INVITE_TOKEN;
+
+function verifyAdmin(req) {
+  const h = req.headers.authorization || req.headers.Authorization || '';
+  if (!h.startsWith('Admin ')) { const e = new Error('관리자 인증 필요'); e.status = 401; throw e; }
+  if (!ADMIN_TOKEN) { const e = new Error('ADMIN_INVITE_TOKEN 환경변수 미설정'); e.status = 500; throw e; }
+  if (h.slice(6) !== ADMIN_TOKEN) { const e = new Error('관리자 토큰 불일치'); e.status = 403; throw e; }
+}
+
+async function adminInviteAgent(email, name) {
+  // 1) Supabase Auth — 매직링크 초대 (계정 신규 생성 + 비밀번호 미설정 흐름)
+  const r1 = await fetch(`${SUPABASE_URL}/auth/v1/invite`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, data: { name }, redirect_to: undefined }),
+  });
+  const auth = await r1.json();
+  if (!r1.ok) {
+    // 이미 존재하는 사용자 — get user 시도
+    if (r1.status === 422 || (auth.msg || auth.error || '').includes('already')) {
+      const list = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?filter=email=eq.${encodeURIComponent(email)}`, {
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
+      });
+      const data = await list.json();
+      const existing = (data.users || [])[0];
+      if (!existing) throw new Error('초대 실패 + 기존 사용자 조회 실패: ' + JSON.stringify(auth));
+      // 기존 사용자 — customs_agents에만 등록
+      return await upsertCustomsAgent(existing.id, email, name);
+    }
+    throw new Error('Supabase invite 실패: ' + (auth.msg || auth.error || r1.status));
+  }
+  const userId = auth.id || (auth.user && auth.user.id);
+  if (!userId) throw new Error('초대 응답에 user.id 없음');
+  return await upsertCustomsAgent(userId, email, name);
+}
+
+async function upsertCustomsAgent(userId, email, name) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/customs_agents?on_conflict=id`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation,resolution=merge-duplicates',
+    },
+    body: JSON.stringify({ id: userId, email, name: name || null, active: true }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error('customs_agents upsert 실패: ' + JSON.stringify(data));
+  return Array.isArray(data) ? data[0] : data;
+}
+
+async function adminListAgents() {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/customs_agents?select=id,email,name,active,created_at,last_login_at&order=created_at.desc`, {
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
+  });
+  if (!r.ok) throw new Error('관세사 목록 조회 실패 HTTP ' + r.status);
+  return await r.json();
+}
+
+async function adminToggleAgent(agentId, active) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/customs_agents?id=eq.${agentId}`, {
+    method: 'PATCH',
+    headers: {
+      'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json', 'Prefer': 'return=representation',
+    },
+    body: JSON.stringify({ active: !!active }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error('관세사 활성 토글 실패: ' + JSON.stringify(data));
+  return Array.isArray(data) ? data[0] : data;
+}
+
 module.exports = async (req, res) => {
   if (handleCors(req, res)) return;
   try {
-    const user = await verifySupabaseToken(req.headers.authorization || req.headers.Authorization);
+    // ===== 관리자 op (Authorization: Admin <token>) =====
+    const authH = req.headers.authorization || req.headers.Authorization || '';
+    if (authH.startsWith('Admin ')) {
+      verifyAdmin(req);
+      if (req.method === 'GET' && req.query.op === 'admin_list') {
+        const agents = await adminListAgents();
+        return res.json({ agents });
+      }
+      if (req.method === 'POST') {
+        const body = await readBody(req);
+        if (body.op === 'admin_invite') {
+          const { email, name } = body;
+          if (!email) return res.status(400).json({ error: 'email 필수' });
+          const agent = await adminInviteAgent(String(email).trim().toLowerCase(), name || null);
+          return res.json({ ok: true, agent });
+        }
+        if (body.op === 'admin_toggle') {
+          const { agentId, active } = body;
+          if (!agentId) return res.status(400).json({ error: 'agentId 필수' });
+          const agent = await adminToggleAgent(agentId, !!active);
+          return res.json({ ok: true, agent });
+        }
+      }
+      return res.status(400).json({ error: 'Unknown admin op' });
+    }
+
+    // ===== 관세사 op (Authorization: Bearer <Supabase JWT>) =====
+    const user = await verifySupabaseToken(authH);
     const agent = await loadAgent(user.id, user.email);
 
     if (req.method === 'GET') {

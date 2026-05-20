@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>강하고 관세사 — 사서함 작업</title>
+<style>
+  :root { --gold:#C9973A; --navy:#1B2A3B; --bg:#F4EFE6; --ivory:#FAF6EE; }
+  * { box-sizing: border-box; }
+  body { font-family:'Pretendard',-apple-system,system-ui,'Apple SD Gothic Neo',sans-serif;
+    margin:0; background:var(--bg); color:#1d1d1f; }
+  header { background:var(--navy); color:#fff; padding:12px 22px; display:flex;
+    justify-content:space-between; align-items:center; }
+  header a { color:#cfc7b6; font-size:12px; text-decoration:none; margin-right:14px; }
+  header h1 { margin:0; font-size:16px; font-weight:700; }
+  header button { background:transparent; color:#fff; border:1px solid #8a94a3;
+    padding:6px 11px; border-radius:5px; cursor:pointer; font-size:12px; }
+  main { max-width:1300px; margin:18px auto; padding:0 18px; }
+  .meta { background:#fff; border-radius:10px; padding:14px 18px; margin-bottom:16px;
+    display:flex; gap:18px; flex-wrap:wrap; align-items:center; font-size:13px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.05); }
+  .meta strong { color:var(--navy); font-size:15px; font-family:'SF Mono',Consolas,monospace; }
+  .meta .status { padding:3px 9px; border-radius:10px; font-size:11px; font-weight:600; }
+  .meta .status.대기 { background:#fff8e1; color:#9a7b2a; }
+  .meta .status.완료 { background:#e8f5e9; color:#1b5e20; }
+  .actions { display:flex; gap:8px; }
+  .actions button { padding:8px 14px; border:none; border-radius:6px; cursor:pointer;
+    font-weight:700; font-size:13px; }
+  .btn-confirm { background:var(--gold); color:#fff; }
+  .btn-confirm:disabled { background:#aaa; cursor:not-allowed; }
+  table { width:100%; border-collapse:separate; border-spacing:0; background:#fff;
+    border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.05); font-size:13px; }
+  thead { background:var(--ivory); }
+  th, td { padding:9px 10px; text-align:left; border-bottom:1px solid #f0ebe1; vertical-align:middle; }
+  th { font-weight:700; color:var(--navy); font-size:12px; }
+  td input, td select { width:100%; padding:5px 7px; border:1px solid #ddd; border-radius:4px;
+    font-size:12px; font-family:inherit; background:#fff; }
+  td input.modified, td select.modified { background:#fff8e1; border-color:var(--gold); }
+  td .save-btn { padding:5px 10px; background:var(--navy); color:#fff; border:none; border-radius:4px;
+    font-size:11px; cursor:pointer; font-weight:600; }
+  td .save-btn:disabled { background:#ccc; cursor:not-allowed; }
+  td .confirmed { color:#1b5e20; font-size:11px; font-weight:700; }
+  .err { padding:14px 18px; background:#fff5f5; border:1px solid #f5c2c7; color:#c0392b;
+    border-radius:8px; margin-bottom:16px; }
+  .toast { position:fixed; top:20px; right:20px; padding:12px 16px; border-radius:6px;
+    color:#fff; font-weight:600; font-size:13px; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.2); }
+  .toast.ok { background:#1b5e20; } .toast.err { background:#c0392b; }
+</style>
+</head>
+<body>
+<header>
+  <div><a href="/agent-dashboard.html">← 대시보드</a><span id="meLabel" style="font-size:12px;color:#cfc7b6;"></span></div>
+  <h1 id="shipTitle">사서함 작업</h1>
+  <button onclick="logout()">로그아웃</button>
+</header>
+
+<main>
+  <div id="error" class="err" style="display:none;"></div>
+  <div id="content" style="display:none;">
+    <div class="meta">
+      <div>사서함 <strong id="mailbox">-</strong></div>
+      <div>상태 <span class="status" id="status">-</span></div>
+      <div style="margin-left:auto;" class="actions">
+        <button id="confirmBtn" class="btn-confirm" onclick="confirmShipment()">✅ 관세사 확정</button>
+      </div>
+    </div>
+    <table id="prodTable">
+      <thead>
+        <tr>
+          <th style="width:40px;">#</th>
+          <th style="width:80px;">상품ID</th>
+          <th>영문명 (Description)</th>
+          <th style="width:130px;">HS 코드</th>
+          <th style="width:140px;">Material/재질</th>
+          <th style="width:90px;">기본세율 %</th>
+          <th style="width:90px;">한중 %</th>
+          <th style="width:100px;">적용FTA</th>
+          <th style="width:130px;">저장</th>
+        </tr>
+      </thead>
+      <tbody id="prodBody"></tbody>
+    </table>
+  </div>
+</main>
+
+<div id="toasts"></div>
+
+<script type="module">
+  const params = new URLSearchParams(location.search);
+  const shipId = params.get('id');
+  let supabase = null, session = null, agent = null, shipment = null, products = [];
+
+  function toast(text, kind) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (kind || 'ok'); el.textContent = text;
+    document.getElementById('toasts').appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+  }
+  function showError(text) {
+    const e = document.getElementById('error'); e.style.display = ''; e.textContent = '⚠ ' + text;
+  }
+
+  async function init() {
+    if (!shipId || !shipId.startsWith('rec')) { showError('잘못된 사서함 ID'); return; }
+    try {
+      const cfgRes = await fetch('/api/agent-config');
+      if (!cfgRes.ok) throw new Error('config 로드 실패');
+      const cfg = await cfgRes.json();
+      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm');
+      supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+        auth: { storage: localStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      });
+      const { data: { session: s } } = await supabase.auth.getSession();
+      if (!s) { location.replace('/agent-login.html'); return; }
+      session = s;
+      const me = await api('GET', '?op=me');
+      agent = me.agent;
+      document.getElementById('meLabel').textContent = ' · ' + (agent.name ? `${agent.name} · ${agent.email}` : agent.email);
+
+      const data = await api('GET', '?op=shipment&id=' + shipId);
+      shipment = data.shipment; products = data.products || [];
+      document.getElementById('shipTitle').textContent = `🛃 ${shipment.fields['사서함']} 작업`;
+      document.getElementById('mailbox').textContent = shipment.fields['사서함'];
+      const statusLabel = shipment.fields['상태'];
+      const statusEl = document.getElementById('status');
+      statusEl.textContent = statusLabel;
+      statusEl.className = 'status ' + (statusLabel === '관세사확정완료' ? '완료' : '대기');
+      if (statusLabel === '관세사확정완료') {
+        document.getElementById('confirmBtn').disabled = true;
+        document.getElementById('confirmBtn').textContent = '✅ 이미 확정됨';
+      }
+      renderProducts();
+      document.getElementById('content').style.display = '';
+    } catch (e) { showError(e.message || String(e)); }
+  }
+
+  async function api(method, qs, body) {
+    const r = await fetch('/api/agent' + (qs || ''), {
+      method, headers: {
+        'Authorization': 'Bearer ' + session.access_token,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await r.json();
+    if (!r.ok) { const err = new Error(data.error || ('HTTP ' + r.status)); err.status = r.status; throw err; }
+    return data;
+  }
+
+  function renderProducts() {
+    const tbody = document.getElementById('prodBody');
+    tbody.innerHTML = products.map((p, idx) => {
+      const f = p.fields || {};
+      const confirmed = !!f['관세사확정'];
+      return `<tr data-id="${p.id}" data-idx="${idx}">
+        <td>${idx + 1}</td>
+        <td style="font-family:'SF Mono',Consolas,monospace; font-size:11px;">${escapeHtml(f['상품ID'] || '-')}</td>
+        <td><input data-field="Description" value="${escapeAttr(f['Description'] || '')}" placeholder="영문명" /></td>
+        <td><input data-field="HS코드" value="${escapeAttr(f['HS코드'] || '')}" placeholder="0000.00-0000" /></td>
+        <td><input data-field="Material" value="${escapeAttr(f['Material'] || '')}" placeholder="재질" /></td>
+        <td><input data-field="기본세율" type="number" step="0.1" value="${f['기본세율'] ?? ''}" /></td>
+        <td><input data-field="FTA_한중" type="number" step="0.1" value="${f['FTA_한중'] ?? ''}" /></td>
+        <td>
+          <select data-field="적용FTA">
+            <option value="없음"${(f['적용FTA'] || '없음') === '없음' ? ' selected' : ''}>없음</option>
+            <option value="한중"${f['적용FTA'] === '한중' ? ' selected' : ''}>한중</option>
+          </select>
+        </td>
+        <td>
+          ${confirmed ? '<span class="confirmed">✓ 확정됨</span>' : ''}
+          <button class="save-btn" onclick="saveRow('${p.id}')">💾 저장</button>
+        </td>
+      </tr>`;
+    }).join('');
+    // 변경 표시
+    tbody.querySelectorAll('input, select').forEach(inp => {
+      const orig = inp.value;
+      inp.addEventListener('input', () => inp.classList.toggle('modified', inp.value !== orig));
+    });
+  }
+
+  window.saveRow = async (pid) => {
+    const tr = document.querySelector(`tr[data-id="${pid}"]`);
+    if (!tr) return;
+    const fields = {};
+    tr.querySelectorAll('input, select').forEach(inp => {
+      const key = inp.dataset.field;
+      let val = inp.value.trim();
+      if (inp.type === 'number') val = val === '' ? null : parseFloat(val);
+      fields[key] = val;
+    });
+    // 관세사확정 = true 추가 (저장 시 자동 확정 토글)
+    fields['관세사확정'] = true;
+    fields['관세사확정일시'] = new Date().toISOString().slice(0, 10);
+    const btn = tr.querySelector('.save-btn');
+    btn.disabled = true; btn.textContent = '저장 중...';
+    try {
+      const r = await api('POST', '', { op: 'product_patch', shipmentId: shipment.id, productId: pid, fields });
+      if (r.rejected && r.rejected.length) toast('⚠ 거부된 필드: ' + r.rejected.join(', '), 'err');
+      toast('✓ 저장 완료');
+      tr.querySelectorAll('input,select').forEach(i => i.classList.remove('modified'));
+      // 갱신: 확정 표시
+      const p = products.find(p => p.id === pid);
+      if (p) Object.assign(p.fields, r.updated);
+      renderProducts();
+    } catch (e) {
+      toast('❌ ' + e.message, 'err');
+    }
+    btn.disabled = false; btn.textContent = '💾 저장';
+  };
+
+  window.confirmShipment = async () => {
+    if (!confirm(shipment.fields['사서함'] + ' 사서함을 관세사확정완료로 전환합니다.\n진행하시겠습니까?')) return;
+    try {
+      await api('POST', '', { op: 'confirm_shipment', shipmentId: shipment.id });
+      toast('✓ 사서함 관세사 확정 완료');
+      setTimeout(() => location.replace('/agent-dashboard.html'), 1200);
+    } catch (e) { toast('❌ ' + e.message, 'err'); }
+  };
+
+  window.logout = async () => {
+    if (supabase) await supabase.auth.signOut();
+    location.replace('/agent-login.html');
+  };
+
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  init();
+</script>
+</body>
+</html>
