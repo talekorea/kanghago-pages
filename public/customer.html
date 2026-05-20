@@ -716,7 +716,10 @@ function renderProducts() {
     const unitCny = f['단가CNY'] || 0;
     const totalCny = f['합계CNY'] || (qty * unitCny);
     const fta = f['적용FTA'] || '없음';
-    const boxN = (f['박스번호'] || '').toString().split(/[,\-]/)[0].trim();
+    // 작업1: 박스번호 range/list 보존 ("2-3"은 그대로 표시, 색은 첫 박스 기준)
+    const boxNRaw = (f['박스번호'] || '').toString().trim();
+    const boxN = boxNRaw.split(/[,\-]/)[0].trim();  // 색상용 (첫 박스)
+    const boxLabel = boxNRaw || boxN;                // 표시용 (range 보존)
     const color = boxColor(boxN);
 
     const baseR = f['기본세율'];
@@ -726,8 +729,8 @@ function renderProducts() {
       typeof kcR === 'number' ? `한중 ${kcR}%` : null,
     ].filter(Boolean).join(' / ');
 
-    const boxBadge = boxN
-      ? `<span class="box-badge" style="background:${color}; color:#fff;">${boxN}번 박스</span>`
+    const boxBadge = boxLabel
+      ? `<span class="box-badge" style="background:${color}; color:#fff;">${boxLabel}번 박스</span>`
       : '';
     const imgBlock = imgUrl
       ? `<img src="${imgUrl}" loading="lazy" style="width:80px; height:80px; object-fit:cover; border-radius:6px; background:#f0ebe1;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><div class="img-placeholder" style="display:none; width:80px; height:80px; background:#f0ebe1; border-radius:6px; align-items:center; justify-content:center; color:#aaa; font-size:10px;">no img</div>`
@@ -874,8 +877,52 @@ function selectFta(fta) {
   coRow.style.display = (fta === '한중FTA') ? '' : 'none';
 }
 
+// 작업1 P0 (모듈 스코프): 박스번호 파싱 — "2" / "2,3" / "2-3" / "2-4" / "1,3-5" 모두 지원
+function parseBoxNums(raw) {
+  const result = new Set();
+  String(raw || '').split(/[,]/).forEach(part => {
+    const p = part.trim();
+    if (!p) return;
+    const m = p.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (m) {
+      const a = parseInt(m[1]), b = parseInt(m[2]);
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      for (let i = lo; i <= hi; i++) result.add(String(i));
+    } else if (/^\d+$/.test(p)) {
+      result.add(p);
+    }
+  });
+  return result;
+}
+
+// 작업1: 제품 박스번호에서 참조됐지만 Boxes 레코드 누락된 박스 가상 생성
+// (예: 제품이 "2-3" 입력 시 박스 3 레코드가 Airtable에 없을 때)
+function ensureBoxesFromProducts() {
+  if (!state || !state.shipment || !Array.isArray(state.products)) return;
+  state.boxes = state.boxes || [];
+  const existing = new Set(state.boxes.map(b => String((b.fields || {})['박스순번'])));
+  const referenced = new Set();
+  state.products.forEach(p => {
+    parseBoxNums((p.fields || {})['박스번호']).forEach(n => referenced.add(n));
+  });
+  const ship = state.shipment.fields['사서함'] || '';
+  referenced.forEach(seq => {
+    if (!existing.has(seq)) {
+      state.boxes.push({
+        id: 'virtual-' + seq,
+        fields: {
+          '박스순번': parseInt(seq) || seq,
+          '박스번호': ship ? `${ship}-${seq}` : seq,
+        },
+        _virtual: true,
+      });
+    }
+  });
+}
+
 // v2.9.18 H3: 박스 카드 통합 — 사실(크기/무게/부피) + 담긴 제품 + 박스별 배송방식 선택
 function renderBoxes() {
+  ensureBoxesFromProducts();  // 작업1: 가상 박스 보강 (range 누락 방지)
   const header = document.getElementById('boxSummaryHeader');
   const container = document.getElementById('boxesContainer');
 
@@ -898,14 +945,9 @@ function renderBoxes() {
 
   // 박스 → 담긴 제품 매핑 (URL 모드: products.fields['박스번호'] / 옛 모드: BoxAssignments)
   function productsInBox(seq) {
-    // URL 모드 — products.fields['박스번호'] 기준
     if (state.urlMode) {
-      return state.products.filter(p => {
-        const bn = (p.fields['박스번호'] || '').toString().split(/[,\-]/)[0].trim();
-        return bn === String(seq);
-      });
+      return state.products.filter(p => parseBoxNums(p.fields['박스번호']).has(String(seq)));
     }
-    // 옛 모드 — BoxAssignments
     const boxRecord = state.boxes.find(b => String(b.fields['박스순번']) === String(seq));
     if (!boxRecord) return [];
     const productIds = (state.boxAssignments || [])
