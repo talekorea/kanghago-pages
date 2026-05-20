@@ -259,6 +259,8 @@ const state = {
   consultId: null,
   consultRow: null,
 };
+// 진단용 — 콘솔에서 window.__custState 로 접근 가능 (사장님 박스 3 누락 트레이스용)
+window.__custState = state;
 
 function log(msg) {
   const el = document.getElementById('log');
