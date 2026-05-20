@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>강하고 관세사 대시보드</title>
+<style>
+  :root { --gold:#C9973A; --navy:#1B2A3B; --bg:#F4EFE6; --ivory:#FAF6EE; }
+  * { box-sizing: border-box; }
+  body { font-family:'Pretendard',-apple-system,system-ui,'Apple SD Gothic Neo',sans-serif;
+    margin:0; background:var(--bg); color:#1d1d1f; }
+  header { background:var(--navy); color:#fff; padding:14px 24px; display:flex;
+    justify-content:space-between; align-items:center; }
+  header h1 { margin:0; font-size:18px; font-weight:700; }
+  header .me { font-size:12px; color:#cfc7b6; }
+  header button { background:transparent; color:#fff; border:1px solid #8a94a3;
+    padding:6px 11px; border-radius:5px; cursor:pointer; font-size:12px; }
+  main { max-width:1100px; margin:24px auto; padding:0 20px; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; }
+  .tab { padding:8px 14px; border:1px solid #ccc; border-radius:6px; background:#fff;
+    cursor:pointer; font-size:13px; font-weight:600; }
+  .tab.on { background:var(--navy); color:#fff; border-color:var(--navy); }
+  .list { background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
+  .item { padding:14px 18px; border-bottom:1px solid #f0ebe1; display:flex;
+    justify-content:space-between; align-items:center; cursor:pointer; transition:background 0.1s; }
+  .item:hover { background:var(--ivory); }
+  .item:last-child { border-bottom:0; }
+  .name { font-family:'SF Mono',Consolas,monospace; font-size:15px; font-weight:700; color:var(--navy); }
+  .status { font-size:11px; padding:3px 9px; border-radius:10px; font-weight:600; }
+  .status.대기 { background:#fff8e1; color:#9a7b2a; }
+  .status.완료 { background:#e8f5e9; color:#1b5e20; }
+  .empty { padding:40px; text-align:center; color:#888; }
+  .err { padding:20px; background:#fff5f5; border:1px solid #f5c2c7; color:#c0392b;
+    border-radius:8px; margin-bottom:16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛃 강하고 관세사 대시보드</h1>
+  <div>
+    <span class="me" id="meLabel">로딩 중...</span>
+    <button onclick="logout()">로그아웃</button>
+  </div>
+</header>
+
+<main>
+  <div id="error" class="err" style="display:none;"></div>
+  <div class="tabs">
+    <button class="tab on" data-filter="대기" onclick="setFilter('대기')">⏳ 확정 대기 <span id="cnt-대기">·</span></button>
+    <button class="tab" data-filter="완료" onclick="setFilter('완료')">✅ 확정 완료 <span id="cnt-완료">·</span></button>
+    <button class="tab" data-filter="all" onclick="setFilter('all')">전체</button>
+  </div>
+  <div class="list" id="list"><div class="empty">로딩 중...</div></div>
+</main>
+
+<script type="module">
+  let supabase = null, session = null, agent = null, shipments = [], filter = '대기';
+
+  async function init() {
+    try {
+      const cfgRes = await fetch('/api/agent-config');
+      if (!cfgRes.ok) throw new Error('config 로드 실패 — 관리자 문의');
+      const cfg = await cfgRes.json();
+      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm');
+      supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+        auth: { storage: localStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      });
+      const { data: { session: s }, error } = await supabase.auth.getSession();
+      if (error || !s) { location.replace('/agent-login.html'); return; }
+      session = s;
+
+      // /api/agent?op=me — 등록 확인 + last_login 갱신
+      const me = await fetchAgent('GET', '?op=me');
+      agent = me.agent;
+      document.getElementById('meLabel').textContent = agent.name ? `${agent.name} · ${agent.email}` : agent.email;
+
+      const list = await fetchAgent('GET', '?op=list');
+      shipments = list.shipments || [];
+      render();
+    } catch (e) {
+      showError(e.message || String(e));
+    }
+  }
+
+  async function fetchAgent(method, qs, body) {
+    const r = await fetch('/api/agent' + (qs || ''), {
+      method, headers: {
+        'Authorization': 'Bearer ' + session.access_token,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await r.json();
+    if (!r.ok) { const err = new Error(data.error || ('HTTP ' + r.status)); err.status = r.status; throw err; }
+    return data;
+  }
+
+  window.setFilter = (f) => {
+    filter = f;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.filter === f));
+    render();
+  };
+
+  function render() {
+    const cnt대기 = shipments.filter(s => s.fields['상태'] === '관세사확정대기').length;
+    const cnt완료 = shipments.filter(s => s.fields['상태'] === '관세사확정완료').length;
+    document.getElementById('cnt-대기').textContent = cnt대기;
+    document.getElementById('cnt-완료').textContent = cnt완료;
+
+    let list = shipments;
+    if (filter === '대기') list = list.filter(s => s.fields['상태'] === '관세사확정대기');
+    else if (filter === '완료') list = list.filter(s => s.fields['상태'] === '관세사확정완료');
+
+    list.sort((a, b) => (a.fields['사서함'] || '').localeCompare(b.fields['사서함'] || ''));
+
+    const c = document.getElementById('list');
+    if (!list.length) { c.innerHTML = '<div class="empty">해당 상태의 사서함이 없습니다.</div>'; return; }
+    c.innerHTML = list.map(s => {
+      const status = s.fields['상태'] === '관세사확정완료' ? '완료' : '대기';
+      const date = s.fields['출고요청일'] || '';
+      return `<div class="item" onclick="location.href='/agent-shipment.html?id=${s.id}'">
+        <div>
+          <div class="name">${s.fields['사서함'] || '(이름 없음)'}</div>
+          <div style="font-size:11px; color:#888; margin-top:2px;">${date}</div>
+        </div>
+        <div class="status ${status}">${s.fields['상태']}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function showError(text) {
+    const e = document.getElementById('error');
+    e.style.display = ''; e.textContent = '⚠ ' + text;
+  }
+
+  window.logout = async () => {
+    if (supabase) await supabase.auth.signOut();
+    location.replace('/agent-login.html');
+  };
+
+  init();
+</script>
+</body>
+</html>

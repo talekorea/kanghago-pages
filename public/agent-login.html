@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>강하고 관세사 포털 — 로그인</title>
+<style>
+  :root { --gold:#C9973A; --navy:#1B2A3B; --bg:#F4EFE6; --ivory:#FAF6EE; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Pretendard', -apple-system, system-ui, 'Apple SD Gothic Neo', sans-serif;
+    margin:0; background:var(--bg); color:#1d1d1f; min-height:100vh;
+    display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card { background:#fff; border-radius:14px; padding:36px 32px; max-width:420px; width:100%;
+    box-shadow:0 6px 20px rgba(27,42,59,0.10); }
+  h1 { margin:0 0 6px 0; font-size:22px; color:var(--navy); }
+  .sub { color:#666; font-size:13px; margin-bottom:24px; }
+  label { display:block; font-size:13px; font-weight:600; color:#333; margin-bottom:6px; }
+  input[type=email] { width:100%; padding:11px 13px; border:1px solid #d4c5a8; border-radius:7px;
+    font-size:15px; font-family:inherit; background:var(--ivory); }
+  input[type=email]:focus { outline:none; border-color:var(--gold); }
+  button { width:100%; margin-top:14px; padding:12px; background:var(--navy); color:#fff;
+    border:none; border-radius:7px; font-size:15px; font-weight:700; cursor:pointer;
+    transition:background 0.15s; }
+  button:hover:not(:disabled) { background:#0f1d2c; }
+  button:disabled { background:#aaa; cursor:not-allowed; }
+  .msg { margin-top:14px; padding:11px 13px; border-radius:6px; font-size:13px; line-height:1.5; }
+  .msg.ok { background:#e8f5e9; border:1px solid #4caf50; color:#1b5e20; }
+  .msg.err { background:#fff5f5; border:1px solid #f5c2c7; color:#c0392b; }
+  .footer { text-align:center; color:#888; font-size:11px; margin-top:24px; line-height:1.5; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🛃 강하고 관세사 포털</h1>
+  <div class="sub">등록된 이메일로 로그인 링크를 보내드립니다.</div>
+  <form id="loginForm">
+    <label for="email">관세사 이메일</label>
+    <input id="email" type="email" placeholder="agent@example.com" required autocomplete="email" />
+    <button type="submit" id="submitBtn">📧 로그인 링크 받기</button>
+  </form>
+  <div id="msg"></div>
+  <div class="footer">
+    계정이 없으시면 <strong>강하고 관리자</strong>에게 발급을 요청해 주세요.<br />
+    문의: master@talekorea.com · 1661-5776
+  </div>
+</div>
+
+<script type="module">
+  const msg = document.getElementById('msg');
+  const btn = document.getElementById('submitBtn');
+  const showMsg = (text, kind) => { msg.className = 'msg ' + (kind || ''); msg.textContent = text; };
+
+  // 이미 access_token 보유 — 바로 대시보드로
+  if (location.hash.includes('access_token')) {
+    // OAuth 콜백 — supabase-js가 처리하도록 대시보드로 hash 그대로 넘김
+    location.replace('/agent-dashboard.html' + location.hash);
+  }
+
+  let supabase = null;
+  async function loadSupabase() {
+    const cfgRes = await fetch('/api/agent-config');
+    if (!cfgRes.ok) { showMsg('서버 설정 미준비 — 관리자에게 문의', 'err'); throw new Error('config'); }
+    const cfg = await cfgRes.json();
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm');
+    supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+  }
+
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    btn.disabled = true; btn.textContent = '전송 중...';
+    showMsg('', '');
+    try {
+      if (!supabase) await loadSupabase();
+      const email = document.getElementById('email').value.trim();
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: location.origin + '/agent-dashboard.html' },
+      });
+      if (error) throw error;
+      showMsg('✅ 로그인 링크가 발송됐습니다. 이메일을 확인해 주세요. (스팸함도 확인)', 'ok');
+      btn.textContent = '✉ 이메일 확인';
+    } catch (err) {
+      console.error(err);
+      showMsg('❌ ' + (err.message || '발송 실패'), 'err');
+      btn.disabled = false; btn.textContent = '📧 로그인 링크 받기';
+    }
+  });
+</script>
+</body>
+</html>
