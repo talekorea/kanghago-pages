@@ -109,6 +109,11 @@
           <div class="info-row"><div class="label">사업자번호</div><input id="ed_biz" value="${esc(m.business_number||'')}" style="flex:1;padding:7px 9px;border:1px solid #d4c5a8;border-radius:6px;" /></div>
           <div class="info-row"><div class="label">담당자</div><input id="ed_contact" value="${esc(m.contact_name||'')}" style="flex:1;padding:7px 9px;border:1px solid #d4c5a8;border-radius:6px;" /></div>
           <div class="info-row"><div class="label">연락처</div><input id="ed_phone" value="${esc(m.phone||'')}" style="flex:1;padding:7px 9px;border:1px solid #d4c5a8;border-radius:6px;" /></div>
+          <div style="margin:12px 0 6px;font-size:12px;font-weight:700;color:var(--gold);">📦 받는 주소 (국내 배송지)</div>
+          <div class="info-row"><div class="label">받는 사람</div><input id="ed_rname" value="${esc(m.recipient_name||'')}" style="flex:1;padding:7px 9px;border:1px solid #d4c5a8;border-radius:6px;" /></div>
+          <div class="info-row"><div class="label">받는 연락처</div><input id="ed_rphone" value="${esc(m.recipient_phone||'')}" style="flex:1;padding:7px 9px;border:1px solid #d4c5a8;border-radius:6px;" /></div>
+          <div class="info-row"><div class="label">우편번호</div><input id="ed_rzip" value="${esc(m.recipient_zipcode||'')}" style="flex:1;padding:7px 9px;border:1px solid #d4c5a8;border-radius:6px;" /></div>
+          <div class="info-row"><div class="label">받는 주소</div><input id="ed_raddr" value="${esc(m.recipient_address||'')}" placeholder="시/구/동 + 상세주소" style="flex:1;padding:7px 9px;border:1px solid #d4c5a8;border-radius:6px;" /></div>
           <div style="margin-top:12px;text-align:right;">
             <button onclick="toggleEdit()" style="padding:8px 14px;background:#fff;border:1px solid #ccc;border-radius:6px;cursor:pointer;">취소</button>
             <button onclick="saveProfile()" style="padding:8px 16px;background:var(--navy);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">저장</button>
@@ -162,6 +167,10 @@
         business_number: document.getElementById('ed_biz').value.trim(),
         contact_name: document.getElementById('ed_contact').value.trim(),
         phone: document.getElementById('ed_phone').value.trim(),
+        recipient_name: document.getElementById('ed_rname').value.trim(),
+        recipient_phone: document.getElementById('ed_rphone').value.trim(),
+        recipient_zipcode: document.getElementById('ed_rzip').value.trim(),
+        recipient_address: document.getElementById('ed_raddr').value.trim(),
       };
       const r = await fetch('/api/members', {
         method: 'POST',

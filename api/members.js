@@ -125,12 +125,14 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
       const body = await readBody(req);
       if (body.op === 'update_profile') {
-        // H8: 회원 본인 정보 수정 (이메일/status/예치금 제외 — 화이트리스트)
-        const ALLOWED = new Set(['company_name', 'business_number', 'contact_name', 'phone']);
+        // H8: 회원 본인 정보 수정 (이메일/status/예치금 제외 — 화이트리스트 + 받는주소)
+        const ALLOWED = new Set(['company_name', 'business_number', 'contact_name', 'phone',
+          'recipient_name', 'recipient_phone', 'recipient_address', 'recipient_zipcode']);
         const safe = {};
         const f = body.fields || {};
         for (const k of Object.keys(f)) { if (ALLOWED.has(k)) safe[k] = f[k]; }
         if (!Object.keys(safe).length) return res.status(400).json({ error: '수정할 항목 없음' });
+        safe.updated_at = new Date().toISOString();
         const updated = await sbRest('PATCH', `/members?id=eq.${user.id}`, safe, 'return=representation');
         return res.json({ ok: true, member: Array.isArray(updated) ? updated[0] : updated });
       }

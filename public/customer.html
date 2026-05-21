@@ -1096,7 +1096,13 @@ function renderBoxes() {
   }).join('');
 
   if (header) {
-    header.innerHTML = `📦 <strong>박스 ${state.boxes.length}개</strong> · 총 <strong>${totalKg.toFixed(1)} kg</strong> · <strong>${totalCbm.toFixed(4)} CBM</strong>
+    // H2: 배송 방식 배지 (택배/화물 분류 요약)
+    const dlv = state.boxDeliveries || {};
+    const vals = Object.values(dlv);
+    const parcelN = vals.filter(v => v === '택배').length;
+    const cargoN = vals.filter(v => v === '화물').length;
+    const badgeInner = `${parcelN ? '<span style="background:#cdeafe;color:#0b5394;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">📦 택배 ' + parcelN + '</span>' : ''}${cargoN ? '<span style="background:#d9f0e0;color:#0a7b40;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;margin-left:4px;">🚚 화물 ' + cargoN + '</span>' : ''}`;
+    header.innerHTML = `📦 <strong>박스 ${state.boxes.length}개</strong> · 총 <strong>${totalKg.toFixed(1)} kg</strong> · <strong>${totalCbm.toFixed(4)} CBM</strong> <span data-dlv-badge style="margin-left:6px;">${badgeInner}</span>
       <span style="float:right; font-size:11px; color:#888;">박스별 배송방식을 선택해 주세요</span>`;
   }
   if (container) container.innerHTML = cardsHtml;
@@ -1114,6 +1120,15 @@ function setBoxDelivery(seq, type) {
     inp.closest('label').classList.toggle('selected', inp.value === type);
   });
   syncOverallDelivery();
+  // H2: 배송 방식 배지 실시간 갱신 (헤더만)
+  const header = document.getElementById('boxSummaryHeader');
+  if (header) {
+    const vals = Object.values(state.boxDeliveries || {});
+    const pN = vals.filter(v => v === '택배').length, cN = vals.filter(v => v === '화물').length;
+    const badgeEl = header.querySelector('[data-dlv-badge]');
+    const html = `${pN ? '<span style="background:#cdeafe;color:#0b5394;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">📦 택배 ' + pN + '</span>' : ''}${cN ? '<span style="background:#d9f0e0;color:#0a7b40;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;margin-left:4px;">🚚 화물 ' + cN + '</span>' : ''}`;
+    if (badgeEl) badgeEl.innerHTML = html;
+  }
 }
 
 // 호환성: 박스별 결정을 전체 selectedDelivery로 다수결 합산
