@@ -310,7 +310,7 @@ async function handleCustomerApprove(req, res, body) {
 
   // 현재 상태 확인 (404 / 410 / 409 구분)
   const rows = await sbRequest('GET',
-    `/consultations?short_id=eq.${encodeURIComponent(c)}&select=short_id,customer_approved,expires_at&limit=1`
+    `/consultations?short_id=eq.${encodeURIComponent(c)}&select=short_id,customer_approved,expires_at,airtable_sid&limit=1`
   );
   const row = Array.isArray(rows) ? rows[0] : null;
 
@@ -322,6 +322,22 @@ async function handleCustomerApprove(req, res, body) {
   }
   if (row.customer_approved) {
     return res.status(409).json({ error: '이미 응답을 제출하셨습니다.', alreadyApproved: true });
+  }
+
+  // H6 (G3 백엔드 2차 방어): 관세사 확정 전이면 고객 확정 차단
+  if (row.airtable_sid) {
+    try {
+      const ship = await atRequest('GET', `/${TABLES.Shipments}/${row.airtable_sid}`);
+      const status = (ship.fields || {})['상태'] || '';
+      const RANK = { '출고요청': 1, '박스확정': 2, '관세사확정대기': 3, '관세사확정완료': 4,
+        '인보이스완료': 5, '통관중': 6, '통관완료': 7, '배송중': 8, '출고완료': 9, '입금완료': 10 };
+      if ((RANK[status] || 0) < RANK['관세사확정완료']) {
+        return res.status(403).json({ error: '관세사 확정 후 진행 가능합니다 (현재 상태: ' + (status || '미정') + ')' });
+      }
+    } catch (e) {
+      // 조회 실패 시 통과 (방어적 — Airtable 일시 오류로 고객 차단 방지)
+      console.warn('[H6] 상태 전이 검증 조회 경고:', e.message);
+    }
   }
 
   // customer_approved=false 인 행만 UPDATE (중복 제출 방지). 양쪽 확정 시 DB 트리거가 finalized 설정

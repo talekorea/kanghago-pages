@@ -95,13 +95,26 @@
       </div>
 
       <div class="panel">
-        <h2>회원 정보</h2>
-        <div class="info-row"><div class="label">회사명</div><div class="value">${esc(m.company_name || '-')}</div></div>
-        <div class="info-row"><div class="label">사업자번호</div><div class="value">${esc(m.business_number || '-')}</div></div>
-        <div class="info-row"><div class="label">담당자</div><div class="value">${esc(m.contact_name || '-')}</div></div>
-        <div class="info-row"><div class="label">연락처</div><div class="value">${esc(m.phone || '-')}</div></div>
-        <div class="info-row"><div class="label">이메일</div><div class="value">${esc(m.email)}</div></div>
-        <div class="info-row"><div class="label">가입일</div><div class="value">${m.created_at ? new Date(m.created_at).toLocaleDateString('ko-KR') : '-'}</div></div>
+        <h2>회원 정보 <button onclick="toggleEdit()" style="float:right;font-size:12px;padding:5px 11px;background:var(--ivory);border:1px solid var(--gold);color:var(--gold);border-radius:6px;cursor:pointer;">✏ 정보 수정</button></h2>
+        <div id="infoView">
+          <div class="info-row"><div class="label">회사명</div><div class="value">${esc(m.company_name || '-')}</div></div>
+          <div class="info-row"><div class="label">사업자번호</div><div class="value">${esc(m.business_number || '-')}</div></div>
+          <div class="info-row"><div class="label">담당자</div><div class="value">${esc(m.contact_name || '-')}</div></div>
+          <div class="info-row"><div class="label">연락처</div><div class="value">${esc(m.phone || '-')}</div></div>
+          <div class="info-row"><div class="label">이메일</div><div class="value">${esc(m.email)} <span style="font-size:11px;color:#aaa;">(변경 불가)</span></div></div>
+          <div class="info-row"><div class="label">가입일</div><div class="value">${m.created_at ? new Date(m.created_at).toLocaleDateString('ko-KR') : '-'}</div></div>
+        </div>
+        <div id="infoEdit" style="display:none;">
+          <div class="info-row"><div class="label">회사명</div><input id="ed_company" value="${esc(m.company_name||'')}" style="flex:1;padding:7px 9px;border:1px solid #d4c5a8;border-radius:6px;" /></div>
+          <div class="info-row"><div class="label">사업자번호</div><input id="ed_biz" value="${esc(m.business_number||'')}" style="flex:1;padding:7px 9px;border:1px solid #d4c5a8;border-radius:6px;" /></div>
+          <div class="info-row"><div class="label">담당자</div><input id="ed_contact" value="${esc(m.contact_name||'')}" style="flex:1;padding:7px 9px;border:1px solid #d4c5a8;border-radius:6px;" /></div>
+          <div class="info-row"><div class="label">연락처</div><input id="ed_phone" value="${esc(m.phone||'')}" style="flex:1;padding:7px 9px;border:1px solid #d4c5a8;border-radius:6px;" /></div>
+          <div style="margin-top:12px;text-align:right;">
+            <button onclick="toggleEdit()" style="padding:8px 14px;background:#fff;border:1px solid #ccc;border-radius:6px;cursor:pointer;">취소</button>
+            <button onclick="saveProfile()" style="padding:8px 16px;background:var(--navy);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">저장</button>
+          </div>
+          <div id="editMsg" style="font-size:12px;margin-top:8px;"></div>
+        </div>
       </div>
 
       <div class="panel">
@@ -110,11 +123,77 @@
       </div>
 
       <div class="panel">
-        <h2>예치금 충전</h2>
-        <div class="coming">💳 KRW 계좌이체 충전 안내는 준비 중입니다 (v2.0).<br>충전 문의: master@talekorea.com / 1661-5776</div>
+        <h2>💳 예치금 입금 신청</h2>
+        <div style="background:var(--ivory);border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.7;margin-bottom:14px;">
+          <strong>입금 계좌</strong> (KRW 계좌이체)<br>
+          예금주: 주식회사 테일코리아<br>
+          <span style="color:#888;">※ 정확한 계좌번호는 운영팀 안내 (master@talekorea.com / 1661-5776)</span><br>
+          <strong style="color:var(--gold);">입금자명: ${esc(m.company_name || m.contact_name || '회사명')}</strong> 으로 입금해 주세요 (자동 매칭에 사용)
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+          <div style="flex:1;min-width:160px;">
+            <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">입금 예정 금액 (KRW)</label>
+            <input id="dep_amount" type="number" placeholder="1000000" style="width:100%;padding:9px 11px;border:1px solid #d4c5a8;border-radius:6px;" />
+          </div>
+          <div style="flex:1;min-width:160px;">
+            <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">메모 (선택)</label>
+            <input id="dep_memo" type="text" placeholder="입금 예정일 등" style="width:100%;padding:9px 11px;border:1px solid #d4c5a8;border-radius:6px;" />
+          </div>
+          <button onclick="requestDeposit()" style="padding:10px 18px;background:var(--gold);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">입금 신청</button>
+        </div>
+        <div id="depMsg" style="font-size:13px;margin-top:10px;"></div>
       </div>
     `;
   }
+
+  // H8: 회원 정보 수정
+  window.toggleEdit = () => {
+    const v = document.getElementById('infoView'), e = document.getElementById('infoEdit');
+    const showing = e.style.display === 'none';
+    v.style.display = showing ? 'none' : '';
+    e.style.display = showing ? '' : 'none';
+  };
+  window.saveProfile = async () => {
+    const msg = document.getElementById('editMsg');
+    msg.innerHTML = '저장 중...';
+    try {
+      const fields = {
+        company_name: document.getElementById('ed_company').value.trim(),
+        business_number: document.getElementById('ed_biz').value.trim(),
+        contact_name: document.getElementById('ed_contact').value.trim(),
+        phone: document.getElementById('ed_phone').value.trim(),
+      };
+      const r = await fetch('/api/members', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op: 'update_profile', fields }),
+      });
+      const out = await r.json();
+      if (!r.ok) throw new Error(out.error || 'HTTP ' + r.status);
+      msg.innerHTML = '<span style="color:#1b5e20;">✓ 저장 완료</span>';
+      setTimeout(() => location.reload(), 700);
+    } catch (e) { msg.innerHTML = '<span style="color:#c0392b;">❌ ' + e.message + '</span>'; }
+  };
+
+  // H9: 예치금 입금 신청
+  window.requestDeposit = async () => {
+    const msg = document.getElementById('depMsg');
+    const amount = parseFloat(document.getElementById('dep_amount').value) || 0;
+    if (amount <= 0) { msg.innerHTML = '<span style="color:#9a7b2a;">⚠ 입금 예정 금액을 입력하세요</span>'; return; }
+    msg.innerHTML = '신청 중...';
+    try {
+      const r = await fetch('/api/members', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op: 'deposit_request', amount_krw: amount, memo: document.getElementById('dep_memo').value.trim() }),
+      });
+      const out = await r.json();
+      if (!r.ok) throw new Error(out.error || 'HTTP ' + r.status);
+      msg.innerHTML = '<span style="color:#1b5e20;">✓ 입금 신청 완료 — 입금 확인 후 예치금이 반영됩니다.</span>';
+      document.getElementById('dep_amount').value = '';
+      document.getElementById('dep_memo').value = '';
+    } catch (e) { msg.innerHTML = '<span style="color:#c0392b;">❌ ' + e.message + '</span>'; }
+  };
 
   window.logout = async () => {
     if (supabase) await supabase.auth.signOut();

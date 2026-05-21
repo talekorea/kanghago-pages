@@ -74,8 +74,28 @@ module.exports = async (req, res) => {
         return res.json({ members: rows || [] });
       }
 
+      if (req.method === 'GET' && req.query.op === 'deposit_requests') {
+        // H9: 입금 신청 목록 (확인 대기)
+        const rows = await sbRest('GET',
+          `/member_deposits?kind=eq.topup_request&select=*&order=created_at.desc`);
+        return res.json({ deposits: rows || [] });
+      }
+
       if (req.method === 'POST') {
         const body = await readBody(req);
+        if (body.op === 'confirm_deposit') {
+          // H9: 입금 확인 → members.deposit_krw 증가 + 신청 행을 topup(확정)으로 전환
+          const { depositId, memberId, amount_krw } = body;
+          const amt = parseFloat(amount_krw) || 0;
+          if (!depositId || !memberId || amt <= 0) return res.status(400).json({ error: 'depositId/memberId/amount_krw 필수' });
+          // 현재 예치금 조회 후 증가
+          const mrows = await sbRest('GET', `/members?id=eq.${memberId}&select=deposit_krw`);
+          const cur = (mrows && mrows[0] && parseFloat(mrows[0].deposit_krw)) || 0;
+          await sbRest('PATCH', `/members?id=eq.${memberId}`, { deposit_krw: cur + amt });
+          // 신청 행 → 확정(topup)으로 전환
+          await sbRest('PATCH', `/member_deposits?id=eq.${depositId}`, { kind: 'topup' });
+          return res.json({ ok: true, newBalance: cur + amt });
+        }
         if (body.op === 'admin_update') {
           const { memberId, fields } = body;
           if (!memberId || !fields) return res.status(400).json({ error: 'memberId + fields 필수' });
@@ -104,6 +124,30 @@ module.exports = async (req, res) => {
 
     if (req.method === 'POST') {
       const body = await readBody(req);
+      if (body.op === 'update_profile') {
+        // H8: 회원 본인 정보 수정 (이메일/status/예치금 제외 — 화이트리스트)
+        const ALLOWED = new Set(['company_name', 'business_number', 'contact_name', 'phone']);
+        const safe = {};
+        const f = body.fields || {};
+        for (const k of Object.keys(f)) { if (ALLOWED.has(k)) safe[k] = f[k]; }
+        if (!Object.keys(safe).length) return res.status(400).json({ error: '수정할 항목 없음' });
+        const updated = await sbRest('PATCH', `/members?id=eq.${user.id}`, safe, 'return=representation');
+        return res.json({ ok: true, member: Array.isArray(updated) ? updated[0] : updated });
+      }
+      if (body.op === 'deposit_request') {
+        // H9: 예치금 입금 신청 (member_deposits에 kind='topup_request'로 기록)
+        const amount = parseFloat(body.amount_krw) || 0;
+        if (amount <= 0) return res.status(400).json({ error: '입금 예정 금액을 입력하세요' });
+        const row = {
+          member_id: user.id,
+          amount_krw: amount,            // 신청 금액 (양수, 확정 전)
+          kind: 'topup_request',
+          memo: (body.memo || '').slice(0, 500),
+          created_by: user.email,
+        };
+        const created = await sbRest('POST', `/member_deposits`, row, 'return=representation');
+        return res.json({ ok: true, deposit: Array.isArray(created) ? created[0] : created });
+      }
       if (body.op === 'signup') {
         // Auth signUp은 브라우저에서 먼저 수행됨 → user.id 검증된 상태로 members upsert
         const row = {
