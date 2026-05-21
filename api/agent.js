@@ -50,12 +50,19 @@ async function verifySupabaseToken(authHeader) {
 
 // customs_agents 조회 + active 확인 — last_login_at 자동 갱신
 async function loadAgent(userId, email) {
+  const hdr = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
   const r = await fetch(
-    `${SUPABASE_URL}/rest/v1/customs_agents?id=eq.${userId}&select=id,email,name,active`,
-    { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
-  );
+    `${SUPABASE_URL}/rest/v1/customs_agents?id=eq.${userId}&select=id,email,name,active`, { headers: hdr });
   if (!r.ok) { const err = new Error('관세사 조회 실패'); err.status = 500; throw err; }
-  const rows = await r.json();
+  let rows = await r.json();
+  let matchedByEmail = false;
+  // I3: id 매칭 실패 시 email 폴백 — auth user id 불일치(재초대 등)로 권한 인식 끊기는 문제 복구
+  if (!rows.length && email) {
+    const r2 = await fetch(
+      `${SUPABASE_URL}/rest/v1/customs_agents?email=eq.${encodeURIComponent(email)}&select=id,email,name,active`,
+      { headers: hdr });
+    if (r2.ok) { rows = await r2.json(); matchedByEmail = rows.length > 0; }
+  }
   if (!rows.length) {
     const err = new Error('등록되지 않은 관세사입니다 (강하고 관리자에게 계정 발급 요청)');
     err.status = 403; throw err;
@@ -64,10 +71,11 @@ async function loadAgent(userId, email) {
   if (!agent.active) {
     const err = new Error('비활성 관세사 계정입니다'); err.status = 403; throw err;
   }
-  // last_login_at 갱신 (실패해도 진행)
-  fetch(`${SUPABASE_URL}/rest/v1/customs_agents?id=eq.${userId}`, {
+  // last_login_at 갱신 (id 또는 email 기준 — 실패해도 진행)
+  const filter = matchedByEmail ? `email=eq.${encodeURIComponent(email)}` : `id=eq.${userId}`;
+  fetch(`${SUPABASE_URL}/rest/v1/customs_agents?${filter}`, {
     method: 'PATCH',
-    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    headers: { ...hdr, 'Content-Type': 'application/json' },
     body: JSON.stringify({ last_login_at: new Date().toISOString() }),
   }).catch(() => {});
   return agent;
@@ -98,12 +106,15 @@ function verifyAdmin(req) {
   if (h.slice(6) !== ADMIN_TOKEN) { const e = new Error('관리자 토큰 불일치'); e.status = 403; throw e; }
 }
 
+// I3: 초대 클릭 후 바로 대시보드로 (redirect_to 미설정 시 Supabase Site URL로 빠져 세션 처리 실패 → 재인증 반복 원인)
+const AGENT_DASHBOARD_URL = 'https://kanghago-pages.vercel.app/agent-dashboard.html';
+
 async function adminInviteAgent(email, name) {
-  // 1) Supabase Auth — 매직링크 초대 (계정 신규 생성 + 비밀번호 미설정 흐름)
+  // 1) Supabase Auth — 초대 (계정 신규 생성). redirect_to를 대시보드로 명시
   const r1 = await fetch(`${SUPABASE_URL}/auth/v1/invite`, {
     method: 'POST',
     headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, data: { name }, redirect_to: undefined }),
+    body: JSON.stringify({ email, data: { name }, redirect_to: AGENT_DASHBOARD_URL }),
   });
   const auth = await r1.json();
   if (!r1.ok) {
