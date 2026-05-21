@@ -206,6 +206,28 @@ module.exports = async (req, res) => {
         const recs = await atListAll(url);
         return res.json({ count: recs.length, shipments: recs.map(r => ({ id: r.id, fields: r.fields })) });
       }
+      if (op === 'search_products') {
+        // 자동완성: 영문명/HS/한글명 부분 일치 → 사용횟수 DESC + 마지막사용일시 DESC
+        const q = (req.query.q || '').trim();
+        if (q.length < 2) return res.json({ products: [] });
+        const qEsc = q.toLowerCase().replace(/'/g, "\\'");
+        const f = `OR(FIND('${qEsc}',LOWER({Description}&'')),FIND('${qEsc}',LOWER({HS코드}&'')),FIND('${qEsc}',LOWER({통관품명_한글}&'')))`;
+        const url = `/${TABLES.Products}?filterByFormula=${encodeURIComponent(f)}`
+          + `&sort%5B0%5D%5Bfield%5D=${encodeURIComponent('사용횟수')}&sort%5B0%5D%5Bdirection%5D=desc`
+          + `&sort%5B1%5D%5Bfield%5D=${encodeURIComponent('마지막사용일시')}&sort%5B1%5D%5Bdirection%5D=desc`
+          + `&maxRecords=10`;
+        let recs = [];
+        try { recs = await atListAll(url); } catch (e) { console.warn('[agent search] ', e.message); }
+        // 화이트리스트 필드만 반환 (관세사에게 노출 안전한 필드)
+        const PICK = ['Description', '통관품명_한글', 'HS코드', 'Material', '기본세율', 'FTA_한중',
+                      '아태세율', 'FTA_RCEP중국', '적용FTA', '사용횟수', '마지막사용일시', '이미지URL', '제품링크'];
+        const safe = recs.map(r => {
+          const out = {};
+          PICK.forEach(k => { if (r.fields[k] !== undefined) out[k] = r.fields[k]; });
+          return { id: r.id, fields: out };
+        });
+        return res.json({ products: safe });
+      }
       if (op === 'shipment') {
         const shipId = req.query.id;
         if (!shipId || !shipId.startsWith('rec')) return res.status(400).json({ error: 'Invalid shipment id' });
@@ -231,6 +253,23 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
       const body = await readBody(req);
       const op = body.op;
+
+      if (op === 'bump_usage') {
+        // 자동완성 채움 시 매칭 원본의 사용횟수 +1 (사서함 검증 X — 사용횟수만)
+        const { productId } = body;
+        if (!productId) return res.status(400).json({ error: 'productId 필수' });
+        try {
+          const cur = await atRequest('GET', `/${TABLES.Products}/${productId}`);
+          await atRequest('PATCH', `/${TABLES.Products}/${productId}`, {
+            fields: {
+              '사용횟수': ((cur.fields['사용횟수'] || 0) + 1),
+              '마지막사용일시': new Date().toISOString().slice(0, 10),
+            },
+            typecast: true,
+          });
+        } catch (e) { console.warn('[agent bump_usage]', e.message); }
+        return res.json({ ok: true });
+      }
 
       if (op === 'product_patch') {
         const { shipmentId, productId, fields } = body;

@@ -67,8 +67,9 @@
     <table id="prodTable">
       <thead>
         <tr>
-          <th style="width:40px;">#</th>
-          <th style="width:80px;">상품ID</th>
+          <th style="width:36px;">#</th>
+          <th style="width:70px;">사진</th>
+          <th style="width:74px;">상품ID</th>
           <th>영문명 (Description)</th>
           <th style="width:120px;">HS 코드</th>
           <th style="width:120px;">Material/재질</th>
@@ -171,8 +172,19 @@
       const recommended = recommendFta(baseR, kcR, aptaR);
       const currentFta = f['적용FTA'] || '없음';
       const star = (key) => recommended === key ? '★' : '';
+      // 작업1: 1688 상품 사진 + URL
+      const imgUrl = (f['상품이미지'] && f['상품이미지'][0] && (f['상품이미지'][0].thumbnails?.large?.url || f['상품이미지'][0].url))
+        || f['이미지URL'] || '';
+      const link1688 = f['제품링크'] || f['1688URL'] || '';
+      const imgCell = imgUrl
+        ? `<img src="${escapeAttr(imgUrl)}" style="width:56px;height:56px;object-fit:cover;border-radius:5px;cursor:pointer;" onclick="window.open('${escapeAttr(imgUrl)}','_blank')" onerror="this.style.display='none';this.insertAdjacentText('afterend','—');" />`
+        : '<span style="color:#bbb;font-size:11px;">—</span>';
+      const linkCell = link1688
+        ? `<a href="${escapeAttr(link1688)}" target="_blank" style="font-size:10px;color:var(--gold);text-decoration:none;display:block;margin-top:3px;">1688 ↗</a>`
+        : '';
       return `<tr data-id="${p.id}" data-idx="${idx}">
         <td>${idx + 1}</td>
+        <td style="text-align:center;">${imgCell}${linkCell}</td>
         <td style="font-family:'SF Mono',Consolas,monospace; font-size:11px;">${escapeHtml(f['상품ID'] || '-')}</td>
         <td><input data-field="Description" value="${escapeAttr(f['Description'] || '')}" placeholder="영문명" /></td>
         <td><input data-field="HS코드" value="${escapeAttr(f['HS코드'] || '')}" placeholder="0000.00-0000" /></td>
@@ -198,6 +210,94 @@
       const orig = inp.value;
       inp.addEventListener('input', () => inp.classList.toggle('modified', inp.value !== orig));
     });
+    setupAgentAutocomplete();  // 작업2·3: 자동완성 위임 등록 (1회)
+  }
+
+  // ===== 작업2·3: 품명↔HS 자동완성 (도구 §3 패턴 이식) =====
+  let _acTimer = null;
+  function setupAgentAutocomplete() {
+    const tbody = document.getElementById('prodBody');
+    if (!tbody || tbody.dataset.acBound) return;
+    tbody.dataset.acBound = '1';
+    tbody.addEventListener('input', (e) => {
+      const inp = e.target;
+      if (!(inp.matches('input[data-field="Description"]') || inp.matches('input[data-field="HS코드"]'))) return;
+      clearTimeout(_acTimer);
+      _acTimer = setTimeout(() => agentSearchSuggest(inp), 450);
+    });
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('.agent-suggest-dd')) return;
+      if (e.target.matches('input[data-field="Description"], input[data-field="HS코드"]')) return;
+      closeAgentSuggest();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAgentSuggest(); });
+  }
+
+  async function agentSearchSuggest(inp) {
+    const q = (inp.value || '').trim();
+    if (q.length < 2) { closeAgentSuggest(); return; }
+    try {
+      const r = await api('GET', '?op=search_products&q=' + encodeURIComponent(q));
+      const products = (r.products || []).filter(p => p.id !== inp.closest('tr').dataset.id);
+      if (!products.length) { closeAgentSuggest(); return; }
+      renderAgentSuggest(inp, products);
+    } catch (e) { closeAgentSuggest(); }
+  }
+
+  function renderAgentSuggest(inp, products) {
+    closeAgentSuggest();
+    const rect = inp.getBoundingClientRect();
+    const dd = document.createElement('div');
+    dd.className = 'agent-suggest-dd';
+    dd.style.cssText = `position:fixed; left:${rect.left}px; top:${rect.bottom+3}px; z-index:9999;
+      background:#fff; border:2px solid var(--gold); border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.15);
+      min-width:360px; max-width:520px; max-height:340px; overflow-y:auto;`;
+    let html = `<div style="padding:7px 11px; background:var(--ivory); font-size:11px; color:#666; border-bottom:1px solid #e0d5be;">🔍 이전 데이터 ${products.length}건 — 클릭하여 자동 채움</div>`;
+    products.forEach(rec => {
+      const f = rec.fields || {};
+      const rates = [
+        (typeof f['기본세율']==='number') ? `A ${f['기본세율']}%` : null,
+        (typeof f['FTA_한중']==='number') ? `FCN1 ${f['FTA_한중']}%` : null,
+        (typeof f['아태세율']==='number') ? `E1 ${f['아태세율']}%` : null,
+      ].filter(Boolean).join(' · ');
+      html += `<div class="ag-item" data-id="${rec.id}" style="padding:9px 11px;cursor:pointer;border-bottom:1px solid #f4efe6;">
+        <div style="font-weight:600;color:var(--navy);">${escapeHtml(f['Description']||'(영문명 없음)')} ${f['통관품명_한글']?`<span style="font-size:11px;color:#888;">/ ${escapeHtml(f['통관품명_한글'])}</span>`:''}</div>
+        <div style="font-size:11px;color:#666;margin-top:2px;font-family:'SF Mono',monospace;">${escapeHtml(f['HS코드']||'-')} · ${escapeHtml(f['Material']||'-')}</div>
+        ${rates?`<div style="font-size:10px;color:#1b5e20;margin-top:2px;">${rates}</div>`:''}
+        <div style="font-size:10px;color:#888;margin-top:2px;">사용 ${f['사용횟수']||0}회${f['마지막사용일시']?' · 최근 '+f['마지막사용일시']:''}</div>
+      </div>`;
+    });
+    dd.innerHTML = html;
+    document.body.appendChild(dd);
+    dd.querySelectorAll('.ag-item').forEach(item => {
+      item.addEventListener('mouseenter', () => item.style.background = '#fdfaf3');
+      item.addEventListener('mouseleave', () => item.style.background = '');
+      item.addEventListener('click', () => applyAgentSuggest(inp, products.find(p => p.id === item.dataset.id)));
+    });
+  }
+
+  function applyAgentSuggest(inp, rec) {
+    if (!rec) return;
+    const tr = inp.closest('tr');
+    const f = rec.fields || {};
+    const setIf = (sel, val) => { if (val == null || val === '') return; const i = tr.querySelector(sel); if (i) i.value = val; };
+    setIf('input[data-field="Description"]', f['Description']);
+    setIf('input[data-field="HS코드"]', f['HS코드']);
+    setIf('input[data-field="Material"]', f['Material']);
+    if (typeof f['기본세율'] === 'number') setIf('input[data-field="기본세율"]', f['기본세율']);
+    if (typeof f['FTA_한중'] === 'number') setIf('input[data-field="FTA_한중"]', f['FTA_한중']);
+    if (typeof f['아태세율'] === 'number') setIf('input[data-field="아태세율"]', f['아태세율']);
+    const ftaSel = tr.querySelector('select[data-field="적용FTA"]');
+    if (ftaSel && f['적용FTA']) ftaSel.value = f['적용FTA'];
+    tr.querySelectorAll('input, select').forEach(i => i.classList.add('modified'));
+    // 매칭 원본 사용횟수 +1
+    api('POST', '', { op: 'bump_usage', productId: rec.id }).catch(() => {});
+    closeAgentSuggest();
+    toast('자동 채움 완료: ' + (f['Description'] || f['HS코드'] || '제품'));
+  }
+
+  function closeAgentSuggest() {
+    document.querySelectorAll('.agent-suggest-dd').forEach(d => d.remove());
   }
 
   window.saveRow = async (pid) => {
