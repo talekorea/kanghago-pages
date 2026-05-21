@@ -75,14 +75,22 @@ module.exports = async (req, res) => {
       }
 
       if (req.method === 'GET' && req.query.op === 'deposit_requests') {
-        // H9: 입금 신청 목록 (확인 대기)
+        // H9: 입금 신청 목록 (확인 대기 — pending만, 확정/거절 제외)
         const rows = await sbRest('GET',
-          `/member_deposits?kind=eq.topup_request&select=*&order=created_at.desc`);
+          `/member_deposits?kind=eq.topup_request&status=eq.pending&select=*&order=created_at.desc`);
         return res.json({ deposits: rows || [] });
       }
 
       if (req.method === 'POST') {
         const body = await readBody(req);
+        if (body.op === 'reject_deposit') {
+          // I4(H9): 입금 신청 거절 — 사유 기록
+          const { depositId, reason } = body;
+          if (!depositId) return res.status(400).json({ error: 'depositId 필수' });
+          await sbRest('PATCH', `/member_deposits?id=eq.${depositId}`,
+            { status: 'rejected', reject_reason: (reason || '').slice(0, 300) });
+          return res.json({ ok: true });
+        }
         if (body.op === 'confirm_deposit') {
           // H9: 입금 확인 → members.deposit_krw 증가 + 신청 행을 topup(확정)으로 전환
           const { depositId, memberId, amount_krw } = body;
@@ -92,8 +100,8 @@ module.exports = async (req, res) => {
           const mrows = await sbRest('GET', `/members?id=eq.${memberId}&select=deposit_krw`);
           const cur = (mrows && mrows[0] && parseFloat(mrows[0].deposit_krw)) || 0;
           await sbRest('PATCH', `/members?id=eq.${memberId}`, { deposit_krw: cur + amt });
-          // 신청 행 → 확정(topup)으로 전환
-          await sbRest('PATCH', `/member_deposits?id=eq.${depositId}`, { kind: 'topup' });
+          // 신청 행 → 확정(topup)으로 전환 + status=confirmed
+          await sbRest('PATCH', `/member_deposits?id=eq.${depositId}`, { kind: 'topup', status: 'confirmed' });
           return res.json({ ok: true, newBalance: cur + amt });
         }
         if (body.op === 'admin_update') {
