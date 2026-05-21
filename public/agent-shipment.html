@@ -117,9 +117,16 @@
       supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
         auth: { storage: localStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
       });
-      const { data: { session: s } } = await supabase.auth.getSession();
+      // G2: 영구 로그인 — 세션 없으면 refresh 복구 시도
+      let { data: { session: s } } = await supabase.auth.getSession();
+      if (!s) {
+        const refreshed = await supabase.auth.refreshSession().catch(() => null);
+        s = refreshed && refreshed.data && refreshed.data.session;
+      }
       if (!s) { location.replace('/agent-login.html'); return; }
       session = s;
+      supabase.auth.startAutoRefresh();
+      supabase.auth.onAuthStateChange((_e, ns) => { if (ns) session = ns; });
       const me = await api('GET', '?op=me');
       agent = me.agent;
       document.getElementById('meLabel').textContent = ' · ' + (agent.name ? `${agent.name} · ${agent.email}` : agent.email);
@@ -166,8 +173,38 @@
     return opts[0].key;
   }
 
+  // G4: 세율 입력 변경 → 추천 재계산 + 드롭다운 라벨/선택/색상 갱신
+  function recomputeRowFta(tr) {
+    if (!tr) return;
+    const num = (sel) => { const v = parseFloat((tr.querySelector(sel) || {}).value); return isNaN(v) ? null : v; };
+    const baseR = num('input[data-field="기본세율"]');
+    const kcR = num('input[data-field="FTA_한중"]');
+    const aptaR = num('input[data-field="아태세율"]');
+    const reco = recommendFta(baseR, kcR, aptaR) || '없음';
+    const sel = tr.querySelector('select[data-field="적용FTA"]');
+    if (!sel) return;
+    const rl = (v) => (v == null ? '-' : v + '%');
+    const userTouched = sel.dataset.userTouched === '1';
+    sel.dataset.recommended = reco;
+    // 옵션 라벨 ★추천 갱신
+    const labels = { '없음': ['일반', baseR], '한중': ['한중', kcR], '아태': ['아태', aptaR] };
+    Array.from(sel.options).forEach(opt => {
+      const [nm, rate] = labels[opt.value] || [opt.value, null];
+      opt.textContent = `${nm} (${rl(rate)})${reco === opt.value ? ' ★추천' : ''}`;
+    });
+    // 사용자가 수동 변경 안 했으면 추천을 자동 선택
+    if (!userTouched) sel.value = reco;
+    sel.classList.toggle('fta-reco', sel.value === reco);
+    sel.classList.toggle('fta-override', sel.value !== reco);
+    const td = sel.closest('td');
+    const note = td && td.querySelector('[data-conote]');
+    if (note) note.textContent = sel.value === '한중' ? '* 한중 FTA C/O 필요 (없으면 일반 세율 적용)'
+      : sel.value === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)' : '';
+  }
+
   // 적용 FTA 변경 시: 추천과 비교하여 색상(추천=골드 / 변경=주황) + C/O 안내 갱신
   window.onFtaChange = function (sel) {
+    sel.dataset.userTouched = '1';  // G4: 관세사 수동 선택 표시 → 세율 변경해도 자동 변경 안 함
     const reco = sel.dataset.recommended;
     sel.classList.toggle('fta-reco', sel.value === reco);
     sel.classList.toggle('fta-override', sel.value !== reco);
@@ -189,8 +226,10 @@
       const kcR = (typeof f['FTA_한중'] === 'number') ? f['FTA_한중'] : null;
       const aptaR = (typeof f['아태세율'] === 'number') ? f['아태세율'] : null;
       const recommended = recommendFta(baseR, kcR, aptaR) || '없음';
-      // 저장값 있으면 그것, 없으면 추천을 기본 선택
-      const effectiveFta = f['적용FTA'] || recommended;
+      // G4: 관세사가 명시적으로 한중/아태 선택한 경우만 유지. '없음'/'일반'/빈값은 추천 우선
+      // (옛 데이터의 적용FTA='없음'이 추천을 막던 문제 해결)
+      const saved = f['적용FTA'];
+      const effectiveFta = (saved === '한중' || saved === '아태') ? saved : recommended;
       const isOverride = effectiveFta !== recommended;
       const rateLabel = (v) => (v == null ? '-' : v + '%');
       const recoReason = recommended === '한중' ? `한중 FTA가 ${rateLabel(kcR)}로 가장 저렴하여 추천됩니다`
@@ -250,6 +289,11 @@
     tbody.dataset.acBound = '1';
     tbody.addEventListener('input', (e) => {
       const inp = e.target;
+      // G4: 세율 입력 변경 시 적용 FTA 추천 즉시 재계산
+      if (inp.matches('input[data-field="기본세율"], input[data-field="FTA_한중"], input[data-field="아태세율"]')) {
+        recomputeRowFta(inp.closest('tr'));
+        return;
+      }
       if (!(inp.matches('input[data-field="Description"]') || inp.matches('input[data-field="HS코드"]'))) return;
       clearTimeout(_acTimer);
       _acTimer = setTimeout(() => agentSearchSuggest(inp), 450);
