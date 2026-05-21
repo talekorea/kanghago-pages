@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>강하고 — 내 대시보드</title>
+<style>
+  :root { --gold:#C9973A; --navy:#1B2A3B; --bg:#F4EFE6; --ivory:#FAF6EE; }
+  * { box-sizing: border-box; }
+  body { font-family:'Pretendard',-apple-system,system-ui,'Apple SD Gothic Neo',sans-serif;
+    margin:0; background:var(--bg); color:#1d1d1f; }
+  header { background:var(--navy); color:#fff; padding:14px 24px; display:flex;
+    justify-content:space-between; align-items:center; }
+  header .logo { font-size:20px; font-weight:800; color:var(--gold); }
+  header button { background:transparent; color:#fff; border:1px solid #8a94a3;
+    padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; }
+  main { max-width:900px; margin:26px auto; padding:0 20px; }
+  .hello { font-size:22px; font-weight:700; color:var(--navy); margin-bottom:4px; }
+  .hello-sub { color:#888; font-size:13px; margin-bottom:22px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; margin-bottom:22px; }
+  .stat { background:#fff; border-radius:12px; padding:18px 20px; box-shadow:0 2px 10px rgba(0,0,0,0.05); }
+  .stat .k { font-size:12px; color:#888; margin-bottom:6px; }
+  .stat .v { font-size:24px; font-weight:800; color:var(--navy); }
+  .stat .v.gold { color:var(--gold); }
+  .badge { display:inline-block; padding:4px 12px; border-radius:14px; font-size:13px; font-weight:700; }
+  .badge.active { background:#e8f5e9; color:#1b5e20; }
+  .badge.pending { background:#fff8e1; color:#9a7b2a; }
+  .panel { background:#fff; border-radius:12px; padding:20px 22px; box-shadow:0 2px 10px rgba(0,0,0,0.05); margin-bottom:16px; }
+  .panel h2 { font-size:15px; color:var(--navy); margin:0 0 14px; }
+  .info-row { display:flex; padding:8px 0; border-bottom:1px solid #f0ebe1; font-size:14px; }
+  .info-row:last-child { border-bottom:0; }
+  .info-row .label { width:120px; color:#888; font-size:13px; }
+  .info-row .value { flex:1; font-weight:500; }
+  .coming { color:#aaa; font-size:13px; padding:18px; text-align:center; background:var(--ivory); border-radius:8px; }
+  .err { padding:16px; background:#fff5f5; border:1px solid #f5c2c7; color:#c0392b; border-radius:8px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">강하고</span>
+  <button onclick="logout()">로그아웃</button>
+</header>
+<main id="main">
+  <div class="coming">로딩 중...</div>
+</main>
+
+<script type="module">
+  let supabase = null, session = null;
+
+  async function init() {
+    try {
+      const cfg = await (await fetch('/api/agent-config')).json();
+      if (cfg.error) throw new Error(cfg.error);
+      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm');
+      supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+        auth: { storage: localStorage, persistSession: true, autoRefreshToken: true },
+      });
+      const { data: { session: s } } = await supabase.auth.getSession();
+      if (!s) { location.replace('/member-login.html'); return; }
+      session = s;
+
+      const r = await fetch('/api/members?op=me', { headers: { 'Authorization': 'Bearer ' + s.access_token } });
+      const out = await r.json();
+      if (!r.ok) {
+        if (out.notFound) { location.replace('/member-signup.html'); return; }
+        throw new Error(out.error || 'HTTP ' + r.status);
+      }
+      const m = out.member;
+      if (m.status !== 'active') { location.replace('/member-login.html'); return; }
+      render(m);
+    } catch (e) {
+      document.getElementById('main').innerHTML = `<div class="err">⚠ ${e.message || e}</div>`;
+    }
+  }
+
+  function render(m) {
+    const deposit = (m.deposit_krw || 0).toLocaleString();
+    document.getElementById('main').innerHTML = `
+      <div class="hello">안녕하세요, ${esc(m.company_name || m.email)} 님 👋</div>
+      <div class="hello-sub">강하고 무역대행 회원 대시보드</div>
+
+      <div class="grid">
+        <div class="stat">
+          <div class="k">회원 상태</div>
+          <div class="v"><span class="badge active">✓ 활성</span></div>
+        </div>
+        <div class="stat">
+          <div class="k">예치금 잔액</div>
+          <div class="v gold">₩${deposit}</div>
+        </div>
+        <div class="stat">
+          <div class="k">진행 중 사서함</div>
+          <div class="v">—</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>회원 정보</h2>
+        <div class="info-row"><div class="label">회사명</div><div class="value">${esc(m.company_name || '-')}</div></div>
+        <div class="info-row"><div class="label">사업자번호</div><div class="value">${esc(m.business_number || '-')}</div></div>
+        <div class="info-row"><div class="label">담당자</div><div class="value">${esc(m.contact_name || '-')}</div></div>
+        <div class="info-row"><div class="label">연락처</div><div class="value">${esc(m.phone || '-')}</div></div>
+        <div class="info-row"><div class="label">이메일</div><div class="value">${esc(m.email)}</div></div>
+        <div class="info-row"><div class="label">가입일</div><div class="value">${m.created_at ? new Date(m.created_at).toLocaleDateString('ko-KR') : '-'}</div></div>
+      </div>
+
+      <div class="panel">
+        <h2>내 사서함</h2>
+        <div class="coming">📦 사서함 연동은 준비 중입니다 (v2.0).<br>현재는 강하고 운영팀이 직접 처리합니다.</div>
+      </div>
+
+      <div class="panel">
+        <h2>예치금 충전</h2>
+        <div class="coming">💳 KRW 계좌이체 충전 안내는 준비 중입니다 (v2.0).<br>충전 문의: master@talekorea.com / 1661-5776</div>
+      </div>
+    `;
+  }
+
+  window.logout = async () => {
+    if (supabase) await supabase.auth.signOut();
+    location.replace('/member-login.html');
+  };
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  init();
+</script>
+</body>
+</html>
