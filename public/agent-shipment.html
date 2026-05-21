@@ -116,9 +116,13 @@
       const cfg = await cfgRes.json();
       const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm');
       supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-        auth: { storage: localStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+        auth: {
+          persistSession: true, autoRefreshToken: true, detectSessionInUrl: true,
+          storage: window.localStorage, storageKey: 'sb-kanghago-agent', flowType: 'implicit',
+        },
       });
-      // G2: 영구 로그인 — 세션 없으면 refresh 복구 시도
+      // J2: 세션 복원 타이밍 확보
+      await new Promise(r => setTimeout(r, 120));
       let { data: { session: s } } = await supabase.auth.getSession();
       if (!s) {
         const refreshed = await supabase.auth.refreshSession().catch(() => null);

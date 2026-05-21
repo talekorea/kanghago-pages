@@ -73,7 +73,12 @@
     const cfg = await (await fetch('/api/agent-config')).json();
     if (cfg.error) throw new Error(cfg.error);
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm');
-    supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+    supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+      auth: {
+        persistSession: true, autoRefreshToken: true, detectSessionInUrl: true,
+        storage: window.localStorage, storageKey: 'sb-kanghago-member', flowType: 'implicit',
+      },
+    });
   }
 
   document.getElementById('signupForm').addEventListener('submit', async (e) => {

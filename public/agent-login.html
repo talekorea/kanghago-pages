@@ -62,7 +62,13 @@
     if (!cfgRes.ok) { showMsg('서버 설정 미준비 — 관리자에게 문의', 'err'); throw new Error('config'); }
     const cfg = await cfgRes.json();
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm');
-    supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+    // J2: 전 페이지 통일 auth 옵션 — implicit flow + 고정 storageKey (세션 영속/탭 공유)
+    supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+      auth: {
+        persistSession: true, autoRefreshToken: true, detectSessionInUrl: true,
+        storage: window.localStorage, storageKey: 'sb-kanghago-agent', flowType: 'implicit',
+      },
+    });
   }
 
   document.getElementById('loginForm').addEventListener('submit', async (e) => {

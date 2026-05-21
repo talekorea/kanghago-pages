@@ -67,18 +67,31 @@
       const cfg = await cfgRes.json();
       const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm');
       supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-        auth: { storage: localStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+        auth: {
+          persistSession: true, autoRefreshToken: true, detectSessionInUrl: true,
+          storage: window.localStorage, storageKey: 'sb-kanghago-agent', flowType: 'implicit',
+        },
       });
-      // G2: 영구 로그인 — 세션 없으면 refresh_token으로 복구 시도 후 자동 갱신 시작
+      // J2: 세션 복원 타이밍 — localStorage/URL 처리 시간 확보
+      await new Promise(r => setTimeout(r, 120));
       let { data: { session: s } } = await supabase.auth.getSession();
       if (!s) {
         const refreshed = await supabase.auth.refreshSession().catch(() => null);
         s = refreshed && refreshed.data && refreshed.data.session;
       }
+      // J3: 디버그 모드 (?debug=1)
+      if (new URLSearchParams(location.search).get('debug')) {
+        console.log('[AGENT-DASHBOARD debug]', {
+          hasSession: !!s,
+          storageKey: 'sb-kanghago-agent',
+          token: (localStorage.getItem('sb-kanghago-agent') || '(없음)').slice(0, 80),
+          allSbKeys: Object.keys(localStorage).filter(k => k.startsWith('sb-')),
+          pathname: location.pathname,
+        });
+      }
       if (!s) { location.replace('/agent-login.html'); return; }
       session = s;
       supabase.auth.startAutoRefresh();   // 백그라운드 토큰 자동 갱신
-      // 토큰 갱신 시 session 최신화
       supabase.auth.onAuthStateChange((_e, newSession) => { if (newSession) session = newSession; });
 
       // /api/agent?op=me — 등록 확인 + last_login 갱신

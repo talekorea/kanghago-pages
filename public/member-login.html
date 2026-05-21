@@ -59,7 +59,10 @@
     if (cfg.error) throw new Error(cfg.error);
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm');
     supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-      auth: { storage: localStorage, persistSession: true, autoRefreshToken: true },
+      auth: {
+        persistSession: true, autoRefreshToken: true, detectSessionInUrl: true,
+        storage: window.localStorage, storageKey: 'sb-kanghago-member', flowType: 'implicit',
+      },
     });
   }
 
