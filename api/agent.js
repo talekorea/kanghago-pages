@@ -27,6 +27,7 @@ const ALLOWED_PRODUCT_FIELDS = new Set([
   'FTA_RCEP중국', '아태세율', 'Material', '재질', '관세사확정',
   '관세사확정일시', '관세사메모', '통관품명_영문', '품명_확정',
   '사용횟수', '마지막사용일시',
+  '적용세율', '추천FTA',   // FTA 자동 추천: 적용세율 + 추천 추적 (관세사 변경 여부)
 ]);
 
 // Supabase Auth: access_token 검증 → user 객체

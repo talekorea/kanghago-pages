@@ -36,6 +36,11 @@
   td input, td select { width:100%; padding:5px 7px; border:1px solid #ddd; border-radius:4px;
     font-size:12px; font-family:inherit; background:#fff; }
   td input.modified, td select.modified { background:#fff8e1; border-color:var(--gold); }
+  /* 적용 FTA 추천 강조 */
+  select.fta-select.fta-reco { background:#fff8e1; border-color:var(--gold); font-weight:600; }
+  select.fta-select.fta-override { background:#ffe0b2; border-color:#e8830c; font-weight:600; }
+  .fta-info { cursor:help; color:var(--gold); font-weight:800; margin-left:3px; font-size:13px; }
+  .co-note { font-size:10px; color:#c0392b; margin-top:3px; line-height:1.3; }
   td .save-btn { padding:5px 10px; background:var(--navy); color:#fff; border:none; border-radius:4px;
     font-size:11px; cursor:pointer; font-weight:600; }
   td .save-btn:disabled { background:#ccc; cursor:not-allowed; }
@@ -161,6 +166,20 @@
     return opts[0].key;
   }
 
+  // 적용 FTA 변경 시: 추천과 비교하여 색상(추천=골드 / 변경=주황) + C/O 안내 갱신
+  window.onFtaChange = function (sel) {
+    const reco = sel.dataset.recommended;
+    sel.classList.toggle('fta-reco', sel.value === reco);
+    sel.classList.toggle('fta-override', sel.value !== reco);
+    sel.classList.add('modified');
+    const td = sel.closest('td');
+    const note = td && td.querySelector('[data-conote]');
+    if (note) {
+      note.textContent = sel.value === '한중' ? '* 한중 FTA C/O 필요 (없으면 일반 세율 적용)'
+        : sel.value === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)' : '';
+    }
+  };
+
   function renderProducts() {
     const tbody = document.getElementById('prodBody');
     tbody.innerHTML = products.map((p, idx) => {
@@ -169,9 +188,16 @@
       const baseR = (typeof f['기본세율'] === 'number') ? f['기본세율'] : null;
       const kcR = (typeof f['FTA_한중'] === 'number') ? f['FTA_한중'] : null;
       const aptaR = (typeof f['아태세율'] === 'number') ? f['아태세율'] : null;
-      const recommended = recommendFta(baseR, kcR, aptaR);
-      const currentFta = f['적용FTA'] || '없음';
-      const star = (key) => recommended === key ? '★' : '';
+      const recommended = recommendFta(baseR, kcR, aptaR) || '없음';
+      // 저장값 있으면 그것, 없으면 추천을 기본 선택
+      const effectiveFta = f['적용FTA'] || recommended;
+      const isOverride = effectiveFta !== recommended;
+      const rateLabel = (v) => (v == null ? '-' : v + '%');
+      const recoReason = recommended === '한중' ? `한중 FTA가 ${rateLabel(kcR)}로 가장 저렴하여 추천됩니다`
+        : recommended === '아태' ? `아태협정(E1)이 ${rateLabel(aptaR)}로 가장 저렴하여 추천됩니다`
+        : `일반 세율(${rateLabel(baseR)})이 최저이거나 FTA와 동률이라 일반을 추천합니다`;
+      const coNoteFor = (fta) => fta === '한중' ? '* 한중 FTA C/O 필요 (없으면 일반 세율 적용)'
+        : fta === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)' : '';
       // 작업1: 1688 상품 사진 + URL
       const imgUrl = (f['상품이미지'] && f['상품이미지'][0] && (f['상품이미지'][0].thumbnails?.large?.url || f['상품이미지'][0].url))
         || f['이미지URL'] || '';
@@ -193,11 +219,14 @@
         <td><input data-field="FTA_한중" type="number" step="0.1" value="${f['FTA_한중'] ?? ''}" placeholder="FCN1" /></td>
         <td><input data-field="아태세율" type="number" step="0.1" value="${f['아태세율'] ?? ''}" placeholder="E1" /></td>
         <td>
-          <select data-field="적용FTA">
-            <option value="없음"${currentFta === '없음' ? ' selected' : ''}>${star('없음')} 일반</option>
-            <option value="한중"${currentFta === '한중' ? ' selected' : ''}>${star('한중')} 한중</option>
-            <option value="아태"${currentFta === '아태' ? ' selected' : ''}>${star('아태')} 아태</option>
+          <select data-field="적용FTA" data-recommended="${recommended}" onchange="onFtaChange(this)"
+            class="fta-select ${isOverride ? 'fta-override' : 'fta-reco'}">
+            <option value="없음"${effectiveFta === '없음' ? ' selected' : ''}>일반 (${rateLabel(baseR)})${recommended === '없음' ? ' ★추천' : ''}</option>
+            <option value="한중"${effectiveFta === '한중' ? ' selected' : ''}>한중 (${rateLabel(kcR)})${recommended === '한중' ? ' ★추천' : ''}</option>
+            <option value="아태"${effectiveFta === '아태' ? ' selected' : ''}>아태 (${rateLabel(aptaR)})${recommended === '아태' ? ' ★추천' : ''}</option>
           </select>
+          <span class="fta-info" title="${escapeAttr(recoReason)}">ℹ</span>
+          <div class="co-note" data-conote>${coNoteFor(effectiveFta)}</div>
         </td>
         <td>
           ${confirmed ? '<span class="confirmed">✓ 확정됨</span> ' : ''}
@@ -318,6 +347,15 @@
     const curUsage = (curP && curP.fields && curP.fields['사용횟수']) || 0;
     fields['사용횟수'] = curUsage + 1;
     fields['마지막사용일시'] = new Date().toISOString().slice(0, 10);
+    // 적용 FTA: 적용세율 자동 계산 + 추천 추적 (관세사 변경 여부)
+    const ftaSel = tr.querySelector('select[data-field="적용FTA"]');
+    if (ftaSel) {
+      const ftaVal = fields['적용FTA'];
+      const rateMap = { '없음': fields['기본세율'], '한중': fields['FTA_한중'], '아태': fields['아태세율'] };
+      const appliedRate = rateMap[ftaVal];
+      if (appliedRate != null && !isNaN(appliedRate)) fields['적용세율'] = appliedRate;
+      fields['추천FTA'] = ftaSel.dataset.recommended || '';
+    }
     const btn = tr.querySelector('.save-btn');
     btn.disabled = true; btn.textContent = '저장 중...';
     try {
