@@ -175,12 +175,24 @@ async function adminToggleAgent(agentId, active) {
 
 // ===== 계획 1단계: 비밀번호 방식 (매직링크 admin_invite와 공존 — 롤백 경로 유지) =====
 // 이메일로 auth 사용자 조회 (admin API)
+// 주의: GoTrue /admin/users 의 ?filter= 는 신뢰성이 없어(빈 결과 반환) 사용 금지.
+//   → 사용자 목록을 page 순회하며 이메일 정확 매칭(소문자 비교)으로 찾는다.
 async function findAuthUserByEmail(email) {
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?filter=email=eq.${encodeURIComponent(email)}`, {
-    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
-  });
-  const data = await r.json();
-  return (data.users || [])[0] || null;
+  const target = (email || '').trim().toLowerCase();
+  if (!target) return null;
+  const perPage = 200;
+  for (let page = 1; page <= 50; page++) {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=${perPage}`, {
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
+    });
+    if (!r.ok) throw new Error('Auth 사용자 목록 조회 실패 HTTP ' + r.status);
+    const data = await r.json();
+    const users = Array.isArray(data) ? data : (data.users || []);
+    const hit = users.find(u => (u.email || '').toLowerCase() === target);
+    if (hit) return hit;
+    if (users.length < perPage) break;  // 마지막 페이지
+  }
+  return null;
 }
 
 // 기존 auth 사용자 비밀번호 설정/재설정 (admin API) — email_confirm:true로 비번 로그인 가능 보장
