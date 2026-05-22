@@ -29,23 +29,53 @@ function isoWeekNo(dateStr) {
   return Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
 }
 
+// UNI-PASS 통화부호(국가부호 스타일) → ISO 통화코드 매핑
+const CURR_MAP = {
+  US: 'USD', USD: 'USD',
+  CN: 'CNY', CNY: 'CNY', CH: 'CNY', CNH: 'CNY', RMB: 'CNY',
+  JP: 'JPY', JPY: 'JPY',
+  EU: 'EUR', EUR: 'EUR',
+};
+function mapCurrency(currSgn, mtryUtNm) {
+  const s = (currSgn || '').toUpperCase().trim();
+  if (CURR_MAP[s]) return CURR_MAP[s];
+  const nm = mtryUtNm || '';
+  if (/달러|미국|US[D]?/i.test(nm)) return 'USD';
+  if (/위안|중국|CN[YH]?|RMB/i.test(nm)) return 'CNY';
+  if (/엔|일본|JPY/i.test(nm)) return 'JPY';
+  if (/유로|EUR/i.test(nm)) return 'EUR';
+  return s;  // 알 수 없으면 원본 부호 유지
+}
+
+// 응답 루트 태그가 *RsltVo 또는 *RtnVo 변형이어도 item 단위로 잡도록 넓은 매칭
 function parseUnipassXml(xml) {
-  const items = [...xml.matchAll(/<trifFxrtInfoQryRsltVo>([\s\S]*?)<\/trifFxrtInfoQryRsltVo>/g)];
+  let items = [...xml.matchAll(/<trifFxrtInfoQryRsltVo>([\s\S]*?)<\/trifFxrtInfoQryRsltVo>/g)];
+  if (!items.length) {
+    // 폴백: 통화부호(currSgn) 또는 환율(fxrt) 포함한 임의 반복 블록
+    items = [...xml.matchAll(/<(\w*Vo)>([\s\S]*?)<\/\1>/g)].map(m => [m[0], m[2]])
+      .filter(it => /<(currSgn|mtryUtNm|fxrt|kwExchRate)>/.test(it[1]));
+  }
   const get = (s, tag) => {
     const m = s.match(new RegExp('<' + tag + '>([^<]+)<\\/' + tag + '>'));
     return m ? m[1].trim() : '';
   };
   const rates = {};
+  const raw = {};
   let aplyStart = '', aplyEnd = '';
   items.forEach(m => {
     const body = m[1];
-    const currCode = (get(body, 'currSgn') || get(body, 'mtryUtNm')).toUpperCase();
+    const currSgn = get(body, 'currSgn');
+    const mtryUtNm = get(body, 'mtryUtNm');
     const rate = parseFloat(get(body, 'fxrt') || get(body, 'kwExchRate'));
-    if (currCode && !isNaN(rate) && rate > 0) rates[currCode] = rate;
+    if ((currSgn || mtryUtNm) && !isNaN(rate) && rate > 0) {
+      const code = mapCurrency(currSgn, mtryUtNm);
+      rates[code] = rate;
+      raw[currSgn || mtryUtNm] = rate;
+    }
     aplyStart = aplyStart || get(body, 'aplyBgnDt');
     aplyEnd = aplyEnd || get(body, 'aplyEndDt');
   });
-  return { rates, aplyStart, aplyEnd, itemCount: items.length };
+  return { rates, raw, aplyStart, aplyEnd, itemCount: items.length };
 }
 
 module.exports = async (req, res) => {
@@ -69,16 +99,25 @@ module.exports = async (req, res) => {
     const url = `${ENDPOINT}?crkyCn=${encodeURIComponent(key)}&aplyBgnDt=${dateParam}&imexTp=2`;
 
     const r = await fetch(url, { method: 'GET' });
-    if (!r.ok) throw new Error('UNI-PASS HTTP ' + r.status);
     const xml = await r.text();
-
     const parsed = parseUnipassXml(xml);
+
+    // 진단 모드 — ?debug=1 (사장님이 원본/파싱 결과 확인용, 인증키 노출 X)
+    if (req.query.debug) {
+      return res.json({
+        diag: true, httpStatus: r.status, keyPresent: !!key,
+        itemCount: parsed.itemCount, rawCurrencies: parsed.raw, mappedRates: parsed.rates,
+        aply: parsed.aplyStart + '~' + parsed.aplyEnd,
+        xmlHead: xml.slice(0, 1000),
+      });
+    }
+
+    if (!r.ok) throw new Error('UNI-PASS HTTP ' + r.status);
     if (!parsed.itemCount) {
-      // 파싱 실패 — 응답 형식이 바뀌었을 수 있음
-      console.warn('UNI-PASS empty/unrecognized response (head 300):', xml.slice(0, 300));
+      console.warn('UNI-PASS empty/unrecognized response (head 500):', xml.slice(0, 500));
       return res.status(502).json({
-        error: 'UNI-PASS 응답 파싱 실패 — 응답 형식 변경 가능성',
-        hint: 'mock_fallback'
+        error: 'UNI-PASS 응답 파싱 실패 — ?debug=1로 원본 확인',
+        hint: 'mock_fallback', xmlHead: xml.slice(0, 300),
       });
     }
 
