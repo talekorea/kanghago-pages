@@ -82,36 +82,62 @@ module.exports = async (req, res) => {
   if (handleCors(req, res)) return;
 
   try {
-    // 캐시 히트 (인메모리, 1시간)
-    if (_cache && Date.now() - _cacheAt < CACHE_TTL && !req.query.force) {
+    // 캐시 히트 (인메모리, 1시간) — force/debug 시 무시하고 실제 호출
+    if (_cache && Date.now() - _cacheAt < CACHE_TTL && !req.query.force && !req.query.debug) {
       return res.json({ ...(_cache), cached: true });
     }
 
     const key = process.env.UNIPASS_API_KEY;
+    const debug = !!req.query.debug;
+
     if (!key) {
+      if (debug) return res.json({ diag: true, keyPresent: false, endpoint: ENDPOINT,
+        envSampleNames: Object.keys(process.env).filter(k => /UNIPASS|UNI_PASS|CUSTOMS/i.test(k)),
+        note: 'UNIPASS_API_KEY 환경변수 없음' });
       return res.status(503).json({
-        error: 'UNIPASS_API_KEY 미설정 — Vercel 환경변수에 추가 필요 (공공데이터포털 → 관세청 UNI-PASS 인증키)',
+        error: 'UNIPASS_API_KEY 미설정 — Vercel 환경변수에 추가 필요',
         hint: 'mock_fallback'
       });
     }
 
     const dateParam = (req.query.date || new Date().toISOString().slice(0, 10)).replace(/-/g, '');
     const url = `${ENDPOINT}?crkyCn=${encodeURIComponent(key)}&aplyBgnDt=${dateParam}&imexTp=2`;
+    const maskedUrl = `${ENDPOINT}?crkyCn=${key.slice(0, 6)}...(${key.length}자)&aplyBgnDt=${dateParam}&imexTp=2`;
 
-    const r = await fetch(url, { method: 'GET' });
-    const xml = await r.text();
-    const parsed = parseUnipassXml(xml);
+    // fetch를 개별 try/catch — 네트워크/TLS 실패(fetch failed)도 진단에 노출
+    let r = null, xml = '', fetchErr = null;
+    try {
+      r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(10000) });
+      xml = await r.text();
+    } catch (e) {
+      fetchErr = {
+        message: e.message,
+        name: e.name,
+        cause: e.cause ? { code: e.cause.code, errno: e.cause.errno, syscall: e.cause.syscall, message: e.cause.message } : null,
+      };
+    }
 
-    // 진단 모드 — ?debug=1 (사장님이 원본/파싱 결과 확인용, 인증키 노출 X)
-    if (req.query.debug) {
+    const parsed = r ? parseUnipassXml(xml) : { rates: {}, raw: {}, itemCount: 0, aplyStart: '', aplyEnd: '' };
+
+    // 진단 모드 — fetch 실패까지 포함하여 노출 (인증키는 앞 6자만)
+    if (debug) {
       return res.json({
-        diag: true, httpStatus: r.status, keyPresent: !!key,
+        diag: true, keyPresent: true, keyLength: key.length, keyPrefix: key.slice(0, 6) + '...',
+        endpoint: ENDPOINT, maskedUrl,
+        httpStatus: r ? r.status : null,
+        fetchError: fetchErr,
         itemCount: parsed.itemCount, rawCurrencies: parsed.raw, mappedRates: parsed.rates,
         aply: parsed.aplyStart + '~' + parsed.aplyEnd,
         xmlHead: xml.slice(0, 1000),
       });
     }
 
+    if (fetchErr) {
+      return res.status(502).json({
+        error: 'UNI-PASS 연결 실패: ' + fetchErr.message + (fetchErr.cause ? ' (' + fetchErr.cause.code + ')' : ''),
+        hint: 'mock_fallback',
+      });
+    }
     if (!r.ok) throw new Error('UNI-PASS HTTP ' + r.status);
     if (!parsed.itemCount) {
       console.warn('UNI-PASS empty/unrecognized response (head 500):', xml.slice(0, 500));
