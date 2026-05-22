@@ -173,6 +173,51 @@ async function adminToggleAgent(agentId, active) {
   return Array.isArray(data) ? data[0] : data;
 }
 
+// ===== 계획 1단계: 비밀번호 방식 (매직링크 admin_invite와 공존 — 롤백 경로 유지) =====
+// 이메일로 auth 사용자 조회 (admin API)
+async function findAuthUserByEmail(email) {
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?filter=email=eq.${encodeURIComponent(email)}`, {
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
+  });
+  const data = await r.json();
+  return (data.users || [])[0] || null;
+}
+
+// 기존 auth 사용자 비밀번호 설정/재설정 (admin API) — email_confirm:true로 비번 로그인 가능 보장
+async function adminSetUserPassword(userId, password) {
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+    method: 'PUT',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password, email_confirm: true }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error('비밀번호 설정 실패: ' + JSON.stringify(data));
+  return data;
+}
+
+// 비밀번호 포함 관세사 신규 생성 (이미 존재하면 비번만 설정) + customs_agents 등록(active:true)
+async function adminCreateAgentWithPassword(email, name, password) {
+  const r1 = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { name } }),
+  });
+  const auth = await r1.json();
+  if (!r1.ok) {
+    const exists = r1.status === 422 || /already|exist|registered/i.test(auth.msg || auth.error_description || auth.error || '');
+    if (exists) {
+      const existing = await findAuthUserByEmail(email);
+      if (!existing) throw new Error('생성 실패 + 기존 사용자 조회 실패: ' + JSON.stringify(auth));
+      await adminSetUserPassword(existing.id, password);   // 기존 계정에 비밀번호 부여
+      return await upsertCustomsAgent(existing.id, email, name);
+    }
+    throw new Error('Supabase 사용자 생성 실패: ' + (auth.msg || auth.error_description || auth.error || r1.status));
+  }
+  const userId = auth.id || (auth.user && auth.user.id);
+  if (!userId) throw new Error('생성 응답에 user.id 없음');
+  return await upsertCustomsAgent(userId, email, name);
+}
+
 module.exports = async (req, res) => {
   if (handleCors(req, res)) return;
   try {
@@ -197,6 +242,28 @@ module.exports = async (req, res) => {
           if (!agentId) return res.status(400).json({ error: 'agentId 필수' });
           const agent = await adminToggleAgent(agentId, !!active);
           return res.json({ ok: true, agent });
+        }
+        // 계획 1단계: 비밀번호 포함 신규 생성 (매직링크 admin_invite와 공존)
+        if (body.op === 'admin_create') {
+          const { email, name, password } = body;
+          if (!email) return res.status(400).json({ error: 'email 필수' });
+          if (!password || String(password).length < 6) return res.status(400).json({ error: 'password 6자 이상 필수' });
+          const agent = await adminCreateAgentWithPassword(String(email).trim().toLowerCase(), name || null, String(password));
+          return res.json({ ok: true, agent });
+        }
+        // 계획 1단계: 기존 관세사 비밀번호 설정/재설정 (강지훈 등 기존 계정 마이그레이션용)
+        if (body.op === 'admin_set_password') {
+          const { email, agentId, password } = body;
+          if (!password || String(password).length < 6) return res.status(400).json({ error: 'password 6자 이상 필수' });
+          let userId = agentId, agentEmail = email;
+          if (!userId) {
+            if (!email) return res.status(400).json({ error: 'email 또는 agentId 필요' });
+            const u = await findAuthUserByEmail(String(email).trim().toLowerCase());
+            if (!u) return res.status(404).json({ error: '해당 이메일의 사용자 없음' });
+            userId = u.id; agentEmail = u.email;
+          }
+          await adminSetUserPassword(userId, String(password));
+          return res.json({ ok: true, userId, email: agentEmail });
         }
       }
       return res.status(400).json({ error: 'Unknown admin op' });
