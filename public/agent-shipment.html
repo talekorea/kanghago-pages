@@ -246,8 +246,9 @@
       const imgUrl = (f['상품이미지'] && f['상품이미지'][0] && (f['상품이미지'][0].thumbnails?.large?.url || f['상품이미지'][0].url))
         || f['이미지URL'] || '';
       const link1688 = f['제품링크'] || f['1688URL'] || '';
+      // 디자인: 이미지 크게(식별 가능) + 클릭 시 1688/타오바오 원본 새 탭(noopener). 링크 없으면 클릭 없음.
       const imgCell = imgUrl
-        ? `<img src="${escapeAttr(imgUrl)}" style="width:56px;height:56px;object-fit:cover;border-radius:5px;cursor:pointer;" onclick="window.open('${escapeAttr(imgUrl)}','_blank')" onerror="this.style.display='none';this.insertAdjacentText('afterend','—');" />`
+        ? `<img src="${escapeAttr(imgUrl)}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;${link1688 ? 'cursor:pointer;' : ''}"${link1688 ? ` onclick="window.open('${escapeAttr(link1688)}','_blank','noopener')" title="1688/타오바오 상품 페이지"` : ''} onerror="this.style.display='none';this.insertAdjacentText('afterend','—');" />`
         : '<span style="color:#bbb;font-size:11px;">—</span>';
       // 2단계: 1688 URL/짧은 링크 → "제품 확인" 버튼 (새 탭, rel=noopener). 링크 없으면 회색 표시.
       const linkCell = link1688
@@ -255,8 +256,8 @@
         : `<span style="display:block;margin-top:3px;font-size:10px;color:#bbb;">링크 없음</span>`;
       return `<tr data-id="${p.id}" data-idx="${idx}">
         <td>${idx + 1}</td>
-        <td style="text-align:center;">${imgCell}${linkCell}</td>
-        <td style="font-family:'SF Mono',Consolas,monospace; font-size:11px;">${escapeHtml(f['상품ID'] || '-')}</td>
+        <td style="text-align:center;">${imgCell}</td>
+        <td style="font-family:'SF Mono',Consolas,monospace; font-size:11px;">${escapeHtml(f['상품ID'] || '-')}<br/>${linkCell}</td>
         <td><input data-field="Description" value="${escapeAttr(f['Description'] || '')}" placeholder="영문명" /></td>
         <td><input data-field="HS코드" value="${escapeAttr(f['HS코드'] || '')}" placeholder="0000.00-0000" /></td>
         <td><input data-field="Material" value="${escapeAttr(f['Material'] || '')}" placeholder="재질" /></td>
