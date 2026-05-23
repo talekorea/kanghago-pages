@@ -193,6 +193,24 @@
     return String(s).trim();
   }
 
+  // 필수 입력 검증: HS코드 + 세율3개(기본/한중/아태) 빈칸 목록. 0은 유효(통과), '' 또는 미입력만 누락.
+  // 영문명(Description)·재질(Material)은 필수 아님.
+  function emptyRequiredFields(tr) {
+    const need = [
+      ['HS코드', 'input[data-field="HS코드"]'],
+      ['기본세율', 'input[data-field="기본세율"]'],
+      ['한중세율(FTA_한중)', 'input[data-field="FTA_한중"]'],
+      ['아태세율', 'input[data-field="아태세율"]'],
+    ];
+    const missing = [];
+    need.forEach(([label, sel]) => {
+      const inp = tr.querySelector(sel);
+      const v = inp ? String(inp.value).trim() : '';
+      if (v === '') missing.push({ label, inp });   // '0'은 trim 후 '0' → 통과. 빈칸만 누락.
+    });
+    return missing;
+  }
+
   function recomputeRowFta(tr) {
     if (!tr) return;
     const num = (sel) => { const v = parseFloat((tr.querySelector(sel) || {}).value); return isNaN(v) ? null : v; };
@@ -338,6 +356,10 @@
     });
     updateGroupHsSummary(gk);
     if (pids.length) await autoSaveHs(pids, value);   // 즉시 자동 저장
+    // HS 일괄은 HS코드만 채움 → 세율 빈 제품(추천 클릭/직접 입력 필요) 주황 강조
+    rows.forEach(r => {
+      emptyRequiredFields(r).filter(m => m.label !== 'HS코드').forEach(m => { if (m.inp) m.inp.style.borderColor = '#e8a04c'; });
+    });
   };
 
   function renderProducts() {
@@ -520,6 +542,16 @@
   window.saveRow = async (pid) => {
     const tr = document.querySelector(`tr[data-id="${pid}"]`);
     if (!tr) return;
+    // ★ 필수 입력 검증: HS코드 + 세율3개 빈칸이면 저장 차단(0은 통과). 영문명/재질은 필수 아님.
+    const missing = emptyRequiredFields(tr);
+    if (missing.length) {
+      missing.forEach(m => { if (m.inp) m.inp.style.borderColor = '#c0392b'; });
+      toast('필수 입력 누락: ' + missing.map(m => m.label).join(', '), 'err');
+      return;
+    }
+    // 통과 — 필수 칸 강조 리셋
+    tr.querySelectorAll('input[data-field="HS코드"],input[data-field="기본세율"],input[data-field="FTA_한중"],input[data-field="아태세율"]')
+      .forEach(i => { i.style.borderColor = ''; });
     const fields = {};
     tr.querySelectorAll('input, select').forEach(inp => {
       const key = inp.dataset.field;
