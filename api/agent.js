@@ -470,6 +470,12 @@ module.exports = async (req, res) => {
         if (Object.keys(safe).length === 0) {
           return res.status(400).json({ error: '허용 필드 없음', rejected });
         }
+        // 영문명 두 필드 일치: Description 변경 시 통관품명_영문도 같은 값으로 동기화.
+        // (인보이스 도구가 통관품명_영문≠Description일 때 Description을 옛값으로 되돌리던 파괴 방지)
+        // Description을 안 바꾸는 저장이면 통관품명_영문도 안 건드림(불필요한 덮어쓰기 방지).
+        if (safe['Description'] !== undefined && safe['통관품명_영문'] === undefined) {
+          safe['통관품명_영문'] = safe['Description'];
+        }
         // 사서함 상태 검증
         const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
         if (!['관세사확정대기', '관세사확정완료'].includes(ship.fields['상태'])) {
