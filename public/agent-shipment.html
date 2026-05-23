@@ -183,6 +183,16 @@
   }
 
   // G4: 세율 입력 변경 → 추천 재계산 + 드롭다운 라벨/선택/색상 갱신
+  // 수정 A: HS코드 형식 마스킹 (인보이스 도구 normalizeHsCode와 동일). 숫자10→NNNN.NN-NNNN, 6→NNNN.NN.
+  //   멱등 — 이미 형식이면(6115.96-0000) 그대로(digits 10자리라 동일 결과). split 아님.
+  function normalizeHsCode(s) {
+    if (!s) return '';
+    const digits = String(s).replace(/\D/g, '');
+    if (digits.length === 10) return digits.slice(0, 4) + '.' + digits.slice(4, 6) + '-' + digits.slice(6, 10);
+    if (digits.length === 6) return digits.slice(0, 4) + '.' + digits.slice(4, 6);
+    return String(s).trim();
+  }
+
   function recomputeRowFta(tr) {
     if (!tr) return;
     const num = (sel) => { const v = parseFloat((tr.querySelector(sel) || {}).value); return isNaN(v) ? null : v; };
@@ -427,8 +437,9 @@
     tbody.addEventListener('change', (e) => {
       const inp = e.target;
       if (inp.matches && inp.matches('input[data-field="HS코드"]')) {
+        inp.value = normalizeHsCode(inp.value);   // 수정 A: 0000.00-0000 형식 마스킹 (저장 전 정리)
         const trg = inp.closest('tr'); const pid = trg && trg.dataset.id;
-        if (pid) autoSaveHs([pid], (inp.value || '').trim());
+        if (pid) autoSaveHs([pid], inp.value);
       }
     });
     document.addEventListener('click', (e) => {
@@ -514,6 +525,7 @@
       const key = inp.dataset.field;
       let val = inp.value.trim();
       if (inp.type === 'number') val = val === '' ? null : parseFloat(val);
+      if (key === 'HS코드') { val = normalizeHsCode(val); inp.value = val; }   // 수정 A: 저장 시 형식 보장
       fields[key] = val;
     });
     // 관세사확정 = true 추가 (저장 시 자동 확정 토글)
@@ -543,7 +555,14 @@
       // 갱신: 확정 표시
       const p = products.find(p => p.id === pid);
       if (p) Object.assign(p.fields, r.updated);
-      renderProducts();
+      // 수정 B: 전체 renderProducts() 대신 그 행만 갱신 → 그룹 펼침/스크롤 유지(작업 화면에 머무름)
+      const actCell = tr.querySelector('td:last-child');
+      if (actCell && !actCell.querySelector('.confirmed')) {
+        const badge = document.createElement('span');
+        badge.className = 'confirmed';
+        badge.textContent = '✓ 확정됨';
+        actCell.insertBefore(badge, actCell.firstChild);
+      }
     } catch (e) {
       toast('❌ ' + e.message, 'err');
     }
