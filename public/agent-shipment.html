@@ -222,10 +222,119 @@
     }
   };
 
+  // ===== 제품 그룹핑 + 접기/펴기 + HS 일괄 (인보이스 도구 로직 이식, 이 페이지 문자열 방식) =====
+  function groupKeyOf(productId) {
+    const s = String(productId == null ? '' : productId);
+    const i = s.indexOf('_');
+    return i > 0 ? s.slice(0, i) : '__기타';
+  }
+  function buildGroupedOrder(prods) {
+    const map = new Map();
+    (prods || []).forEach(p => {
+      const gk = groupKeyOf((p.fields || {})['상품ID']);
+      if (!map.has(gk)) map.set(gk, []);
+      map.get(gk).push(p);
+    });
+    const keys = [...map.keys()].sort((a, b) => {
+      if (a === '__기타') return 1; if (b === '__기타') return -1;
+      const na = parseInt(a, 10), nb = parseInt(b, 10);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;   // 주문번호 숫자 오름차순(과거 위)
+      return String(a).localeCompare(String(b));
+    });
+    const out = []; keys.forEach(k => map.get(k).forEach(p => out.push(p))); return out;
+  }
+  function _gsel(gk) { return (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(gk) : gk; }
+  function summarizeGroupHs(values) {
+    const codes = (values || []).map(v => (v || '').trim()).filter(Boolean);
+    if (!codes.length) return '';
+    const uniq = [...new Set(codes)];
+    return uniq.length === 1 ? uniq[0] : '혼합';
+  }
+  function buildGroupHeaderHtml(gk, ordered) {
+    const items = ordered.filter(p => groupKeyOf((p.fields || {})['상품ID']) === gk);
+    const label = gk === '__기타' ? '기타/미분류' : gk;
+    const hs = summarizeGroupHs(items.map(p => (p.fields || {})['HS코드'] || ''));
+    return `<tr class="group-header" data-group-header="${gk}" style="cursor:pointer; background:var(--ivory);" onclick="toggleGroup('${gk}')">`
+      + `<td colspan="11" style="font-weight:700; padding:9px 12px; border-top:2px solid var(--gold);">`
+      +   `<span style="float:right; font-weight:400; display:inline-flex; gap:4px; align-items:center;" onclick="event.stopPropagation();">`
+      +     `<input class="grp-hs-input" data-grp="${gk}" placeholder="HS 일괄 (0000.00-0000)" style="width:150px; font-size:12px; padding:2px 6px; border:1px solid #ccc; border-radius:4px;" onclick="event.stopPropagation();" onkeydown="if(event.key==='Enter'){event.preventDefault();event.stopPropagation();applyGroupHs('${gk}');}" />`
+      +     `<button type="button" onclick="event.stopPropagation(); applyGroupHs('${gk}');" style="font-size:11px; padding:3px 9px; background:var(--gold); color:#fff; border:none; border-radius:4px; cursor:pointer;">HS 일괄</button>`
+      +   `</span>`
+      +   `<span class="grp-arrow" data-arrow="${gk}" style="display:inline-block; width:16px; color:var(--gold);">▶</span> `
+      +   `주문 <span style="font-family:'SF Mono',monospace;">${label}</span>`
+      +   `<span style="color:#888; font-weight:400; margin-left:8px; font-size:12px;">· 제품 ${items.length}건</span>`
+      +   `<span data-group-hs-summary="${gk}" style="font-weight:600; margin-left:10px; font-size:12px; color:${hs ? 'var(--navy)' : '#bbb'};">${hs ? 'HS ' + escapeHtml(hs) : ''}</span>`
+      + `</td></tr>`;
+  }
+  window.toggleGroup = (gk) => {
+    const sel = _gsel(gk);
+    const rows = document.querySelectorAll(`#prodBody tr[data-group="${sel}"]`);
+    const arrow = document.querySelector(`#prodBody [data-arrow="${sel}"]`);
+    if (!rows.length) return;
+    const collapsed = rows[0].style.display === 'none';
+    rows.forEach(r => r.style.display = collapsed ? '' : 'none');
+    if (arrow) arrow.textContent = collapsed ? '▼' : '▶';
+  };
+  function updateGroupHsSummary(gk) {
+    if (gk == null) return;
+    const sel = _gsel(gk);
+    const rows = document.querySelectorAll(`#prodBody tr[data-group="${sel}"]`);
+    const vals = [...rows].map(r => { const i = r.querySelector('input[data-field="HS코드"]'); return i ? i.value : ''; });
+    const span = document.querySelector(`#prodBody [data-group-hs-summary="${sel}"]`);
+    if (span) { const hs = summarizeGroupHs(vals); span.textContent = hs ? 'HS ' + hs : ''; span.style.color = hs ? 'var(--navy)' : '#bbb'; }
+  }
+  function setHsStatus(pid, status, msg) {
+    const tr = document.querySelector(`#prodBody tr[data-id="${_gsel(pid)}"]`);
+    const inp = tr ? tr.querySelector('input[data-field="HS코드"]') : null;
+    if (!inp) return;
+    if (status === 'saving') { inp.style.borderColor = '#e8a04c'; inp.title = 'HS 저장 중...'; }
+    else if (status === 'saved') { inp.style.borderColor = '#1b5e20'; inp.title = '저장됨 ✓'; setTimeout(() => { inp.style.borderColor = ''; inp.title = ''; }, 1500); }
+    else if (status === 'error') { inp.style.borderColor = '#c0392b'; inp.title = 'HS 저장 실패: ' + (msg || ''); }
+  }
+  // HS코드만 PATCH(op=product_patch). saveRow와 달리 재렌더 안 함 → 그룹 접힘 유지. 다른 필드 안 건드림.
+  async function autoSaveHs(pids, hsValue) {
+    if (!Array.isArray(pids) || !pids.length || !shipment) return;
+    let gk = null;
+    for (const pid of pids) {
+      const p = products.find(x => x.id === pid);
+      if (!p) continue;
+      gk = groupKeyOf(p.fields['상품ID']);
+      setHsStatus(pid, 'saving');
+      try {
+        const r = await api('POST', '', { op: 'product_patch', shipmentId: shipment.id, productId: pid, fields: { 'HS코드': hsValue } });
+        if (r.updated) Object.assign(p.fields, r.updated);
+        setHsStatus(pid, 'saved');
+      } catch (e) {
+        setHsStatus(pid, 'error', e.message);
+        toast('HS 저장 실패: ' + e.message, 'err');
+      }
+    }
+    if (gk != null) updateGroupHsSummary(gk);
+  }
+  window.applyGroupHs = async (gk) => {
+    const input = document.querySelector(`#prodBody .grp-hs-input[data-grp="${_gsel(gk)}"]`);
+    const value = ((input && input.value) || '').trim();
+    if (!value) { toast('HS코드를 입력하세요', 'err'); return; }
+    const rows = document.querySelectorAll(`#prodBody tr[data-group="${_gsel(gk)}"]`);
+    const pids = [];
+    rows.forEach(r => {
+      const inp = r.querySelector('input[data-field="HS코드"]');
+      if (inp) { inp.value = value; inp.classList.add('modified'); }
+      if (r.dataset.id) pids.push(r.dataset.id);
+    });
+    updateGroupHsSummary(gk);
+    if (pids.length) await autoSaveHs(pids, value);   // 즉시 자동 저장
+  };
+
   function renderProducts() {
     const tbody = document.getElementById('prodBody');
-    tbody.innerHTML = products.map((p, idx) => {
+    const ordered = buildGroupedOrder(products);
+    let _curGroup = null, _seqInGroup = 0, _html = '';
+    ordered.forEach((p) => {
       const f = p.fields || {};
+      const _gk = groupKeyOf(f['상품ID']);
+      if (_gk !== _curGroup) { _curGroup = _gk; _seqInGroup = 0; _html += buildGroupHeaderHtml(_gk, ordered); }
+      _seqInGroup++;
       const confirmed = !!f['관세사확정'];
       const baseR = (typeof f['기본세율'] === 'number') ? f['기본세율'] : null;
       const kcR = (typeof f['FTA_한중'] === 'number') ? f['FTA_한중'] : null;
@@ -254,8 +363,8 @@
       const linkCell = link1688
         ? `<a href="${escapeAttr(link1688)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:3px;font-size:10px;padding:2px 6px;border:1px solid var(--gold);border-radius:4px;color:var(--gold);text-decoration:none;">제품 확인 ↗</a>`
         : `<span style="display:block;margin-top:3px;font-size:10px;color:#bbb;">링크 없음</span>`;
-      return `<tr data-id="${p.id}" data-idx="${idx}">
-        <td>${idx + 1}</td>
+      _html += `<tr data-id="${p.id}" data-group="${_gk}" style="display:none;">
+        <td>${_seqInGroup}</td>
         <td style="text-align:center;">${imgCell}</td>
         <td style="font-family:'SF Mono',Consolas,monospace; font-size:11px;">${escapeHtml(f['상품ID'] || '-')}<br/>${linkCell}</td>
         <td><input data-field="Description" value="${escapeAttr(f['Description'] || '')}" placeholder="영문명" /></td>
@@ -279,7 +388,8 @@
           <button class="save-btn" onclick="saveRow('${p.id}')">💾 저장</button>
         </td>
       </tr>`;
-    }).join('');
+    });
+    tbody.innerHTML = _html;
     // 변경 표시
     tbody.querySelectorAll('input, select').forEach(inp => {
       const orig = inp.value;
@@ -301,9 +411,21 @@
         recomputeRowFta(inp.closest('tr'));
         return;
       }
+      // HS코드 개별 수정 → 그룹 헤더 HS요약 즉시 갱신
+      if (inp.matches('input[data-field="HS코드"]')) {
+        const trg = inp.closest('tr'); if (trg) updateGroupHsSummary(trg.dataset.group);
+      }
       if (!(inp.matches('input[data-field="Description"]') || inp.matches('input[data-field="HS코드"]'))) return;
       clearTimeout(_acTimer);
       _acTimer = setTimeout(() => agentSearchSuggest(inp), 450);
+    });
+    // HS코드 개별 수정 자동 저장 (blur 시 1회 — HS코드만 PATCH, 자동완성 검색(input)과 분리)
+    tbody.addEventListener('change', (e) => {
+      const inp = e.target;
+      if (inp.matches && inp.matches('input[data-field="HS코드"]')) {
+        const trg = inp.closest('tr'); const pid = trg && trg.dataset.id;
+        if (pid) autoSaveHs([pid], (inp.value || '').trim());
+      }
     });
     document.addEventListener('click', (e) => {
       if (e.target.closest('.agent-suggest-dd')) return;
