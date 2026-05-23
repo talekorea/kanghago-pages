@@ -96,6 +96,101 @@ async function logAction(agent, shipmentId, productId, before, after) {
   } catch (e) { console.warn('[agent] audit log 실패:', e.message); }
 }
 
+// ===== 학습 엔진 (관세사 확정 시 ProductHistory + HSMapping 누적) =====
+// 인보이스 도구 learnFromConfirmation + saveAll hsToUpsert 규칙을 백엔드로 이식.
+// 학습은 부가 작업 — 실패해도 product_patch(Products 저장)는 성공 유지(throw 안 함).
+const AIRTABLE_PAT = process.env.AIRTABLE_PAT;
+
+// HS 키: 인보이스 도구 makeHsKey와 동일 정규화 (영문명 끝 슬래시 무시 + 소문자, 재질 소문자)
+function makeHsKey(description, material) {
+  const d = String(description || '').replace(/\s*\/\s*$/, '').trim().toLowerCase();
+  const m = String(material || '').trim().toLowerCase();
+  return d + '|' + m;
+}
+
+// ProductHistory 테이블 ID — _lib TABLES에 없어 meta API로 1회 발견 + 모듈 캐시
+let _phTableId;   // undefined=미조회, null=없음, 'tbl..'=발견
+async function getProductHistoryTableId() {
+  if (_phTableId !== undefined) return _phTableId;
+  try {
+    const r = await fetch(`https://api.airtable.com/v0/meta/bases/${BASE_ID}/tables`, {
+      headers: { 'Authorization': `Bearer ${AIRTABLE_PAT}` },
+    });
+    if (!r.ok) { _phTableId = null; return null; }
+    const meta = await r.json();
+    const t = (meta.tables || []).find(x => x.name === 'ProductHistory');
+    _phTableId = t ? t.id : null;
+  } catch (e) { console.warn('[learn] ProductHistory ID 조회 실패:', e.message); _phTableId = null; }
+  return _phTableId;
+}
+
+async function learnFromConfirmation(pd) {
+  // 1) ProductHistory upsert (제품링크 키 / 사용횟수+1 / 한국어명 변형은 별칭 누적)
+  try {
+    const phId = await getProductHistoryTableId();
+    if (phId) {
+      const today = new Date().toISOString().slice(0, 10);
+      const link = String(pd.제품링크 || '').trim();
+      let existing = null;
+      if (link) {
+        const f = `{제품링크}='${link.replace(/'/g, "\\'")}'`;
+        const recs = await atListAll(`/${phId}?filterByFormula=${encodeURIComponent(f)}&maxRecords=1`);
+        existing = recs[0] || null;
+      }
+      const fields = {
+        '제품링크': link,
+        '한국어명': pd.한국어명 || '',
+        '영문명': pd.영문명 || '',
+        'HS코드': pd.HS코드 || '',
+        'Material': pd.Material || '',
+        '적용FTA': pd.적용FTA || '없음',
+        '마지막사용일': today,
+        '확정한관세사': pd.관세사 || '',
+      };
+      if (existing) {
+        const ef = existing.fields || {};
+        if (pd.한국어명 && pd.한국어명 !== ef['한국어명']) {
+          const aliases = (ef['한국어명_별칭'] || '').split('\n').filter(Boolean);
+          if (ef['한국어명'] && !aliases.includes(ef['한국어명'])) aliases.push(ef['한국어명']);
+          fields['한국어명_별칭'] = aliases.join('\n');
+        }
+        fields['사용횟수'] = (ef['사용횟수'] || 0) + 1;
+        await atRequest('PATCH', `/${phId}/${existing.id}`, { fields, typecast: true });
+      } else {
+        fields['사용횟수'] = 1;
+        fields['첫사용일'] = today;
+        await atRequest('POST', `/${phId}`, { fields, typecast: true });
+      }
+    }
+  } catch (e) { console.warn('[learn] ProductHistory 누적 실패:', e.message); }
+
+  // 2) HSMapping upsert (키=영문명+재질 → HS코드 + 세율 기본/한중/RCEP/아태). 사용횟수는 보존(performUpsert는 제공 필드만 갱신)
+  try {
+    const desc = String(pd.영문명 || '').trim();
+    const code = String(pd.HS코드 || '').trim();
+    if (desc && code) {
+      const fields = {
+        '키': makeHsKey(desc, pd.Material),
+        'Description': desc,
+        'Material': pd.Material || '',
+        'HS코드': code,
+        '통관품명_한글': pd.한국어명 || '',
+        '마지막사용일': new Date().toISOString().slice(0, 10),
+      };
+      // 세율: 값 있을 때만 (아태세율 포함, RCEP와 분리 — 각자 자기 키)
+      if (pd.기본세율 != null && pd.기본세율 !== '') fields['기본세율'] = parseFloat(pd.기본세율);
+      if (pd.FTA_한중 != null && pd.FTA_한중 !== '') fields['FTA_한중'] = parseFloat(pd.FTA_한중);
+      if (pd.FTA_RCEP중국 != null && pd.FTA_RCEP중국 !== '') fields['FTA_RCEP중국'] = parseFloat(pd.FTA_RCEP중국);
+      if (pd.아태세율 != null && pd.아태세율 !== '') fields['아태세율'] = parseFloat(pd.아태세율);
+      await atRequest('PATCH', `/${TABLES.HSMapping}`, {
+        performUpsert: { fieldsToMergeOn: ['키'] },
+        typecast: true,
+        records: [{ fields }],
+      });
+    }
+  } catch (e) { console.warn('[learn] HSMapping 누적 실패:', e.message); }
+}
+
 // ===== Stage 2: 관리자(사장님) op — Authorization: Admin <ADMIN_INVITE_TOKEN> =====
 const ADMIN_TOKEN = process.env.ADMIN_INVITE_TOKEN;
 
@@ -390,6 +485,21 @@ module.exports = async (req, res) => {
         });
         // 감사 로그
         await logAction(agent, shipmentId, productId, beforeSafe, safe);
+        // 학습 누적: 관세사 확정값이면 ProductHistory + HSMapping에 upsert (부가 작업 — 실패해도 저장은 성공)
+        const uf = updated.fields || {};
+        const bf = before.fields || {};
+        if (uf['관세사확정'] === true) {
+          await learnFromConfirmation({
+            제품링크: bf['제품링크'],                              // 화이트리스트 외 — 기존 Products 값
+            한국어명: bf['통관품명_한글'],                          // 화이트리스트 외 — 기존 Products 값
+            영문명: uf['Description'] || uf['통관품명_영문'],        // 확정값
+            HS코드: uf['HS코드'],
+            Material: uf['Material'],
+            적용FTA: uf['적용FTA'],
+            기본세율: uf['기본세율'], FTA_한중: uf['FTA_한중'], FTA_RCEP중국: uf['FTA_RCEP중국'], 아태세율: uf['아태세율'],
+            관세사: agent.email,
+          });
+        }
         return res.json({ ok: true, updated: updated.fields, rejected });
       }
 
