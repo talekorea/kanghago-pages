@@ -211,6 +211,26 @@
     return missing;
   }
 
+  // 빈 칸일 때만 채움(관세사가 직접 입력한 값은 보호 — 덮어쓰기 안 함)
+  function setRateIfEmpty(tr, sel, val) {
+    const i = tr.querySelector(sel);
+    if (i && val != null && val !== '' && String(i.value).trim() === '') i.value = val;
+  }
+  // HS코드 → HSMapping 세율 자동 채움 (그 행의 빈 세율/영문명 칸만). 신규 HS(rates 없음)면 빈 채로 → 필수검증이 막음.
+  async function fillRatesByHs(tr, code) {
+    if (!tr || !code) return;
+    try {
+      const rr = await api('GET', '?op=hs_rates&code=' + encodeURIComponent(code));
+      const rt = rr && rr.rates;
+      if (!rt) return;
+      setRateIfEmpty(tr, 'input[data-field="기본세율"]', rt.기본세율);
+      setRateIfEmpty(tr, 'input[data-field="FTA_한중"]', rt.FTA_한중);
+      setRateIfEmpty(tr, 'input[data-field="아태세율"]', rt.아태세율);
+      if (rr.description) setRateIfEmpty(tr, 'input[data-field="Description"]', rr.description);
+      updateGroupHsSummary(tr.dataset.group);
+    } catch (e) { /* 조회 실패해도 무시(관세사 직접 입력 가능) */ }
+  }
+
   function recomputeRowFta(tr) {
     if (!tr) return;
     const num = (sel) => { const v = parseFloat((tr.querySelector(sel) || {}).value); return isNaN(v) ? null : v; };
@@ -345,8 +365,9 @@
   }
   window.applyGroupHs = async (gk) => {
     const input = document.querySelector(`#prodBody .grp-hs-input[data-grp="${_gsel(gk)}"]`);
-    const value = ((input && input.value) || '').trim();
+    let value = ((input && input.value) || '').trim();
     if (!value) { toast('HS코드를 입력하세요', 'err'); return; }
+    value = normalizeHsCode(value);   // 수정 A: 일괄 HS도 0000.00-0000 형식
     const rows = document.querySelectorAll(`#prodBody tr[data-group="${_gsel(gk)}"]`);
     const pids = [];
     rows.forEach(r => {
@@ -355,8 +376,19 @@
       if (r.dataset.id) pids.push(r.dataset.id);
     });
     updateGroupHsSummary(gk);
-    if (pids.length) await autoSaveHs(pids, value);   // 즉시 자동 저장
-    // HS 일괄은 HS코드만 채움 → 세율 빈 제품(추천 클릭/직접 입력 필요) 주황 강조
+    if (pids.length) await autoSaveHs(pids, value);   // 즉시 자동 저장(HS코드)
+    // ② HS→세율 자동 채움: 1회 조회 → 그룹 각 제품의 빈 세율/영문명 칸만 채움(관세사 입력값 보호)
+    try {
+      const rr = await api('GET', '?op=hs_rates&code=' + encodeURIComponent(value));
+      const rt = rr && rr.rates;
+      if (rt) rows.forEach(r => {
+        setRateIfEmpty(r, 'input[data-field="기본세율"]', rt.기본세율);
+        setRateIfEmpty(r, 'input[data-field="FTA_한중"]', rt.FTA_한중);
+        setRateIfEmpty(r, 'input[data-field="아태세율"]', rt.아태세율);
+        if (rr.description) setRateIfEmpty(r, 'input[data-field="Description"]', rr.description);
+      });
+    } catch (e) { /* 신규 HS 등 — 세율 빈 채로(필수검증이 막음) */ }
+    // 세율 여전히 빈 제품(신규 HS 등) 주황 강조 → 관세사 직접 입력 유도
     rows.forEach(r => {
       emptyRequiredFields(r).filter(m => m.label !== 'HS코드').forEach(m => { if (m.inp) m.inp.style.borderColor = '#e8a04c'; });
     });
@@ -461,6 +493,7 @@
       if (inp.matches && inp.matches('input[data-field="HS코드"]')) {
         inp.value = normalizeHsCode(inp.value);   // 수정 A: 0000.00-0000 형식 마스킹 (저장 전 정리)
         const trg = inp.closest('tr'); const pid = trg && trg.dataset.id;
+        if (trg) fillRatesByHs(trg, inp.value);   // ② HS→세율 자동 채움 (그 행 빈 칸만)
         if (pid) autoSaveHs([pid], inp.value);
       }
     });

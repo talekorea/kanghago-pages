@@ -414,6 +414,29 @@ module.exports = async (req, res) => {
         });
         return res.json({ products: safe });
       }
+      if (op === 'hs_rates') {
+        // HS코드 → HSMapping 세율 조회 (학습값 재사용). 세율 있는 행 우선, 사용횟수 많은 것.
+        const code = String(req.query.code || '').trim();
+        if (!code) return res.json({ rates: null });
+        const f = `{HS코드}='${code.replace(/'/g, "\\'")}'`;
+        let recs = [];
+        try { recs = await atListAll(`/${TABLES.HSMapping}?filterByFormula=${encodeURIComponent(f)}`); }
+        catch (e) { console.warn('[agent hs_rates]', e.message); }
+        const withRates = recs.map(r => r.fields)
+          .filter(rf => rf['기본세율'] != null || rf['FTA_한중'] != null || rf['아태세율'] != null)
+          .sort((a, b) => (b['사용횟수'] || 0) - (a['사용횟수'] || 0));
+        const rf = withRates[0] || (recs[0] && recs[0].fields);
+        if (!rf) return res.json({ rates: null });
+        return res.json({
+          rates: {
+            기본세율: rf['기본세율'] ?? null,
+            FTA_한중: rf['FTA_한중'] ?? null,
+            FTA_RCEP중국: rf['FTA_RCEP중국'] ?? null,
+            아태세율: rf['아태세율'] ?? null,
+          },
+          description: rf['Description'] || rf['통관품명_영문'] || null,
+        });
+      }
       if (op === 'shipment') {
         const shipId = req.query.id;
         if (!shipId || !shipId.startsWith('rec')) return res.status(400).json({ error: 'Invalid shipment id' });
