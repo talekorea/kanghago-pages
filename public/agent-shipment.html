@@ -51,6 +51,10 @@
   .toast { position:fixed; top:20px; right:20px; padding:12px 16px; border-radius:6px;
     color:#fff; font-weight:600; font-size:13px; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.2); }
   .toast.ok { background:#1b5e20; } .toast.err { background:#c0392b; }
+  /* 불변규칙 2-1: 세율 등 number 입력칸 ▲▼ 스피너 제거(직접 타이핑 입력). type=number 유지 → 저장 로직 불변 */
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 </style>
 </head>
 <body>
