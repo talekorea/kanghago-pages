@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>강하고 청구서</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+<style>
+  :root { --navy:#1B2A3B; --gold:#C9973A; --bg:#F4EFE6; --ivory:#FAF6EE; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:#1d1d1f;
+    font-family:'Pretendard Variable','Pretendard',-apple-system,system-ui,'Apple SD Gothic Neo',sans-serif; }
+  .container { max-width:780px; margin:24px auto; background:#fff; padding:32px; border-radius:14px;
+    box-shadow:0 6px 24px rgba(0,0,0,0.08); }
+  header { border-bottom:3px solid var(--navy); padding-bottom:18px; margin-bottom:24px;
+    display:flex; justify-content:space-between; align-items:flex-start; gap:18px; }
+  header img { height:54px; width:auto; }
+  header h1 { margin:0; font-size:26px; color:var(--navy); }
+  header .sub { font-size:12px; color:#666; margin-top:4px; }
+  header .meta { text-align:right; font-size:12px; line-height:1.7; }
+  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
+  .card { padding:14px 16px; background:var(--ivory); border-radius:8px; }
+  .card .label { font-size:11px; color:#888; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; }
+  .card .value { font-size:14px; font-weight:600; color:var(--navy); margin-top:4px; }
+  .card .sub { font-size:12px; color:#666; margin-top:2px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:18px; }
+  thead { background:var(--navy); color:#fff; }
+  th { padding:10px 12px; text-align:left; font-weight:600; }
+  th.num { text-align:right; }
+  tbody td { padding:9px 12px; border-bottom:1px solid #f0ebe1; }
+  tbody td.num { text-align:right; font-family:ui-monospace,'SF Mono',Consolas,monospace; }
+  tfoot { background:var(--ivory); font-weight:700; }
+  tfoot td { padding:12px; }
+  .grand-total { margin:24px 0; padding:24px 28px;
+    background:linear-gradient(135deg,var(--navy) 0%,#2c4060 100%);
+    color:#F4EFE6; border-radius:12px;
+    display:flex; align-items:center; justify-content:space-between;
+    box-shadow:0 4px 12px rgba(27,42,59,0.25); }
+  .grand-total .lbl { font-size:11px; letter-spacing:0.15em; color:#ffd87a; text-transform:uppercase; font-weight:600; }
+  .grand-total .lbl-sub { font-size:11px; color:#9bb5d6; margin-top:2px; }
+  .grand-total .amt { font-size:38px; font-weight:800; color:var(--gold);
+    font-family:ui-monospace,monospace; letter-spacing:-0.01em; }
+  .pay-btn-wrap { text-align:center; margin:30px 0 14px; }
+  .pay-btn { display:inline-block; padding:18px 56px; background:#2BB673; color:#fff;
+    border:none; border-radius:10px; font-size:18px; font-weight:700; cursor:pointer;
+    text-decoration:none; box-shadow:0 4px 12px rgba(43,182,115,0.3); transition:transform 0.1s, box-shadow 0.1s; }
+  .pay-btn:hover { transform:translateY(-1px); box-shadow:0 6px 16px rgba(43,182,115,0.4); }
+  .pay-btn:disabled, .pay-btn.disabled { background:#ccc; cursor:not-allowed; box-shadow:none; transform:none; }
+  .foot { font-size:11px; color:#888; text-align:center; line-height:1.7; padding-top:18px; border-top:1px solid #f0ebe1; }
+  .loading, .err { padding:60px 30px; text-align:center; color:#888; }
+  .err { color:#c0392b; }
+  @media (max-width:600px) {
+    body { padding:8px; }
+    .container { padding:18px; }
+    .info-grid { grid-template-columns:1fr; }
+    header { flex-direction:column; }
+    header .meta { text-align:left; }
+    .grand-total { flex-direction:column; gap:10px; text-align:center; }
+    .grand-total .amt { font-size:30px; }
+    .pay-btn { padding:16px 36px; font-size:16px; width:90%; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div id="root"><div class="loading">⏳ 청구서 불러오는 중...</div></div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const mailbox = params.get('mailbox') || params.get('ship') || '';
+
+async function loadInvoice() {
+  const root = document.getElementById('root');
+  if (!mailbox) {
+    root.innerHTML = '<div class="err">⚠ 사서함 번호가 URL에 없습니다. <code>?mailbox=AP1819</code></div>';
+    return;
+  }
+  try {
+    const r = await fetch('/api/invoice-view?mailbox=' + encodeURIComponent(mailbox));
+    const data = await r.json();
+    if (!r.ok || !data.ok) {
+      root.innerHTML = '<div class="err">⚠ ' + (data.error || ('HTTP ' + r.status)) + '</div>';
+      return;
+    }
+    render(data);
+  } catch (e) {
+    root.innerHTML = '<div class="err">⚠ 청구서 로드 실패: ' + e.message + '</div>';
+  }
+}
+
+function fmtKrw(n) { return '₩' + Math.round(parseFloat(n) || 0).toLocaleString(); }
+function fmtUsd(n) { return '$' + (parseFloat(n) || 0).toFixed(2); }
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function render(d) {
+  const root = document.getElementById('root');
+  const s = d.shipment, c = d.customer, t = d.totals;
+  const claimAmount = t.claimKrw || t.invoiceKrw;
+  const payappReady = !!d.payappUrl && d.payappStatus !== '결제완료';
+  const payappPaid = d.payappStatus === '결제완료';
+
+  root.innerHTML = `
+    <header>
+      <div style="display:flex; align-items:center; gap:14px;">
+        <img src="https://kanghago-pages.vercel.app/kanghago_logo.png" alt="강하고" onerror="this.style.display='none'" />
+        <div>
+          <h1>강하고 청구서</h1>
+          <div class="sub">KANGHAGO INVOICE · 한·중 1688 무역대행</div>
+        </div>
+      </div>
+      <div class="meta">
+        <div><strong>사서함</strong> ${esc(s.mailbox)}</div>
+        <div><strong>발행일</strong> ${esc(d.generatedAt.slice(0, 10))}</div>
+        ${s.blNo ? `<div><strong>BL No.</strong> ${esc(s.blNo)}</div>` : ''}
+        ${s.forwarder ? `<div><strong>포워딩</strong> ${esc(s.forwarder)}</div>` : ''}
+        ${t.appliedFta ? `<div style="margin-top:4px; padding:2px 8px; background:#FAF6EE; border-radius:4px; display:inline-block;"><strong>적용 FTA</strong> ${esc(t.appliedFta)}</div>` : ''}
+      </div>
+    </header>
+
+    <div class="info-grid">
+      <div class="card">
+        <div class="label">발행처</div>
+        <div class="value">강하고 (Kanghago)</div>
+        <div class="sub">주식회사 테일코리아 · 162-86-01960</div>
+        <div class="sub">인천광역시 서구 북항로207번길 55, 1동 2층</div>
+        <div class="sub">1661-5776 · master@talekorea.com</div>
+      </div>
+      <div class="card">
+        <div class="label">고객</div>
+        <div class="value">${esc(s.mailbox)} ${esc(c && c.name || '-')}${c && c.company ? ' (' + esc(c.company) + ')' : ''}</div>
+        ${c && c.bizNo ? `<div class="sub">사업자: ${esc(c.bizNo)}</div>` : ''}
+        ${c && c.address ? `<div class="sub">${esc(c.address)}</div>` : ''}
+        ${c && c.phone ? `<div class="sub">Tel: ${esc(c.phone)}</div>` : ''}
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:30px;">#</th>
+          <th>상품</th>
+          <th style="width:110px;">HS코드</th>
+          <th class="num" style="width:60px;">수량</th>
+          <th class="num" style="width:90px;">단가 USD</th>
+          <th class="num" style="width:120px;">합계 KRW</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${d.products.length === 0 ? '<tr><td colspan="6" style="text-align:center; padding:24px; color:#888;">(상품 정보 없음)</td></tr>' :
+          d.products.map((p, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td>${esc(p.description)}</td>
+              <td style="font-size:11px; color:#666;">${esc(p.hs)}</td>
+              <td class="num">${p.qty.toLocaleString()}</td>
+              <td class="num">${fmtUsd(p.unitUsd)}</td>
+              <td class="num">${fmtKrw(p.lineKrw)}</td>
+            </tr>
+          `).join('')}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="5" style="text-align:right;">인보이스 합계 (KRW)</td>
+          <td class="num">${fmtKrw(t.invoiceKrw)}</td>
+        </tr>
+        ${t.zeroRateKrw > 0 ? `<tr><td colspan="5" style="text-align:right; font-weight:400; color:#666;">영세율 합계</td><td class="num" style="color:#666;">${fmtKrw(t.zeroRateKrw)}</td></tr>` : ''}
+        ${t.tax10Krw > 0 ? `<tr><td colspan="5" style="text-align:right; font-weight:400; color:#666;">10% 과세 합계</td><td class="num" style="color:#666;">${fmtKrw(t.tax10Krw)}</td></tr>` : ''}
+        ${t.vat > 0 ? `<tr><td colspan="5" style="text-align:right; font-weight:400; color:#666;">VAT 10%</td><td class="num" style="color:#666;">${fmtKrw(t.vat)}</td></tr>` : ''}
+      </tfoot>
+    </table>
+
+    <div class="grand-total">
+      <div>
+        <div class="lbl">총 청구 금액</div>
+        <div class="lbl-sub">결제 후 통관 진행 (1~2일)</div>
+      </div>
+      <div class="amt">${fmtKrw(claimAmount)}</div>
+    </div>
+
+    <div class="pay-btn-wrap">
+      ${payappPaid
+        ? `<button class="pay-btn disabled" disabled>✅ 결제 완료 — 통관 진행 중</button>`
+        : payappReady
+          ? `<a class="pay-btn" href="${esc(d.payappUrl)}" target="_blank" rel="noopener">💳 결제하기 (₩${claimAmount.toLocaleString()})</a>`
+          : `<button class="pay-btn disabled" disabled>⏳ 결제 URL 생성 대기 (직원이 §12에서 생성 후 활성화)</button>`
+      }
+    </div>
+
+    <div class="foot">
+      <div>강하고 · 한·중 1688 무역대행 · 발행: 주식회사 테일코리아 (162-86-01960)</div>
+      <div>문의: 1661-5776 · master@talekorea.com</div>
+      <div style="margin-top:8px; color:#bbb;">청구번호 ${esc(s.mailbox)} · 발행 ${esc(d.generatedAt.slice(0, 10))} · v3.2.3</div>
+    </div>
+  `;
+}
+
+loadInvoice();
+</script>
+</body>
+</html>

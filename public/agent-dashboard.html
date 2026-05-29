@@ -45,20 +45,22 @@
 
 <main>
   <div id="error" class="err" style="display:none;"></div>
+  <!-- v3.2.1 (2026-05-30): "확정 대기" 탭 제거 — 회의 결정 ("확정대기 단계 제거"). -->
+  <!-- 추출기 v2.10이 자동으로 '관세사확정대기' 상태로 푸시 → 관세사가 보는 건 전부 출고요청 + 미확정. -->
   <div class="tabs">
-    <button class="tab on" data-filter="대기" onclick="setFilter('대기')">⏳ 확정 대기 <span id="cnt-대기">·</span></button>
+    <button class="tab on" data-filter="출고요청" onclick="setFilter('출고요청')">📋 출고요청 (확정 필요) <span id="cnt-출고요청">·</span></button>
     <button class="tab" data-filter="완료" onclick="setFilter('완료')">✅ 확정 완료 <span id="cnt-완료">·</span></button>
     <button class="tab" data-filter="all" onclick="setFilter('all')">전체</button>
   </div>
   <div style="font-size:11px; color:#888; margin-bottom:10px;">
-    ℹ️ <strong>확정 완료</strong>는 관세사가 확정한 <strong>누적 건수</strong>입니다 (고객 확정·출고 단계로 넘어간 사서함 포함).
-    강하고 운영 도구의 "관세사확정" 탭은 <strong>현재 이 단계에 머무는 건수</strong>만 세므로 숫자가 더 적을 수 있습니다.
+    ℹ️ <strong>출고요청</strong> = 추출기가 푸시한 직후 + '관세사확정대기' 모두 표시 (회의 결정 — 확정 대기 단계 제거).
+    추출 직후 30초 폴링으로 자동 표시. <strong>확정 완료</strong>는 누적 건수.
   </div>
   <div class="list" id="list"><div class="empty">로딩 중...</div></div>
 </main>
 
 <script type="module">
-  let supabase = null, session = null, agent = null, shipments = [], filter = '대기';
+  let supabase = null, session = null, agent = null, shipments = [], filter = '출고요청';
 
   async function init() {
     try {
@@ -117,7 +119,9 @@
   let _pollTimer = null;
   let _prevPendingIds = new Set();
   function startPolling() {
-    _prevPendingIds = new Set(shipments.filter(s => s.fields['상태'] === '관세사확정대기').map(s => s.id));
+    // v3.2.1: '출고요청'·'관세사확정대기' 둘 다 새 사서함 후보 (회의 결정 — 확정 대기 단계 제거)
+    const isPending = (s) => ['출고요청', '관세사확정대기'].includes(s.fields['상태']);
+    _prevPendingIds = new Set(shipments.filter(isPending).map(s => s.id));
     if (_pollTimer) clearInterval(_pollTimer);
     _pollTimer = setInterval(pollOnce, 30000);
   }
@@ -125,8 +129,9 @@
     try {
       const list = await fetchAgent('GET', '?op=list');
       const next = list.shipments || [];
-      // 새 사서함 감지 (대기 상태로 새로 들어온 것)
-      const nextPendingIds = new Set(next.filter(s => s.fields['상태'] === '관세사확정대기').map(s => s.id));
+      // v3.2.1: 새 사서함 감지 (출고요청·관세사확정대기 둘 다 후보 — 회의 결정)
+      const isPending2 = (s) => ['출고요청', '관세사확정대기'].includes(s.fields['상태']);
+      const nextPendingIds = new Set(next.filter(isPending2).map(s => s.id));
       const newOnes = [...nextPendingIds].filter(id => !_prevPendingIds.has(id));
       shipments = next;
       _prevPendingIds = nextPendingIds;
@@ -149,7 +154,7 @@
       b = document.createElement('div');
       b.id = 'newBanner';
       b.style.cssText = 'position:fixed; top:60px; right:24px; background:#2BB673; color:#fff; padding:12px 18px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.2); font-size:13px; font-weight:600; z-index:9999; cursor:pointer; animation:bannerSlide 0.3s ease-out;';
-      b.onclick = () => { b.remove(); window.setFilter('대기'); };
+      b.onclick = () => { b.remove(); window.setFilter('출고요청'); };
       document.body.appendChild(b);
       // 키프레임 동적 추가
       const style = document.createElement('style');
@@ -182,13 +187,15 @@
   };
 
   function render() {
-    const cnt대기 = shipments.filter(s => s.fields['상태'] === '관세사확정대기').length;
+    // v3.2.1: "출고요청" = '출고요청' + '관세사확정대기' 둘 다 (회의 결정: 확정대기 단계 제거)
+    const isPending = (s) => ['출고요청', '관세사확정대기'].includes(s.fields['상태']);
+    const cnt출고요청 = shipments.filter(isPending).length;
     const cnt완료 = shipments.filter(s => s.fields['상태'] === '관세사확정완료').length;
-    document.getElementById('cnt-대기').textContent = cnt대기;
+    const eP = document.getElementById('cnt-출고요청'); if (eP) eP.textContent = cnt출고요청;
     document.getElementById('cnt-완료').textContent = cnt완료;
 
     let list = shipments;
-    if (filter === '대기') list = list.filter(s => s.fields['상태'] === '관세사확정대기');
+    if (filter === '출고요청') list = list.filter(isPending);
     else if (filter === '완료') list = list.filter(s => s.fields['상태'] === '관세사확정완료');
 
     list.sort((a, b) => (a.fields['사서함'] || '').localeCompare(b.fields['사서함'] || ''));

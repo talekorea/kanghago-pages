@@ -386,8 +386,9 @@ module.exports = async (req, res) => {
         return res.json({ agent: { email: agent.email, name: agent.name, active: agent.active } });
       }
       if (op === 'list') {
-        // 관세사확정대기/완료 사서함 목록
-        const filter = encodeURIComponent('OR({상태}="관세사확정대기",{상태}="관세사확정완료")');
+        // v3.2.1 (2026-05-30): 회의 결정 — 확정 대기 단계 제거. '출고요청'·'관세사확정대기'·'관세사확정완료' 모두 표시.
+        //   추출기 v2.10이 자동으로 '관세사확정대기'로 푸시하지만, 옛 데이터·수동 변경된 '출고요청'도 포함.
+        const filter = encodeURIComponent('OR({상태}="관세사확정대기",{상태}="관세사확정완료",{상태}="출고요청")');
         const url = `/${TABLES.Shipments}?filterByFormula=${filter}&fields[]=사서함&fields[]=상태&fields[]=출고요청일`;
         const recs = await atListAll(url);
         return res.json({ count: recs.length, shipments: recs.map(r => ({ id: r.id, fields: r.fields })) });
