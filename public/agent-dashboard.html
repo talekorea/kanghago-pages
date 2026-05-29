@@ -102,9 +102,64 @@
       const list = await fetchAgent('GET', '?op=list');
       shipments = list.shipments || [];
       render();
+
+      // v3.2.0 Phase 8 (2026-05-30): 30초 폴링 — 추출기가 새 사서함 푸시하면 자동 표시.
+      //   사장님 요구: "직원이 출고요청 추출하면 관세사가 바로 그 사서함 내용을 볼 수 있어야 함".
+      //   추출기 v2.10이 Shipments.상태='관세사확정대기'로 자동 저장 → 폴링이 잡아냄.
+      //   새 사서함 도착 시 화면 상단에 🆕 배지 표시 + 토스트.
+      startPolling();
     } catch (e) {
       showError(e.message || String(e));
     }
+  }
+
+  // v3.2.0 Phase 8: 폴링 (30초 간격)
+  let _pollTimer = null;
+  let _prevPendingIds = new Set();
+  function startPolling() {
+    _prevPendingIds = new Set(shipments.filter(s => s.fields['상태'] === '관세사확정대기').map(s => s.id));
+    if (_pollTimer) clearInterval(_pollTimer);
+    _pollTimer = setInterval(pollOnce, 30000);
+  }
+  async function pollOnce() {
+    try {
+      const list = await fetchAgent('GET', '?op=list');
+      const next = list.shipments || [];
+      // 새 사서함 감지 (대기 상태로 새로 들어온 것)
+      const nextPendingIds = new Set(next.filter(s => s.fields['상태'] === '관세사확정대기').map(s => s.id));
+      const newOnes = [...nextPendingIds].filter(id => !_prevPendingIds.has(id));
+      shipments = next;
+      _prevPendingIds = nextPendingIds;
+      render();
+      if (newOnes.length > 0) {
+        showNewBanner(newOnes.length);
+      }
+    } catch (e) {
+      console.warn('[poll]', e.message);
+      // 세션 만료 등 — 다시 init
+      if (e.status === 401 || e.status === 403) {
+        clearInterval(_pollTimer);
+        location.replace('/agent-login.html');
+      }
+    }
+  }
+  function showNewBanner(n) {
+    let b = document.getElementById('newBanner');
+    if (!b) {
+      b = document.createElement('div');
+      b.id = 'newBanner';
+      b.style.cssText = 'position:fixed; top:60px; right:24px; background:#2BB673; color:#fff; padding:12px 18px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.2); font-size:13px; font-weight:600; z-index:9999; cursor:pointer; animation:bannerSlide 0.3s ease-out;';
+      b.onclick = () => { b.remove(); window.setFilter('대기'); };
+      document.body.appendChild(b);
+      // 키프레임 동적 추가
+      const style = document.createElement('style');
+      style.textContent = '@keyframes bannerSlide { from { transform:translateX(120%); } to { transform:translateX(0); } }';
+      document.head.appendChild(style);
+    }
+    b.textContent = `🆕 새 사서함 ${n}건 도착! 클릭해서 확인`;
+    // 10초 후 자동 사라짐
+    clearTimeout(b._dismiss);
+    b._dismiss = setTimeout(() => { b.remove(); }, 10000);
   }
 
   async function fetchAgent(method, qs, body) {
