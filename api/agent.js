@@ -386,10 +386,10 @@ module.exports = async (req, res) => {
         return res.json({ agent: { email: agent.email, name: agent.name, active: agent.active } });
       }
       if (op === 'list') {
-        // v3.2.1 (2026-05-30): 회의 결정 — 확정 대기 단계 제거. '출고요청'·'관세사확정대기'·'관세사확정완료' 모두 표시.
-        //   추출기 v2.10이 자동으로 '관세사확정대기'로 푸시하지만, 옛 데이터·수동 변경된 '출고요청'도 포함.
-        const filter = encodeURIComponent('OR({상태}="관세사확정대기",{상태}="관세사확정완료",{상태}="출고요청")');
-        const url = `/${TABLES.Shipments}?filterByFormula=${filter}&fields[]=사서함&fields[]=상태&fields[]=출고요청일`;
+        // v3.2.7+ (2026-05-30): filter 자체 제거 — 회의 결정 "모든 상태가 관세사 페이지에 표시·작업 가능".
+        //   출고요청·박스확정·관세사확정대기·관세사확정완료·인보이스완료·통관중·통관완료·배송중·출고완료·입금완료 등 모두 list에.
+        //   관세사 페이지의 탭이 시각 필터링 담당. API는 차단 안 함.
+        const url = `/${TABLES.Shipments}?fields[]=사서함&fields[]=상태&fields[]=출고요청일`;
         const recs = await atListAll(url);
         return res.json({ count: recs.length, shipments: recs.map(r => ({ id: r.id, fields: r.fields })) });
       }
@@ -442,11 +442,10 @@ module.exports = async (req, res) => {
         const shipId = req.query.id;
         if (!shipId || !shipId.startsWith('rec')) return res.status(400).json({ error: 'Invalid shipment id' });
         const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipId}`);
-        // v3.2.7 (2026-05-30): 회의 결정 — '관세사확정대기' 단계 옵셔널. '출고요청'도 작업 가능.
-        //   엑셀 트랙은 '출고요청' 상태로 들어옴 → 관세사 바로 작업 가능해야 함.
-        if (!['출고요청', '관세사확정대기', '관세사확정완료'].includes(ship.fields['상태'])) {
-          return res.status(403).json({ error: '관세사 작업 대상이 아닙니다 (상태: ' + ship.fields['상태'] + ')' });
-        }
+        // v3.2.7+ (2026-05-30): 상태 기반 차단 전체 제거 — 회의 결정.
+        //   "모든 상태가 관세사 페이지에 표시·작업 가능" (출고요청·관세사확정대기·관세사확정완료·강하고확정완료·출고완료 전부).
+        //   관세사는 어느 단계든 상품 정보 확정 가능 (재확정·정정 케이스 대응).
+        //   필요 시 정보 로깅: console.info('[agent op=shipment] 상태:', ship.fields['상태']);
         const shipName = ship.fields['사서함'];
         const orderUrl = `/${TABLES.Orders}?filterByFormula=${encodeURIComponent(`SEARCH('${shipName}',ARRAYJOIN({Shipment}))`)}`;
         const orders = await atListAll(orderUrl);
@@ -502,11 +501,8 @@ module.exports = async (req, res) => {
         if (safe['Description'] !== undefined && safe['통관품명_영문'] === undefined) {
           safe['통관품명_영문'] = safe['Description'];
         }
-        // 사서함 상태 검증 (v3.2.7: '출고요청'도 허용)
+        // v3.2.7+ (2026-05-30): 상태 기반 차단 전체 제거 (회의 결정 — 모든 상태에서 작업 가능)
         const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
-        if (!['출고요청', '관세사확정대기', '관세사확정완료'].includes(ship.fields['상태'])) {
-          return res.status(403).json({ error: '관세사 작업 대상이 아닙니다' });
-        }
         // 변경 전 상태 조회 (감사 로그)
         const before = await atRequest('GET', `/${TABLES.Products}/${productId}`);
         const beforeSafe = {};
@@ -539,10 +535,8 @@ module.exports = async (req, res) => {
         const { shipmentId } = body;
         if (!shipmentId) return res.status(400).json({ error: 'shipmentId 누락' });
         const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
-        // v3.2.7 (2026-05-30): '출고요청'·'관세사확정대기' 모두 확정 가능 (회의 결정)
-        if (!['출고요청', '관세사확정대기'].includes(ship.fields['상태'])) {
-          return res.status(409).json({ error: '상태 불일치 — 현재: ' + ship.fields['상태'] });
-        }
+        // v3.2.7+ (2026-05-30): 상태 기반 차단 제거 — 어느 상태에서든 '관세사확정완료'로 전환 가능.
+        //   회의 결정: "모든 상태가 관세사 페이지에 표시·작업 가능". 재확정 케이스도 대응.
         const prevStatus = ship.fields['상태'];
         await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, {
           fields: { '상태': '관세사확정완료' }, typecast: true,

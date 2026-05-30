@@ -45,16 +45,16 @@
 
 <main>
   <div id="error" class="err" style="display:none;"></div>
-  <!-- v3.2.1 (2026-05-30): "확정 대기" 탭 제거 — 회의 결정 ("확정대기 단계 제거"). -->
-  <!-- 추출기 v2.10이 자동으로 '관세사확정대기' 상태로 푸시 → 관세사가 보는 건 전부 출고요청 + 미확정. -->
+  <!-- v3.2.7+ (2026-05-30): 상태 기반 차단 전체 제거 — 회의 결정 "모든 상태에서 작업 가능". -->
+  <!-- 확정 필요 탭 = 관세사확정완료 외 모든 상태. 확정 완료 = 관세사확정완료만. -->
   <div class="tabs">
-    <button class="tab on" data-filter="출고요청" onclick="setFilter('출고요청')">📋 출고요청 (확정 필요) <span id="cnt-출고요청">·</span></button>
+    <button class="tab on" data-filter="출고요청" onclick="setFilter('출고요청')">📋 확정 필요 <span id="cnt-출고요청">·</span></button>
     <button class="tab" data-filter="완료" onclick="setFilter('완료')">✅ 확정 완료 <span id="cnt-완료">·</span></button>
     <button class="tab" data-filter="all" onclick="setFilter('all')">전체</button>
   </div>
   <div style="font-size:11px; color:#888; margin-bottom:10px;">
-    ℹ️ <strong>출고요청</strong> = 추출기가 푸시한 직후 + '관세사확정대기' 모두 표시 (회의 결정 — 확정 대기 단계 제거).
-    추출 직후 30초 폴링으로 자동 표시. <strong>확정 완료</strong>는 누적 건수.
+    ℹ️ <strong>확정 필요</strong> = 관세사확정완료 외 모든 상태 (출고요청·관세사확정대기·박스확정·재확정 등 — 작업 대상).
+    추출·엑셀 업로드 직후 30초 폴링으로 자동 표시.
   </div>
   <div class="list" id="list"><div class="empty">로딩 중...</div></div>
 </main>
@@ -119,8 +119,8 @@
   let _pollTimer = null;
   let _prevPendingIds = new Set();
   function startPolling() {
-    // v3.2.1: '출고요청'·'관세사확정대기' 둘 다 새 사서함 후보 (회의 결정 — 확정 대기 단계 제거)
-    const isPending = (s) => ['출고요청', '관세사확정대기'].includes(s.fields['상태']);
+    // v3.2.7+ (2026-05-30): 회의 결정 — 관세사확정완료 외 모든 상태가 작업 후보 (확정 필요)
+    const isPending = (s) => s.fields['상태'] !== '관세사확정완료';
     _prevPendingIds = new Set(shipments.filter(isPending).map(s => s.id));
     if (_pollTimer) clearInterval(_pollTimer);
     _pollTimer = setInterval(pollOnce, 30000);
@@ -129,8 +129,8 @@
     try {
       const list = await fetchAgent('GET', '?op=list');
       const next = list.shipments || [];
-      // v3.2.1: 새 사서함 감지 (출고요청·관세사확정대기 둘 다 후보 — 회의 결정)
-      const isPending2 = (s) => ['출고요청', '관세사확정대기'].includes(s.fields['상태']);
+      // v3.2.7+: 관세사확정완료 외 모든 상태가 작업 후보
+      const isPending2 = (s) => s.fields['상태'] !== '관세사확정완료';
       const nextPendingIds = new Set(next.filter(isPending2).map(s => s.id));
       const newOnes = [...nextPendingIds].filter(id => !_prevPendingIds.has(id));
       shipments = next;
@@ -187,8 +187,11 @@
   };
 
   function render() {
-    // v3.2.1: "출고요청" = '출고요청' + '관세사확정대기' 둘 다 (회의 결정: 확정대기 단계 제거)
-    const isPending = (s) => ['출고요청', '관세사확정대기'].includes(s.fields['상태']);
+    // v3.2.7+ (2026-05-30): 회의 결정 "모든 상태가 관세사 페이지에 표시·작업 가능".
+    //   "확정 필요" 탭 = 관세사확정완료 외 모든 상태 (출고요청·관세사확정대기·박스확정·... 등 — 작업 대상).
+    //   "확정 완료" 탭 = 관세사확정완료만.
+    //   "전체" = 그대로.
+    const isPending = (s) => s.fields['상태'] !== '관세사확정완료';
     const cnt출고요청 = shipments.filter(isPending).length;
     const cnt완료 = shipments.filter(s => s.fields['상태'] === '관세사확정완료').length;
     const eP = document.getElementById('cnt-출고요청'); if (eP) eP.textContent = cnt출고요청;
