@@ -442,7 +442,9 @@ module.exports = async (req, res) => {
         const shipId = req.query.id;
         if (!shipId || !shipId.startsWith('rec')) return res.status(400).json({ error: 'Invalid shipment id' });
         const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipId}`);
-        if (!['관세사확정대기', '관세사확정완료'].includes(ship.fields['상태'])) {
+        // v3.2.7 (2026-05-30): 회의 결정 — '관세사확정대기' 단계 옵셔널. '출고요청'도 작업 가능.
+        //   엑셀 트랙은 '출고요청' 상태로 들어옴 → 관세사 바로 작업 가능해야 함.
+        if (!['출고요청', '관세사확정대기', '관세사확정완료'].includes(ship.fields['상태'])) {
           return res.status(403).json({ error: '관세사 작업 대상이 아닙니다 (상태: ' + ship.fields['상태'] + ')' });
         }
         const shipName = ship.fields['사서함'];
@@ -500,9 +502,9 @@ module.exports = async (req, res) => {
         if (safe['Description'] !== undefined && safe['통관품명_영문'] === undefined) {
           safe['통관품명_영문'] = safe['Description'];
         }
-        // 사서함 상태 검증
+        // 사서함 상태 검증 (v3.2.7: '출고요청'도 허용)
         const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
-        if (!['관세사확정대기', '관세사확정완료'].includes(ship.fields['상태'])) {
+        if (!['출고요청', '관세사확정대기', '관세사확정완료'].includes(ship.fields['상태'])) {
           return res.status(403).json({ error: '관세사 작업 대상이 아닙니다' });
         }
         // 변경 전 상태 조회 (감사 로그)
@@ -537,13 +539,15 @@ module.exports = async (req, res) => {
         const { shipmentId } = body;
         if (!shipmentId) return res.status(400).json({ error: 'shipmentId 누락' });
         const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
-        if (ship.fields['상태'] !== '관세사확정대기') {
+        // v3.2.7 (2026-05-30): '출고요청'·'관세사확정대기' 모두 확정 가능 (회의 결정)
+        if (!['출고요청', '관세사확정대기'].includes(ship.fields['상태'])) {
           return res.status(409).json({ error: '상태 불일치 — 현재: ' + ship.fields['상태'] });
         }
+        const prevStatus = ship.fields['상태'];
         await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, {
           fields: { '상태': '관세사확정완료' }, typecast: true,
         });
-        await logAction(agent, shipmentId, null, { '상태': '관세사확정대기' }, { '상태': '관세사확정완료' });
+        await logAction(agent, shipmentId, null, { '상태': prevStatus }, { '상태': '관세사확정완료' });
         return res.json({ ok: true });
       }
 
