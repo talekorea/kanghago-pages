@@ -100,7 +100,9 @@ function esc(s) {
 function render(d) {
   const root = document.getElementById('root');
   const s = d.shipment, c = d.customer, t = d.totals;
-  const claimAmount = t.claimKrw || t.invoiceKrw;
+  // v3.2.13: 청구금액_KRW (도구 §12 발행 시점에 calcFinalInvoiceTotalKrw 결과 저장) 만 사용.
+  //          신고가 invoiceKrw 폴백 제거 — 물류비 청구서이므로 신고가가 섞이면 안 됨.
+  const claimAmount = t.claimKrw || 0;
   const payappReady = !!d.payappUrl && d.payappStatus !== '결제완료';
   const payappPaid = d.payappStatus === '결제완료';
 
@@ -194,7 +196,8 @@ function render(d) {
     <div class="foot">
       <div>강하고 · 한·중 1688 무역대행 · 발행: 주식회사 테일코리아 (162-86-01960)</div>
       <div>문의: 1661-5776 · master@talekorea.com</div>
-      <div style="margin-top:8px; color:#bbb;">청구번호 ${esc(s.mailbox)} · 발행 ${esc(d.generatedAt.slice(0, 10))} · v3.2.3</div>
+      <div style="margin-top:8px; color:#bbb;">청구번호 ${esc(s.mailbox)} · 발행 ${esc(d.generatedAt.slice(0, 10))} · v3.2.13</div>
+      <div style="margin-top:4px; color:#999; font-size:10px;">물류비 청구서 (BL+해상운임+CO+택배+화물+쿠팡밀크런) × 1.10 · 관세·수입부가세는 관세사 직접 청구</div>
     </div>
   `;
 }
