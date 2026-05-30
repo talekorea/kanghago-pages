@@ -3,61 +3,80 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>강하고 청구서</title>
+<title>강하고 청구서 — 물류비</title>
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
 <style>
-  :root { --navy:#1B2A3B; --gold:#C9973A; --bg:#F4EFE6; --ivory:#FAF6EE; }
+  :root { --navy:#1B2A3B; --gold:#C9973A; --bg:#F4EFE6; --ivory:#FAF6EE; --dim:#666; --line:#e8e0d0; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:#1d1d1f;
     font-family:'Pretendard Variable','Pretendard',-apple-system,system-ui,'Apple SD Gothic Neo',sans-serif; }
-  .container { max-width:780px; margin:24px auto; background:#fff; padding:32px; border-radius:14px;
+  .container { max-width:760px; margin:24px auto; background:#fff; padding:28px 32px; border-radius:14px;
     box-shadow:0 6px 24px rgba(0,0,0,0.08); }
-  header { border-bottom:3px solid var(--navy); padding-bottom:18px; margin-bottom:24px;
+  header { border-bottom:3px solid var(--navy); padding-bottom:16px; margin-bottom:20px;
     display:flex; justify-content:space-between; align-items:flex-start; gap:18px; }
-  header img { height:54px; width:auto; }
-  header h1 { margin:0; font-size:26px; color:var(--navy); }
-  header .sub { font-size:12px; color:#666; margin-top:4px; }
-  header .meta { text-align:right; font-size:12px; line-height:1.7; }
-  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
-  .card { padding:14px 16px; background:var(--ivory); border-radius:8px; }
-  .card .label { font-size:11px; color:#888; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; }
-  .card .value { font-size:14px; font-weight:600; color:var(--navy); margin-top:4px; }
-  .card .sub { font-size:12px; color:#666; margin-top:2px; }
-  table { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:18px; }
-  thead { background:var(--navy); color:#fff; }
-  th { padding:10px 12px; text-align:left; font-weight:600; }
-  th.num { text-align:right; }
-  tbody td { padding:9px 12px; border-bottom:1px solid #f0ebe1; }
-  tbody td.num { text-align:right; font-family:ui-monospace,'SF Mono',Consolas,monospace; }
-  tfoot { background:var(--ivory); font-weight:700; }
-  tfoot td { padding:12px; }
-  .grand-total { margin:24px 0; padding:24px 28px;
+  header img { height:48px; width:auto; }
+  header h1 { margin:0; font-size:23px; color:var(--navy); }
+  header .sub { font-size:11px; color:var(--dim); margin-top:2px; letter-spacing:.05em; }
+  header .meta { text-align:right; font-size:11px; line-height:1.7; }
+  header .meta strong { color:var(--navy); }
+  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:18px; }
+  .card { padding:12px 14px; background:var(--ivory); border-radius:8px; }
+  .card .label { font-size:10px; color:#888; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; }
+  .card .value { font-size:13px; font-weight:600; color:var(--navy); margin-top:3px; }
+  .card .sub { font-size:11px; color:var(--dim); margin-top:2px; }
+
+  /* 물류비 항목 표 — 좁고 정돈된 레이아웃 (사장님 목업) */
+  .items { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:8px; }
+  .items thead { background:var(--navy); color:#fff; }
+  .items th { padding:8px 12px; text-align:left; font-weight:600; font-size:12px; }
+  .items th.num { text-align:right; }
+  .items tbody td { padding:7px 12px; border-bottom:1px solid var(--line); }
+  .items tbody td.num { text-align:right; font-family:ui-monospace,'SF Mono',Consolas,monospace; }
+  .items tbody td.sub-row { padding:4px 12px 4px 28px; font-size:11px; color:var(--dim); border-bottom:1px dashed #f0e8d8; }
+  .items tfoot td { padding:8px 12px; }
+  .items tfoot .subtotal { background:var(--ivory); font-weight:600; }
+  .items tfoot .subtotal td { border-top:1px solid var(--gold); }
+  .items tfoot .vat td { color:var(--dim); font-size:12px; }
+
+  /* 최종 결제금액 부각 */
+  .grand-total { margin:18px 0; padding:20px 24px;
     background:linear-gradient(135deg,var(--navy) 0%,#2c4060 100%);
     color:#F4EFE6; border-radius:12px;
     display:flex; align-items:center; justify-content:space-between;
     box-shadow:0 4px 12px rgba(27,42,59,0.25); }
   .grand-total .lbl { font-size:11px; letter-spacing:0.15em; color:#ffd87a; text-transform:uppercase; font-weight:600; }
-  .grand-total .lbl-sub { font-size:11px; color:#9bb5d6; margin-top:2px; }
-  .grand-total .amt { font-size:38px; font-weight:800; color:var(--gold);
+  .grand-total .lbl-sub { font-size:10px; color:#9bb5d6; margin-top:2px; }
+  .grand-total .amt { font-size:34px; font-weight:800; color:var(--gold);
     font-family:ui-monospace,monospace; letter-spacing:-0.01em; }
-  .pay-btn-wrap { text-align:center; margin:30px 0 14px; }
-  .pay-btn { display:inline-block; padding:18px 56px; background:#2BB673; color:#fff;
-    border:none; border-radius:10px; font-size:18px; font-weight:700; cursor:pointer;
+
+  /* FTA 절세 안내 (결제금액 미포함) */
+  .fta-note { margin:14px 0 6px; padding:11px 14px; background:#FAF6EE; border-left:4px solid var(--gold); border-radius:6px; font-size:12px; color:var(--dim); }
+  .fta-note .title { font-weight:700; color:var(--navy); margin-bottom:5px; font-size:12px; }
+  .fta-note .row { display:flex; justify-content:space-between; margin-top:3px; }
+  .fta-note .row span:last-child { font-family:ui-monospace,monospace; }
+  .fta-note .footer { margin-top:5px; color:#0a7b40; font-size:11px; }
+
+  /* 결제 버튼 */
+  .pay-btn-wrap { text-align:center; margin:24px 0 12px; }
+  .pay-btn { display:inline-block; padding:16px 52px; background:#2BB673; color:#fff;
+    border:none; border-radius:10px; font-size:17px; font-weight:700; cursor:pointer;
     text-decoration:none; box-shadow:0 4px 12px rgba(43,182,115,0.3); transition:transform 0.1s, box-shadow 0.1s; }
   .pay-btn:hover { transform:translateY(-1px); box-shadow:0 6px 16px rgba(43,182,115,0.4); }
   .pay-btn:disabled, .pay-btn.disabled { background:#ccc; cursor:not-allowed; box-shadow:none; transform:none; }
-  .foot { font-size:11px; color:#888; text-align:center; line-height:1.7; padding-top:18px; border-top:1px solid #f0ebe1; }
+
+  .foot { font-size:11px; color:#888; text-align:center; line-height:1.7; padding-top:16px; border-top:1px solid var(--line); }
   .loading, .err { padding:60px 30px; text-align:center; color:#888; }
   .err { color:#c0392b; }
+
   @media (max-width:600px) {
-    body { padding:8px; }
+    body { padding:6px; }
     .container { padding:18px; }
     .info-grid { grid-template-columns:1fr; }
     header { flex-direction:column; }
     header .meta { text-align:left; }
     .grand-total { flex-direction:column; gap:10px; text-align:center; }
-    .grand-total .amt { font-size:30px; }
-    .pay-btn { padding:16px 36px; font-size:16px; width:90%; }
+    .grand-total .amt { font-size:28px; }
+    .pay-btn { padding:14px 32px; font-size:15px; width:90%; }
   }
 </style>
 </head>
@@ -73,7 +92,7 @@ const mailbox = params.get('mailbox') || params.get('ship') || '';
 async function loadInvoice() {
   const root = document.getElementById('root');
   if (!mailbox) {
-    root.innerHTML = '<div class="err">⚠ 사서함 번호가 URL에 없습니다. <code>?mailbox=AP1819</code></div>';
+    root.innerHTML = '<div class="err">⚠ 사서함 번호가 URL에 없습니다.</div>';
     return;
   }
   try {
@@ -90,7 +109,6 @@ async function loadInvoice() {
 }
 
 function fmtKrw(n) { return '₩' + Math.round(parseFloat(n) || 0).toLocaleString(); }
-function fmtUsd(n) { return '$' + (parseFloat(n) || 0).toFixed(2); }
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -99,20 +117,33 @@ function esc(s) {
 
 function render(d) {
   const root = document.getElementById('root');
-  const s = d.shipment, c = d.customer, t = d.totals;
-  // v3.2.13: 청구금액_KRW (도구 §12 발행 시점에 calcFinalInvoiceTotalKrw 결과 저장) 만 사용.
-  //          신고가 invoiceKrw 폴백 제거 — 물류비 청구서이므로 신고가가 섞이면 안 됨.
+  const s = d.shipment, c = d.customer, t = d.totals, bd = d.breakdown || {};
+
+  // v3.2.18 P0: 물류비 청구서. 신고가 폴백 폐기 — 청구금액_KRW = 0이면 0 표시.
   const claimAmount = t.claimKrw || 0;
   const payappReady = !!d.payappUrl && d.payappStatus !== '결제완료';
   const payappPaid = d.payappStatus === '결제완료';
 
+  // 물류비 항목 6종 — 해당분만 표시 (0 또는 빈값은 줄 자체 생략)
+  const itemRows = [];
+  if (bd.bl > 0)      itemRows.push({ name: 'BL 발급료',          amount: bd.bl });
+  if (bd.sea > 0)     itemRows.push({ name: '해상운임',            amount: bd.sea });
+  if (bd.co > 0)      itemRows.push({ name: '원산지증명서 (CO)',    amount: bd.co });
+  if (bd.parcel > 0)  itemRows.push({ name: '택배 (매트릭스)',      amount: bd.parcel });
+  if (bd.freight > 0) itemRows.push({ name: '화물',                amount: bd.freight });
+  if (bd.coupang > 0) itemRows.push({ name: '쿠팡 밀크런',         amount: bd.coupang });
+
+  const preVatSum = itemRows.reduce((s, r) => s + r.amount, 0);
+  const preVat = (t.preVat && t.preVat > 0) ? t.preVat : preVatSum;
+  const vat = t.vat || Math.round(preVat * 0.10);
+
   root.innerHTML = `
     <header>
       <div style="display:flex; align-items:center; gap:14px;">
-        <img src="https://kanghago-pages.vercel.app/kanghago_logo.png" alt="강하고" onerror="this.style.display='none'" />
+        <img src="/kanghago_logo.png" alt="강하고" onerror="this.style.display='none'" />
         <div>
-          <h1>강하고 청구서</h1>
-          <div class="sub">KANGHAGO INVOICE · 한·중 1688 무역대행</div>
+          <h1>강하고 물류비 청구서</h1>
+          <div class="sub">KANGHAGO LOGISTICS INVOICE</div>
         </div>
       </div>
       <div class="meta">
@@ -120,15 +151,14 @@ function render(d) {
         <div><strong>발행일</strong> ${esc(d.generatedAt.slice(0, 10))}</div>
         ${s.blNo ? `<div><strong>BL No.</strong> ${esc(s.blNo)}</div>` : ''}
         ${s.forwarder ? `<div><strong>포워딩</strong> ${esc(s.forwarder)}</div>` : ''}
-        ${t.appliedFta ? `<div style="margin-top:4px; padding:2px 8px; background:#FAF6EE; border-radius:4px; display:inline-block;"><strong>적용 FTA</strong> ${esc(t.appliedFta)}</div>` : ''}
       </div>
     </header>
 
     <div class="info-grid">
       <div class="card">
         <div class="label">발행처</div>
-        <div class="value">강하고 (Kanghago)</div>
-        <div class="sub">주식회사 테일코리아 · 162-86-01960</div>
+        <div class="value">주식회사 테일코리아</div>
+        <div class="sub">사업자 162-86-01960</div>
         <div class="sub">인천광역시 서구 북항로207번길 55, 1동 2층</div>
         <div class="sub">1661-5776 · master@talekorea.com</div>
       </div>
@@ -141,63 +171,66 @@ function render(d) {
       </div>
     </div>
 
-    <table>
+    <table class="items">
       <thead>
         <tr>
-          <th style="width:30px;">#</th>
-          <th>상품</th>
-          <th style="width:110px;">HS코드</th>
-          <th class="num" style="width:60px;">수량</th>
-          <th class="num" style="width:90px;">단가 USD</th>
-          <th class="num" style="width:120px;">합계 KRW</th>
+          <th style="width:60%;">항목 (물류비)</th>
+          <th class="num" style="width:40%;">금액 (KRW, VAT 제외)</th>
         </tr>
       </thead>
       <tbody>
-        ${d.products.length === 0 ? '<tr><td colspan="6" style="text-align:center; padding:24px; color:#888;">(상품 정보 없음)</td></tr>' :
-          d.products.map((p, i) => `
-            <tr>
-              <td>${i + 1}</td>
-              <td>${esc(p.description)}</td>
-              <td style="font-size:11px; color:#666;">${esc(p.hs)}</td>
-              <td class="num">${p.qty.toLocaleString()}</td>
-              <td class="num">${fmtUsd(p.unitUsd)}</td>
-              <td class="num">${fmtKrw(p.lineKrw)}</td>
-            </tr>
-          `).join('')}
+        ${itemRows.length === 0 ? `
+          <tr><td colspan="2" style="text-align:center; padding:24px; color:#888;">(물류비 항목 미발생 — 도구 §12 청구서 발행 필요)</td></tr>
+        ` : itemRows.map(r => `
+          <tr>
+            <td>${esc(r.name)}</td>
+            <td class="num">${fmtKrw(r.amount)}</td>
+          </tr>
+        `).join('')}
       </tbody>
       <tfoot>
-        <tr>
-          <td colspan="5" style="text-align:right;">인보이스 합계 (KRW)</td>
-          <td class="num">${fmtKrw(t.invoiceKrw)}</td>
+        <tr class="subtotal">
+          <td style="text-align:right;">합계 (pre-VAT)</td>
+          <td class="num">${fmtKrw(preVat)}</td>
         </tr>
-        ${t.zeroRateKrw > 0 ? `<tr><td colspan="5" style="text-align:right; font-weight:400; color:#666;">영세율 합계</td><td class="num" style="color:#666;">${fmtKrw(t.zeroRateKrw)}</td></tr>` : ''}
-        ${t.tax10Krw > 0 ? `<tr><td colspan="5" style="text-align:right; font-weight:400; color:#666;">10% 과세 합계</td><td class="num" style="color:#666;">${fmtKrw(t.tax10Krw)}</td></tr>` : ''}
-        ${t.vat > 0 ? `<tr><td colspan="5" style="text-align:right; font-weight:400; color:#666;">VAT 10%</td><td class="num" style="color:#666;">${fmtKrw(t.vat)}</td></tr>` : ''}
+        <tr class="vat">
+          <td style="text-align:right;">부가세 10%</td>
+          <td class="num">+ ${fmtKrw(vat)}</td>
+        </tr>
       </tfoot>
     </table>
 
     <div class="grand-total">
       <div>
-        <div class="lbl">총 청구 금액</div>
-        <div class="lbl-sub">결제 후 통관 진행 (1~2일)</div>
+        <div class="lbl">최종 결제금액</div>
+        <div class="lbl-sub">물류비 × 1.10 (전 항목 +10% 과세)</div>
       </div>
       <div class="amt">${fmtKrw(claimAmount)}</div>
     </div>
 
+    ${(t.invoiceKrw > 0) ? `
+      <div class="fta-note">
+        <div class="title">💡 FTA 절세 안내 (결제금액 미포함)</div>
+        <div class="row"><span>· 신고가 (인보이스 KRW)</span><span>${fmtKrw(t.invoiceKrw)}</span></div>
+        ${t.appliedFta ? `<div class="row"><span>· 적용 FTA</span><span>${esc(t.appliedFta)}</span></div>` : ''}
+        <div class="footer">→ 관세·수입부가세는 관세사가 화주에게 직접 청구합니다. 강하고 청구서엔 미포함.</div>
+      </div>
+    ` : ''}
+
     <div class="pay-btn-wrap">
       ${payappPaid
         ? `<button class="pay-btn disabled" disabled>✅ 결제 완료 — 통관 진행 중</button>`
-        : payappReady
-          ? `<a class="pay-btn" href="${esc(d.payappUrl)}" target="_blank" rel="noopener">💳 결제하기 (₩${claimAmount.toLocaleString()})</a>`
-          : `<button class="pay-btn disabled" disabled>⏳ 결제 URL 생성 대기 (직원이 §12에서 생성 후 활성화)</button>`
+        : payappReady && claimAmount > 0
+          ? `<a class="pay-btn" href="${esc(d.payappUrl)}" target="_blank" rel="noopener">💳 결제하기 (${fmtKrw(claimAmount)})</a>`
+          : `<button class="pay-btn disabled" disabled>⏳ 결제 URL 생성 대기 (직원이 §12에서 생성)</button>`
       }
     </div>
 
     <div class="foot">
-      <div>강하고 · 한·중 1688 무역대행 · 발행: 주식회사 테일코리아 (162-86-01960)</div>
+      <div>강하고 (Kanghago) · 한·중 1688 무역대행 · 발행: 주식회사 테일코리아 (162-86-01960)</div>
       <div>문의: 1661-5776 · master@talekorea.com</div>
-      <div style="margin-top:8px; color:#bbb;">청구번호 ${esc(s.mailbox)} · 발행 ${esc(d.generatedAt.slice(0, 10))} · v3.2.13</div>
-      <div style="margin-top:4px; color:#999; font-size:10px;">물류비 청구서 (BL+해상운임+CO+택배+화물+쿠팡밀크런) × 1.10 · 관세·수입부가세는 관세사 직접 청구</div>
+      <div style="margin-top:6px; color:#bbb;">청구번호 ${esc(s.mailbox)} · 발행 ${esc(d.generatedAt.slice(0, 10))} · v3.2.18</div>
+      <div style="margin-top:3px; color:#999; font-size:10px;">물류비 청구서 (BL · 해상운임 · CO · 택배 · 화물 · 쿠팡밀크런) × 1.10</div>
     </div>
   `;
 }

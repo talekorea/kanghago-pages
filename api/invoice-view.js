@@ -77,14 +77,26 @@ module.exports = async (req, res) => {
       };
     });
 
-    // 청구금액 (Shipments에 저장된 5원칙 데이터 사용 — §12에서 청구서 PDF 발행 시 저장됨)
+    // v3.2.18 P0: 물류비 청구서 모델 — 신고가 폴백 폐기.
+    //   도구 §12 발행 시 Shipments에 저장된 청구금액_KRW + 6항목 breakdown 사용.
+    //   청구금액_KRW = 0/빈값이면 0 (신고가 polluion 금지).
     const totals = {
-      invoiceKrw: totalInvoiceKrw,
-      claimKrw: parseFloat(f['청구금액_KRW']) || totalInvoiceKrw,
-      zeroRateKrw: parseFloat(f['영세율금액']) || 0,
-      tax10Krw: parseFloat(f['과세10금액']) || 0,
+      claimKrw: parseFloat(f['청구금액_KRW']) || 0,
+      preVat: parseFloat(f['청구_preVAT']) || 0,
       vat: parseFloat(f['VAT']) || 0,
+      // 참고용 신고가 (FTA 절세 안내 패널만 — 결제 미포함)
+      invoiceKrw: totalInvoiceKrw,
+      duty: 0,        // 도구 §9 FTA 절세 안내 산식 — 도구가 계산해 저장하면 사용
+      vatImport: 0,
       appliedFta: f['적용FTA확정'] || '',
+    };
+    const breakdown = {
+      bl:       parseFloat(f['청구_BL_금액'])       || 0,
+      sea:      parseFloat(f['청구_해상운임_금액']) || 0,
+      co:       parseFloat(f['청구_CO_금액'])       || 0,
+      parcel:   parseFloat(f['청구_택배_금액'])      || 0,
+      freight:  parseFloat(f['청구_화물_금액'])      || 0,
+      coupang:  parseFloat(f['청구_쿠팡밀크런_금액']) || 0,
     };
 
     return res.status(200).json({
@@ -106,8 +118,10 @@ module.exports = async (req, res) => {
         address: cf['주소'] || '',
       } : null,
       orders: orders.map(o => ({ id: o.id, no: (o.fields || {})['주문번호'] || '' })),
-      products: productLines,
+      // products 배열은 참고용으로만 유지 (UI에서 미렌더, 빈배열도 OK)
+      products: [],
       totals,
+      breakdown,
       payappUrl: f['페이앱_결제URL'] || '',
       payappStatus: f['페이앱_결제상태'] || '',
       payappAmount: parseFloat(f['페이앱_요청금액']) || 0,
