@@ -118,17 +118,29 @@ function esc(s) {
 function render(d) {
   const root = document.getElementById('root');
   const s = d.shipment, c = d.customer, t = d.totals, bd = d.breakdown || {};
+  // v3.2.31: 발행처 강하고로 전환 + IBK 계좌. API에 issuer 없으면 폴백 (옛 사서함)
+  const issuer = d.issuer || {
+    name: '강하고 (Kanghago)', biz: '219-43-01430',
+    addr: '인천광역시 서구 북항로207번길 55, 1동 2층',
+    tel: '1661-5776', email: 'master@talekorea.com',
+    bank: 'IBK기업은행 491-080376-04-014', bankHolder: '예금주 강지훈(강하고)',
+  };
+  const ftaSavingKrw = (t && t.ftaSavingKrw) || 0;
 
   // v3.2.18 P0: 물류비 청구서. 신고가 폴백 폐기 — 청구금액_KRW = 0이면 0 표시.
   const claimAmount = t.claimKrw || 0;
   const payappReady = !!d.payappUrl && d.payappStatus !== '결제완료';
   const payappPaid = d.payappStatus === '결제완료';
 
-  // 물류비 항목 6종 — 해당분만 표시 (0 또는 빈값은 줄 자체 생략)
+  // 물류비 항목 — 해당분만 표시 (0 또는 빈값은 줄 자체 생략)
+  // v3.2.31: CO는 절세 > 0일 때만 청구. note에 "FTA 적용 관세 ₩XXX 절감 (CO 발급 기준)"
   const itemRows = [];
   if (bd.bl > 0)      itemRows.push({ name: 'BL 발급료',          amount: bd.bl });
   if (bd.sea > 0)     itemRows.push({ name: '해상운임',            amount: bd.sea });
-  if (bd.co > 0)      itemRows.push({ name: '원산지증명서 (CO)',    amount: bd.co });
+  if (bd.co > 0)      itemRows.push({
+    name: '원산지증명서 (CO)', amount: bd.co,
+    note: ftaSavingKrw > 0 ? `한중 FTA 적용으로 관세 ${fmtKrw(ftaSavingKrw)} 절감 (CO 발급 기준)` : ''
+  });
   if (bd.parcel > 0)  itemRows.push({ name: '택배 (매트릭스)',      amount: bd.parcel });
   if (bd.freight > 0) itemRows.push({ name: '화물',                amount: bd.freight });
   if (bd.coupang > 0) itemRows.push({ name: '쿠팡 밀크런',         amount: bd.coupang });
@@ -157,10 +169,12 @@ function render(d) {
     <div class="info-grid">
       <div class="card">
         <div class="label">발행처</div>
-        <div class="value">주식회사 테일코리아</div>
-        <div class="sub">사업자 162-86-01960</div>
-        <div class="sub">인천광역시 서구 북항로207번길 55, 1동 2층</div>
-        <div class="sub">1661-5776 · master@talekorea.com</div>
+        <div class="value">${esc(issuer.name)}</div>
+        <div class="sub">사업자 ${esc(issuer.biz)}</div>
+        <div class="sub">${esc(issuer.addr)}</div>
+        <div class="sub">${esc(issuer.tel)} · ${esc(issuer.email)}</div>
+        <div class="sub" style="margin-top:5px; padding-top:5px; border-top:1px dashed #d0c8b0; color:#1B2A3B; font-weight:600;">💳 입금: ${esc(issuer.bank)}</div>
+        ${issuer.bankHolder ? `<div class="sub" style="color:#888;">${esc(issuer.bankHolder)}</div>` : ''}
       </div>
       <div class="card">
         <div class="label">고객</div>
@@ -186,7 +200,13 @@ function render(d) {
             <td>${esc(r.name)}</td>
             <td class="num">${fmtKrw(r.amount)}</td>
           </tr>
+          ${r.note ? `<tr><td colspan="2" style="padding:3px 12px 9px 28px; font-size:11px; color:#0a7b40; border-bottom:1px dashed #f0e8d8;">💡 ${esc(r.note)}</td></tr>` : ''}
         `).join('')}
+        ${(bd.co === 0 && ftaSavingKrw === 0 && itemRows.length > 0) ? `
+          <tr><td colspan="2" style="padding:8px 12px; font-size:11px; color:#888; background:#fafaf5;">
+            ℹ 이 제품은 FTA 절세가 없어 원산지증명서(CO)가 필요하지 않습니다 (CO 발급료 미청구).
+          </td></tr>
+        ` : ''}
       </tbody>
       <tfoot>
         <tr class="subtotal">
@@ -212,7 +232,9 @@ function render(d) {
       <div class="fta-note">
         <div class="title">💡 FTA 절세 안내 (결제금액 미포함)</div>
         <div class="row"><span>· 신고가 (인보이스 KRW)</span><span>${fmtKrw(t.invoiceKrw)}</span></div>
-        ${t.appliedFta ? `<div class="row"><span>· 적용 FTA</span><span>${esc(t.appliedFta)}</span></div>` : ''}
+        <!-- v3.2.31: 적용 FTA 미선택 표시 제거 — 내부 용어. 한중/아태/일반만 표시 -->
+        ${(t.appliedFta && t.appliedFta !== '미선택') ? `<div class="row"><span>· 적용 FTA</span><span>${esc(t.appliedFta)}</span></div>` : ''}
+        ${ftaSavingKrw > 0 ? `<div class="row" style="color:#0a7b40; font-weight:600;"><span>· FTA 적용 관세 절감</span><span>${fmtKrw(ftaSavingKrw)}</span></div>` : ''}
         <div class="footer">→ 관세·수입부가세는 관세사가 화주에게 직접 청구합니다. 강하고 청구서엔 미포함.</div>
       </div>
     ` : ''}
@@ -227,7 +249,7 @@ function render(d) {
     </div>
 
     <div class="foot">
-      <div>강하고 (Kanghago) · 한·중 1688 무역대행 · 발행: 주식회사 테일코리아 (162-86-01960)</div>
+      <div>강하고 (Kanghago) · 한·중 1688 무역대행 · 발행: ${esc(issuer.name)} (${esc(issuer.biz)})</div>
       <div>문의: 1661-5776 · master@talekorea.com</div>
       <div style="margin-top:6px; color:#bbb;">청구번호 ${esc(s.mailbox)} · 발행 ${esc(d.generatedAt.slice(0, 10))} · v3.2.18</div>
       <div style="margin-top:3px; color:#999; font-size:10px;">물류비 청구서 (BL · 해상운임 · CO · 택배 · 화물 · 쿠팡밀크런) × 1.10</div>

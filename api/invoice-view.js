@@ -86,9 +86,11 @@ module.exports = async (req, res) => {
       vat: parseFloat(f['VAT']) || 0,
       // 참고용 신고가 (FTA 절세 안내 패널만 — 결제 미포함)
       invoiceKrw: totalInvoiceKrw,
-      duty: 0,        // 도구 §9 FTA 절세 안내 산식 — 도구가 계산해 저장하면 사용
+      duty: 0,
       vatImport: 0,
       appliedFta: f['적용FTA확정'] || '',
+      // v3.2.31: CO 절세 안내 — 도구가 청구서 발행 시 저장
+      ftaSavingKrw: parseFloat(f['청구_FTA_절세_KRW']) || 0,
     };
     const breakdown = {
       bl:       parseFloat(f['청구_BL_금액'])       || 0,
@@ -97,6 +99,16 @@ module.exports = async (req, res) => {
       parcel:   parseFloat(f['청구_택배_금액'])      || 0,
       freight:  parseFloat(f['청구_화물_금액'])      || 0,
       coupang:  parseFloat(f['청구_쿠팡밀크런_금액']) || 0,
+    };
+    // v3.2.31: 발행처 강하고로 전환 (사장님 사업자 등록 완료)
+    const issuer = {
+      name: '강하고 (Kanghago)',
+      biz: '219-43-01430',
+      addr: '인천광역시 서구 북항로207번길 55, 1동 2층',
+      tel: '1661-5776',
+      email: 'master@talekorea.com',
+      bank: 'IBK기업은행 491-080376-04-014',
+      bankHolder: '예금주 강지훈(강하고)',
     };
 
     return res.status(200).json({
@@ -122,6 +134,7 @@ module.exports = async (req, res) => {
       products: [],
       totals,
       breakdown,
+      issuer,   // v3.2.31: 발행처 강하고 + IBK 계좌
       payappUrl: f['페이앱_결제URL'] || '',
       payappStatus: f['페이앱_결제상태'] || '',
       payappAmount: parseFloat(f['페이앱_요청금액']) || 0,
