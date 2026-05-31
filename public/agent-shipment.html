@@ -239,9 +239,13 @@
       if (customerLabel) {
         customerLabel.textContent = custName ? (custCompany ? `${custName} (${custCompany})` : custName) : '-';
       }
+      // v3.2.36: 상태 라벨 명확화 — '관세사확정대기' 그대로 두지 않고 동작 안내로 (저장 vs 확정 구분)
       const statusLabel = shipment.fields['상태'];
       const statusEl = document.getElementById('status');
-      statusEl.textContent = statusLabel;
+      const statusDisplay = statusLabel === '관세사확정대기' ? '저장됨 · 상단 [관세사 확정] 필요'
+                          : statusLabel === '관세사확정완료' ? '✅ 관세사 확정 완료'
+                          : statusLabel;
+      statusEl.textContent = statusDisplay;
       statusEl.className = 'status ' + (statusLabel === '관세사확정완료' ? '완료' : '대기');
       if (statusLabel === '관세사확정완료') {
         document.getElementById('confirmBtn').disabled = true;
