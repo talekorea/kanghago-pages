@@ -706,12 +706,20 @@
     }
     if (gk != null) updateGroupHsSummary(gk);
   }
+  // v3.2.32: HS 일괄 — 세율 자동 채움 + 검증 일치 (개별 경로와 동일 lookupTariff)
+  //   사장님 보고: 1행만 채워지고 나머지 빈칸 → rows NodeList 캡처 stale·race 의심
+  //   fix: tariff 로드 먼저 보장 + 세율 적용 직전 rows 재조회 + setRateForce 강제
   window.applyGroupHs = async (gk) => {
     const input = document.querySelector(`#prodBody .grp-hs-input[data-grp="${_gsel(gk)}"]`);
     let value = ((input && input.value) || '').trim();
     if (!value) { toast('HS코드를 입력하세요', 'err'); return; }
-    value = normalizeHsCode(value);   // 수정 A: 일괄 HS도 0000.00-0000 형식
-    const rows = document.querySelectorAll(`#prodBody tr[data-group="${_gsel(gk)}"]`);
+    value = normalizeHsCode(value);
+    // v3.2.32: tariff 로드 먼저 (검증·세율 자동 채움 둘 다 사용)
+    if (!KANGHAGO_TARIFF) await loadTariffJson();
+    const tariff = lookupTariff(value);
+
+    // 1. HS 칸 채움
+    let rows = document.querySelectorAll(`#prodBody tr[data-group="${_gsel(gk)}"]`);
     const pids = [];
     rows.forEach(r => {
       const inp = r.querySelector('input[data-field="HS코드"]');
@@ -719,19 +727,24 @@
       if (r.dataset.id) pids.push(r.dataset.id);
     });
     updateGroupHsSummary(gk);
-    if (pids.length) await autoSaveHs(pids, value);   // 즉시 자동 저장(HS코드)
-    // v3.2.20: HS→세율 자동 채움 — 공식 관세표 11,326 강제 (학습 rate 사용 금지)
-    if (!KANGHAGO_TARIFF) await loadTariffJson();
-    const tariff = lookupTariff(value);
+
+    // 2. PATCH HS코드 (서버 저장)
+    if (pids.length) await autoSaveHs(pids, value);
+
+    // 3. v3.2.32: 세율 강제 채움 — rows 재조회 (autoSaveHs 후 DOM 변경 가능성 차단)
+    rows = document.querySelectorAll(`#prodBody tr[data-group="${_gsel(gk)}"]`);
     if (tariff) {
+      let filled = 0;
       rows.forEach(r => {
         setRateForce(r, 'input[data-field="기본세율"]', tariff.A);
         setRateForce(r, 'input[data-field="FTA_한중"]', tariff.CN);
         setRateForce(r, 'input[data-field="아태세율"]', tariff.E1);
         recomputeRowFta(r);
+        filled++;
       });
+      console.info(`[v3.2.32 applyGroupHs] HS ${value} → ${filled}행 세율 자동 (A=${tariff.A}/CN=${tariff.CN}/E1=${tariff.E1})`);
     } else {
-      // 공식표에 없음 — leaf 후보 toast
+      // 공식표에 없음 — leaf 후보 안내
       const digits = String(value).replace(/\D/g, '');
       if (digits.length === 10) {
         const leafs = findTariffLeafCandidates(value, 5);
@@ -739,13 +752,14 @@
         toast('⚠ 실존하지 않는 HS — leaf 후보: ' + leafFmt.substring(0, 100), 'err');
       }
     }
-    // 영문명은 학습 데이터에서 (빈 칸만)
+
+    // 4. 영문명 학습 데이터 (빈 칸만)
     try {
       const rr = await api('GET', '?op=hs_rates&code=' + encodeURIComponent(value));
       if (rr && rr.description) rows.forEach(r => setRateIfEmpty(r, 'input[data-field="Description"]', rr.description));
     } catch (e) { /* 무시 */ }
-    // 세율 여전히 빈 제품(신규 HS 등) 주황 강조 → 관세사 직접 입력 유도
-    // v3.2.28: emptyRequiredFields async — await로 호출
+
+    // 5. v3.2.32: 검증 통일 — 개별 경로(saveRow)와 동일 emptyRequiredFields. tariff 로드 끝났으므로 정확.
     for (const r of rows) {
       const m = await emptyRequiredFields(r);
       m.filter(x => x.label !== 'HS코드' && x.label !== 'HS코드(실존하지 않음)').forEach(x => { if (x.inp) x.inp.style.borderColor = '#e8a04c'; });
