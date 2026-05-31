@@ -338,120 +338,150 @@
   //   2) AI 호출: /api/hs-suggest (영문명+재질) → 공식표 교차검증 후 후보 2~3개
   //   3) [선택] → HS 칸 + A/CN/E1 자동 채움 → 그룹 일괄 (applyGroupHs)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // v3.2.22: 양방향 HS 추천 — nameEn / hs10 / 둘 다 → mode 자동
   window.openHsSuggestRow = async function (pid) {
     const tr = document.querySelector(`tr[data-id="${pid}"]`);
     if (!tr) return;
-    const nameEn = (tr.querySelector('input[data-field="Description"]').value || '').trim();
-    const material = (tr.querySelector('input[data-field="Material"]').value || '').trim();
-    if (!nameEn) {
-      toast('영문명을 먼저 입력하세요 — HS 추천은 영문명 기반', 'err');
+    const descInp = tr.querySelector('input[data-field="Description"]');
+    const matInp = tr.querySelector('input[data-field="Material"]');
+    const hsInp = tr.querySelector('input[data-field="HS코드"]');
+    const nameEn = (descInp.value || '').trim();
+    const material = (matInp.value || '').trim();
+    const hs10Raw = (hsInp.value || '').trim();
+    if (!nameEn && !hs10Raw) {
+      toast('영문명 또는 HS코드 중 하나는 입력하세요', 'err');
       return;
     }
     if (!KANGHAGO_TARIFF) await loadTariffJson();
 
-    // 기존 패널 제거
+    const hasName = !!nameEn;
+    const hasHs = !!hs10Raw;
+    const mode = (hasName && hasHs) ? 'both' : (hasHs ? 'hs2name' : 'name2hs');
+    const modeLabel = mode === 'both' ? '정합성 검증' : (mode === 'hs2name' ? 'HS → 영문명' : '영문명 → HS');
+
     const old = document.getElementById('hsSuggestPanel');
     if (old) old.remove();
 
     const panel = document.createElement('div');
     panel.id = 'hsSuggestPanel';
-    panel.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:99999; background:#fff; border:2px solid #1B5E9A; border-radius:10px; padding:20px 24px; max-width:560px; min-width:420px; box-shadow:0 12px 36px rgba(0,0,0,0.25);';
+    panel.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:99999; background:#fff; border:2px solid #1B5E9A; border-radius:10px; padding:20px 24px; max-width:600px; min-width:440px; box-shadow:0 12px 36px rgba(0,0,0,0.25);';
     panel.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
         <div>
-          <h3 style="margin:0; color:#1B2A3B; font-size:16px;">🤖 HS 추천</h3>
-          <div style="font-size:11px; color:#666; margin-top:3px;">"<strong>${escapeAttr(nameEn)}</strong>"${material ? ' · 재질 <strong>'+escapeAttr(material)+'</strong>' : ''}</div>
+          <h3 style="margin:0; color:#1B2A3B; font-size:16px;">🤖 HS 추천 <span style="font-size:11px; padding:2px 8px; border-radius:10px; background:#1B5E9A; color:#fff; font-weight:600; margin-left:6px;">${modeLabel}</span></h3>
+          <div style="font-size:11px; color:#666; margin-top:3px;">
+            ${hasName ? '영문명: "<strong>'+escapeAttr(nameEn)+'</strong>"' : '영문명: <span style="color:#bbb;">(빈칸)</span>'}
+            ${material ? ' · 재질 <strong>'+escapeAttr(material)+'</strong>' : ''}
+            ${hasHs ? ' · HS <strong style="font-family:monospace;">'+escapeAttr(hs10Raw)+'</strong>' : ''}
+          </div>
         </div>
         <button onclick="document.getElementById('hsSuggestPanel').remove()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#888;">×</button>
       </div>
-      <div id="hsSuggestBody" style="font-size:13px; color:#666;">⏳ 학습 데이터 확인 중...</div>
+      <div id="hsSuggestBody" style="font-size:13px; color:#666;">⏳ ${hasName ? '학습 데이터 확인 중...' : 'AI 호출 중...'}</div>
     `;
     document.body.appendChild(panel);
 
     const body = panel.querySelector('#hsSuggestBody');
-    const renderCandidates = (cands, sourceLabel) => {
+    const renderCandidates = (cands, sourceLabel, noteText) => {
       if (!cands || cands.length === 0) {
         body.innerHTML = '<div style="color:#888; padding:14px 0; text-align:center;">(후보 없음)</div>';
         return;
       }
       const rows = cands.map((c, i) => {
-        const A  = c.rates.A  != null ? c.rates.A + '%'  : '—';
-        const CN = c.rates.CN != null ? c.rates.CN + '%' : '—';
-        const E1 = c.rates.E1 != null ? c.rates.E1 + '%' : '—';
-        const fmtHs = c.hs10.slice(0,4) + '.' + c.hs10.slice(4,6) + '-' + c.hs10.slice(6,10);
+        const A  = c.rates && c.rates.A  != null ? c.rates.A + '%'  : '—';
+        const CN = c.rates && c.rates.CN != null ? c.rates.CN + '%' : '—';
+        const E1 = c.rates && c.rates.E1 != null ? c.rates.E1 + '%' : '—';
+        const hasHs10 = !!c.hs10;
+        const hasNameOut = !!c.nameEn;
+        const fmtHs = hasHs10 ? (c.hs10.slice(0,4) + '.' + c.hs10.slice(4,6) + '-' + c.hs10.slice(6,10)) : '';
         const badge = c.source === 'learned' ? '<span style="background:#0a7b40; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px;">학습됨</span>'
                     : c.source === 'ai+leaf' ? '<span style="background:#b26a00; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px;">AI+치환</span>'
+                    : c.source === 'leaf'    ? '<span style="background:#c0392b; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px;">leaf 후보</span>'
+                    : c.source === 'ai-name' ? '<span style="background:#6b3fa0; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px;">영문명</span>'
                     : '<span style="background:#1B5E9A; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px;">AI</span>';
+        const titleLine = hasHs10
+          ? `<strong style="font-family:monospace; font-size:14px; color:#1B2A3B;">${fmtHs}</strong>`
+          + (hasNameOut ? ` <span style="font-size:12px; color:#444;">— ${escapeAttr(c.nameEn)}</span>` : '')
+          : (hasNameOut ? `<strong style="font-size:13px; color:#1B2A3B;">${escapeAttr(c.nameEn)}</strong>` : '');
         return `
           <div style="border:1px solid #ddd; border-radius:6px; padding:10px 12px; margin-bottom:8px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-              <div style="display:flex; gap:8px; align-items:center;">
-                <strong style="font-family:monospace; font-size:14px; color:#1B2A3B;">${fmtHs}</strong>
-                ${badge}
-              </div>
-              <button data-hs="${c.hs10}" data-a="${c.rates.A != null ? c.rates.A : ''}" data-cn="${c.rates.CN != null ? c.rates.CN : ''}" data-e1="${c.rates.E1 != null ? c.rates.E1 : ''}" class="hs-suggest-pick" style="background:#0a7b40; color:#fff; border:none; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">선택</button>
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">${titleLine} ${badge}</div>
+              <button data-hs="${c.hs10 || ''}" data-name="${escapeAttr(c.nameEn || '')}" data-a="${c.rates && c.rates.A != null ? c.rates.A : ''}" data-cn="${c.rates && c.rates.CN != null ? c.rates.CN : ''}" data-e1="${c.rates && c.rates.E1 != null ? c.rates.E1 : ''}" class="hs-suggest-pick" style="background:#0a7b40; color:#fff; border:none; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">선택</button>
             </div>
             <div style="font-size:11px; color:#666; margin-bottom:4px;">${escapeAttr(c.reason)}</div>
-            <div style="font-size:11px; color:#444;">
+            ${c.rates ? `<div style="font-size:11px; color:#444;">
               <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0;">기본 ${A}</span>
               <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0; margin-left:4px;">한중 ${CN}</span>
               <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0; margin-left:4px;">아태 ${E1}</span>
-            </div>
+            </div>` : '<div style="font-size:11px; color:#aaa;">(공식표 미존재 — 세율 자동 안 됨)</div>'}
           </div>
         `;
       }).join('');
+      const noteBlock = noteText ? `<div style="font-size:11px; color:#c0392b; padding:8px 10px; background:#ffebe9; border-radius:6px; margin-bottom:10px;">${escapeAttr(noteText)}</div>` : '';
       body.innerHTML = `
+        ${noteBlock}
         <div style="font-size:11px; color:#888; margin-bottom:8px;">${sourceLabel}</div>
         ${rows}
-        <div style="font-size:10px; color:#aaa; margin-top:10px; text-align:center;">선택 시 행에 HS/세율 채움 → 저장은 별도 [💾 저장] 버튼</div>
+        <div style="font-size:10px; color:#aaa; margin-top:10px; text-align:center;">선택하면 영문명·HS·세율 자동 채움 → [💾 저장] 별도</div>
       `;
       body.querySelectorAll('.hs-suggest-pick').forEach(b => {
         b.addEventListener('click', () => {
           const hs10 = b.dataset.hs;
-          const fmt = hs10.slice(0,4) + '.' + hs10.slice(4,6) + '-' + hs10.slice(6,10);
-          const hsInp = tr.querySelector('input[data-field="HS코드"]');
-          if (hsInp) { hsInp.value = fmt; hsInp.classList.add('modified'); }
-          if (b.dataset.a !== '')  setRateForce(tr, 'input[data-field="기본세율"]', b.dataset.a);
-          if (b.dataset.cn !== '') setRateForce(tr, 'input[data-field="FTA_한중"]', b.dataset.cn);
-          if (b.dataset.e1 !== '') setRateForce(tr, 'input[data-field="아태세율"]', b.dataset.e1);
-          recomputeRowFta(tr);
-          updateGroupHsSummary(tr.dataset.group);
-          toast('✓ HS ' + fmt + ' 선택 — 저장은 [💾] 클릭', 'ok');
+          const pickedName = b.dataset.name;
+          if (pickedName && descInp) {
+            descInp.value = pickedName;
+            descInp.classList.add('modified');
+          }
+          if (hs10 && hsInp) {
+            const fmt = hs10.slice(0,4) + '.' + hs10.slice(4,6) + '-' + hs10.slice(6,10);
+            hsInp.value = fmt;
+            hsInp.classList.add('modified');
+            if (b.dataset.a  !== '') setRateForce(tr, 'input[data-field="기본세율"]', b.dataset.a);
+            if (b.dataset.cn !== '') setRateForce(tr, 'input[data-field="FTA_한중"]', b.dataset.cn);
+            if (b.dataset.e1 !== '') setRateForce(tr, 'input[data-field="아태세율"]', b.dataset.e1);
+            recomputeRowFta(tr);
+            updateGroupHsSummary(tr.dataset.group);
+          }
+          const summary = [pickedName, hs10 ? hs10.slice(0,4)+'.'+hs10.slice(4,6)+'-'+hs10.slice(6,10) : ''].filter(Boolean).join(' / ');
+          toast('✓ 선택: ' + summary + ' — [💾] 클릭하여 저장', 'ok');
           document.getElementById('hsSuggestPanel').remove();
         });
       });
     };
 
-    // 1. 학습 우선: HSMapping에서 영문명 매칭 시도
-    try {
-      const lr = await api('GET', '?op=search_products&q=' + encodeURIComponent(nameEn));
-      const learnedCands = [];
-      const seenHs = new Set();
-      ((lr && lr.products) || []).slice(0, 5).forEach(rec => {
-        const f = rec.fields || {};
-        const hs10 = String(f['HS코드'] || '').replace(/\D/g, '');
-        if (hs10.length !== 10 || seenHs.has(hs10)) return;
-        const t = lookupTariff(hs10);
-        if (!t) return;   // 공식표에 없는 학습 데이터는 무시 (학습 rate 사용 금지)
-        seenHs.add(hs10);
-        learnedCands.push({
-          hs10, reason: `학습 매핑 (사용횟수 ${f['사용횟수'] || 0}회)`,
-          rates: t, source: 'learned',
+    // 1. 학습 우선 — 영문명 매칭 (hs2name 모드 제외)
+    if (mode !== 'hs2name') {
+      try {
+        const lr = await api('GET', '?op=search_products&q=' + encodeURIComponent(nameEn));
+        const learnedCands = [];
+        const seenHs = new Set();
+        ((lr && lr.products) || []).slice(0, 5).forEach(rec => {
+          const f = rec.fields || {};
+          const hs10 = String(f['HS코드'] || '').replace(/\D/g, '');
+          if (hs10.length !== 10 || seenHs.has(hs10)) return;
+          const t = lookupTariff(hs10);
+          if (!t) return;
+          seenHs.add(hs10);
+          learnedCands.push({
+            hs10, reason: `학습 매핑 (사용횟수 ${f['사용횟수'] || 0}회)`,
+            rates: t, source: 'learned',
+          });
         });
-      });
-      if (learnedCands.length > 0) {
-        renderCandidates(learnedCands, '🎓 학습 데이터에서 매칭 — AI 호출 안 함 (비용 절약). 세율은 공식 관세표 우선.');
-        return;
-      }
-    } catch (e) { /* 학습 검색 실패해도 AI로 fallback */ }
+        if (learnedCands.length > 0) {
+          renderCandidates(learnedCands, '🎓 학습 데이터에서 매칭 — AI 호출 안 함. 세율은 공식 관세표 우선.');
+          return;
+        }
+      } catch (e) { /* AI fallback */ }
+    }
 
-    // 2. AI 호출
+    // 2. AI 호출 (양방향)
     body.innerHTML = '⏳ Anthropic AI 호출 중... (3~5초)';
     try {
       const r = await fetch('/api/hs-suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nameEn, material }),
+        body: JSON.stringify({ nameEn, material, hs10: hs10Raw }),
       });
       const data = await r.json();
       if (!r.ok || !data.ok) {
@@ -459,10 +489,13 @@
         body.innerHTML = `<div style="color:#c0392b; padding:14px 0;">❌ ${escapeAttr(data.error || ('HTTP ' + r.status))}${hint}</div>`;
         return;
       }
+      const labelByMode = { 'name2hs': '🤖 AI 추천 + 공식표 (11,326 HS) 교차검증',
+                            'hs2name': '🤖 AI 영문명 후보 + 공식 세율',
+                            'both':    '🤖 AI 정합성 검증 + 보강 후보' };
       if (data.candidates && data.candidates.length > 0) {
-        renderCandidates(data.candidates, '🤖 AI 추천 + 공식 관세율표 (11,326 HS) 교차검증 통과');
+        renderCandidates(data.candidates, labelByMode[data.mode || mode] || '🤖 AI 추천', data.note);
       } else {
-        body.innerHTML = `<div style="color:#b26a00; padding:14px 0;">⚠ AI 후보가 공식 관세표에 없습니다. 영문명/재질을 더 구체적으로 입력해보세요.</div>`;
+        body.innerHTML = `<div style="color:#b26a00; padding:14px 0;">⚠ AI 후보가 공식 관세표에 없습니다.${data.note ? '<br/><span style="font-size:11px;">'+escapeAttr(data.note)+'</span>' : ''}</div>`;
       }
     } catch (e) {
       body.innerHTML = `<div style="color:#c0392b; padding:14px 0;">❌ 호출 실패: ${escapeAttr(e.message)}</div>`;
