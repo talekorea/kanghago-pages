@@ -9,7 +9,8 @@
 //   호출자는 영문명 추천을 제시하지 말 것.
 
 const { handleCors, readBody } = require('./_lib');
-const TARIFF = require('../data/tariff.json');
+// v3.2.33: tariff.json → public/data/로 이동 (Vercel은 public/만 정적 서빙). api 경로도 동기화.
+const TARIFF = require('../public/data/tariff.json');
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = 'claude-sonnet-4-5';

@@ -139,17 +139,24 @@
   //   - HS 입력/선택 시 A/CN/E1 자동 채움 (관세사 override 가능)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   let KANGHAGO_TARIFF = null;
+  let KANGHAGO_TARIFF_LOADED = false;   // v3.2.33: 로드 실패와 빈 객체 구분 (검증 분기)
   async function loadTariffJson() {
-    if (KANGHAGO_TARIFF) return KANGHAGO_TARIFF;
+    if (KANGHAGO_TARIFF_LOADED) return KANGHAGO_TARIFF;
     try {
       const r = await fetch('/data/tariff.json');
       if (!r.ok) throw new Error('HTTP ' + r.status);
       KANGHAGO_TARIFF = await r.json();
-      console.info('[v3.2.20] 관세율 데이터 로드 OK —', Object.keys(KANGHAGO_TARIFF).length.toLocaleString(), 'HS');
+      KANGHAGO_TARIFF_LOADED = true;
+      console.info('[v3.2.33] 관세율 데이터 로드 OK —', Object.keys(KANGHAGO_TARIFF).length.toLocaleString(), 'HS');
       return KANGHAGO_TARIFF;
     } catch (e) {
-      console.warn('[v3.2.20] tariff.json 로드 실패:', e.message);
+      console.error('[v3.2.33] ⚠ tariff.json 로드 실패:', e.message, '— 세율 자동·HS 유효성 검증 불가. 관세사 수동 입력만 가능.');
       KANGHAGO_TARIFF = {};
+      KANGHAGO_TARIFF_LOADED = false;   // 실패 → false 유지 → emptyRequiredFields에서 '실존 안 함' 판정 보류
+      // UI에 명확한 안내
+      setTimeout(() => {
+        if (typeof toast === 'function') toast('⚠ 세율표(tariff.json) 로드 실패 — 세율 자동 채움 불가. 페이지 새로고침 권장', 'err');
+      }, 800);
       return KANGHAGO_TARIFF;
     }
   }
@@ -285,7 +292,8 @@
   //   v3.2.26 정책: 필수=HS(유효)+기본세율, 조건부=한중/아태(tariff에 값 있을 때만).
   async function emptyRequiredFields(tr) {
     if (!KANGHAGO_TARIFF) await loadTariffJson();
-    const tariffReady = !!(KANGHAGO_TARIFF && Object.keys(KANGHAGO_TARIFF).length);
+    // v3.2.33: KANGHAGO_TARIFF_LOADED로 명확히 — 로드 실패면 '실존 안 함' 판정 절대 안 함
+    const tariffReady = !!(KANGHAGO_TARIFF_LOADED && KANGHAGO_TARIFF && Object.keys(KANGHAGO_TARIFF).length);
     const missing = [];
     const getVal = sel => {
       const inp = tr.querySelector(sel);
