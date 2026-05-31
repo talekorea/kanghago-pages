@@ -102,6 +102,52 @@
   const shipId = params.get('id');
   let supabase = null, session = null, agent = null, shipment = null, products = [];
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // v3.2.20 (2026-05-31) 관세청 전체 세율표 (11,326 HS) + AI HS 추천 통합
+  //   - data/tariff.json 클라이언트 로드 → 공식 세율 자동 (학습 rate 사용 금지)
+  //   - /api/hs-suggest 호출 → 학습 우선 → AI 후보
+  //   - HS 입력/선택 시 A/CN/E1 자동 채움 (관세사 override 가능)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  let KANGHAGO_TARIFF = null;
+  async function loadTariffJson() {
+    if (KANGHAGO_TARIFF) return KANGHAGO_TARIFF;
+    try {
+      const r = await fetch('/data/tariff.json');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      KANGHAGO_TARIFF = await r.json();
+      console.info('[v3.2.20] 관세율 데이터 로드 OK —', Object.keys(KANGHAGO_TARIFF).length.toLocaleString(), 'HS');
+      return KANGHAGO_TARIFF;
+    } catch (e) {
+      console.warn('[v3.2.20] tariff.json 로드 실패:', e.message);
+      KANGHAGO_TARIFF = {};
+      return KANGHAGO_TARIFF;
+    }
+  }
+  function normalizeHs10(hsRaw) {
+    const d = String(hsRaw || '').replace(/\D/g, '');
+    return d.length === 10 ? d : (d.length > 10 ? d.slice(0, 10) : d);
+  }
+  function lookupTariff(hsRaw) {
+    if (!KANGHAGO_TARIFF) return null;
+    const h = normalizeHs10(hsRaw);
+    if (h.length !== 10) return null;
+    return KANGHAGO_TARIFF[h] || null;
+  }
+  function findTariffLeafCandidates(hsRaw, max = 5) {
+    if (!KANGHAGO_TARIFF) return [];
+    const d = String(hsRaw || '').replace(/\D/g, '');
+    if (d.length < 6) return [];
+    const p6 = d.slice(0, 6);
+    const out = [];
+    for (const k in KANGHAGO_TARIFF) {
+      if (k.startsWith(p6) && k !== d) {
+        out.push({ hs: k, ...KANGHAGO_TARIFF[k] });
+        if (out.length >= max) break;
+      }
+    }
+    return out;
+  }
+
   function toast(text, kind) {
     const el = document.createElement('div');
     el.className = 'toast ' + (kind || 'ok'); el.textContent = text;
@@ -114,6 +160,8 @@
 
   async function init() {
     if (!shipId || !shipId.startsWith('rec')) { showError('잘못된 사서함 ID'); return; }
+    // v3.2.20: 관세율 데이터 비동기 로드 (실패해도 페이지는 동작 — graceful fallback)
+    loadTariffJson();
     try {
       const cfgRes = await fetch('/api/agent-config');
       if (!cfgRes.ok) throw new Error('config 로드 실패');
@@ -216,19 +264,44 @@
     const i = tr.querySelector(sel);
     if (i && val != null && val !== '' && String(i.value).trim() === '') i.value = val;
   }
-  // HS코드 → HSMapping 세율 자동 채움 (그 행의 빈 세율/영문명 칸만). 신규 HS(rates 없음)면 빈 채로 → 필수검증이 막음.
+  // v3.2.20: 공식 tariff에서 무조건 덮어쓰기 (학습 rate 사용 금지 — E1 8% 오류 방지)
+  function setRateForce(tr, sel, val) {
+    const i = tr.querySelector(sel);
+    if (i && val != null && val !== '') {
+      i.value = val;
+      i.classList.add('modified');
+    }
+  }
+  // HS코드 → 공식 관세표(11,326)에서 세율 자동 채움 (학습 rate 보조).
+  //   1. lookupTariff(code) → A/CN/E1 force override (공식 = 진실)
+  //   2. 영문명은 hs_rates op에서 가져와 빈 칸만 채움 (학습 description 유지)
   async function fillRatesByHs(tr, code) {
     if (!tr || !code) return;
+    if (!KANGHAGO_TARIFF) await loadTariffJson();
+    const t = lookupTariff(code);
+    if (t) {
+      // ✓ 공식 매칭 — A/CN/E1 강제 채움 (관세사가 이후 수동 override 가능)
+      setRateForce(tr, 'input[data-field="기본세율"]', t.A);
+      setRateForce(tr, 'input[data-field="FTA_한중"]', t.CN);
+      setRateForce(tr, 'input[data-field="아태세율"]', t.E1);
+      recomputeRowFta(tr);
+    } else {
+      // ✗ 공식 매칭 실패 — 10자리 검증 + leaf 후보 안내
+      const digits = String(code).replace(/\D/g, '');
+      if (digits.length === 10) {
+        const leafs = findTariffLeafCandidates(code, 5);
+        const leafFmt = leafs.length
+          ? leafs.map(l => l.hs.slice(0,4)+'.'+l.hs.slice(4,6)+'-'+l.hs.slice(6,10)).join(' / ')
+          : '(같은 6자리 prefix 후보 없음)';
+        toast('⚠ 실존하지 않는 HS — leaf 후보: ' + leafFmt.substring(0, 100), 'err');
+      }
+    }
+    // 영문명은 학습 데이터에서 빈 칸만 (세율 X, description만)
     try {
       const rr = await api('GET', '?op=hs_rates&code=' + encodeURIComponent(code));
-      const rt = rr && rr.rates;
-      if (!rt) return;
-      setRateIfEmpty(tr, 'input[data-field="기본세율"]', rt.기본세율);
-      setRateIfEmpty(tr, 'input[data-field="FTA_한중"]', rt.FTA_한중);
-      setRateIfEmpty(tr, 'input[data-field="아태세율"]', rt.아태세율);
-      if (rr.description) setRateIfEmpty(tr, 'input[data-field="Description"]', rr.description);
-      updateGroupHsSummary(tr.dataset.group);
-    } catch (e) { /* 조회 실패해도 무시(관세사 직접 입력 가능) */ }
+      if (rr && rr.description) setRateIfEmpty(tr, 'input[data-field="Description"]', rr.description);
+    } catch (e) { /* 신규 HS — 무시 */ }
+    updateGroupHsSummary(tr.dataset.group);
   }
 
   function recomputeRowFta(tr) {
@@ -258,6 +331,143 @@
     if (note) note.textContent = sel.value === '한중' ? '* 한중 FTA C/O 필요 (없으면 일반 세율 적용)'
       : sel.value === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)' : '';
   }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // v3.2.20 (2026-05-31) AI HS 추천 모달 (도구 §3과 동일 UX 이식)
+  //   1) 학습 우선: hs_rates op로 영문명/HS 매칭 시도 (AI 호출 X)
+  //   2) AI 호출: /api/hs-suggest (영문명+재질) → 공식표 교차검증 후 후보 2~3개
+  //   3) [선택] → HS 칸 + A/CN/E1 자동 채움 → 그룹 일괄 (applyGroupHs)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  window.openHsSuggestRow = async function (pid) {
+    const tr = document.querySelector(`tr[data-id="${pid}"]`);
+    if (!tr) return;
+    const nameEn = (tr.querySelector('input[data-field="Description"]').value || '').trim();
+    const material = (tr.querySelector('input[data-field="Material"]').value || '').trim();
+    if (!nameEn) {
+      toast('영문명을 먼저 입력하세요 — HS 추천은 영문명 기반', 'err');
+      return;
+    }
+    if (!KANGHAGO_TARIFF) await loadTariffJson();
+
+    // 기존 패널 제거
+    const old = document.getElementById('hsSuggestPanel');
+    if (old) old.remove();
+
+    const panel = document.createElement('div');
+    panel.id = 'hsSuggestPanel';
+    panel.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:99999; background:#fff; border:2px solid #1B5E9A; border-radius:10px; padding:20px 24px; max-width:560px; min-width:420px; box-shadow:0 12px 36px rgba(0,0,0,0.25);';
+    panel.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+        <div>
+          <h3 style="margin:0; color:#1B2A3B; font-size:16px;">🤖 HS 추천</h3>
+          <div style="font-size:11px; color:#666; margin-top:3px;">"<strong>${escapeAttr(nameEn)}</strong>"${material ? ' · 재질 <strong>'+escapeAttr(material)+'</strong>' : ''}</div>
+        </div>
+        <button onclick="document.getElementById('hsSuggestPanel').remove()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#888;">×</button>
+      </div>
+      <div id="hsSuggestBody" style="font-size:13px; color:#666;">⏳ 학습 데이터 확인 중...</div>
+    `;
+    document.body.appendChild(panel);
+
+    const body = panel.querySelector('#hsSuggestBody');
+    const renderCandidates = (cands, sourceLabel) => {
+      if (!cands || cands.length === 0) {
+        body.innerHTML = '<div style="color:#888; padding:14px 0; text-align:center;">(후보 없음)</div>';
+        return;
+      }
+      const rows = cands.map((c, i) => {
+        const A  = c.rates.A  != null ? c.rates.A + '%'  : '—';
+        const CN = c.rates.CN != null ? c.rates.CN + '%' : '—';
+        const E1 = c.rates.E1 != null ? c.rates.E1 + '%' : '—';
+        const fmtHs = c.hs10.slice(0,4) + '.' + c.hs10.slice(4,6) + '-' + c.hs10.slice(6,10);
+        const badge = c.source === 'learned' ? '<span style="background:#0a7b40; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px;">학습됨</span>'
+                    : c.source === 'ai+leaf' ? '<span style="background:#b26a00; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px;">AI+치환</span>'
+                    : '<span style="background:#1B5E9A; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px;">AI</span>';
+        return `
+          <div style="border:1px solid #ddd; border-radius:6px; padding:10px 12px; margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+              <div style="display:flex; gap:8px; align-items:center;">
+                <strong style="font-family:monospace; font-size:14px; color:#1B2A3B;">${fmtHs}</strong>
+                ${badge}
+              </div>
+              <button data-hs="${c.hs10}" data-a="${c.rates.A != null ? c.rates.A : ''}" data-cn="${c.rates.CN != null ? c.rates.CN : ''}" data-e1="${c.rates.E1 != null ? c.rates.E1 : ''}" class="hs-suggest-pick" style="background:#0a7b40; color:#fff; border:none; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">선택</button>
+            </div>
+            <div style="font-size:11px; color:#666; margin-bottom:4px;">${escapeAttr(c.reason)}</div>
+            <div style="font-size:11px; color:#444;">
+              <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0;">기본 ${A}</span>
+              <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0; margin-left:4px;">한중 ${CN}</span>
+              <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0; margin-left:4px;">아태 ${E1}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+      body.innerHTML = `
+        <div style="font-size:11px; color:#888; margin-bottom:8px;">${sourceLabel}</div>
+        ${rows}
+        <div style="font-size:10px; color:#aaa; margin-top:10px; text-align:center;">선택 시 행에 HS/세율 채움 → 저장은 별도 [💾 저장] 버튼</div>
+      `;
+      body.querySelectorAll('.hs-suggest-pick').forEach(b => {
+        b.addEventListener('click', () => {
+          const hs10 = b.dataset.hs;
+          const fmt = hs10.slice(0,4) + '.' + hs10.slice(4,6) + '-' + hs10.slice(6,10);
+          const hsInp = tr.querySelector('input[data-field="HS코드"]');
+          if (hsInp) { hsInp.value = fmt; hsInp.classList.add('modified'); }
+          if (b.dataset.a !== '')  setRateForce(tr, 'input[data-field="기본세율"]', b.dataset.a);
+          if (b.dataset.cn !== '') setRateForce(tr, 'input[data-field="FTA_한중"]', b.dataset.cn);
+          if (b.dataset.e1 !== '') setRateForce(tr, 'input[data-field="아태세율"]', b.dataset.e1);
+          recomputeRowFta(tr);
+          updateGroupHsSummary(tr.dataset.group);
+          toast('✓ HS ' + fmt + ' 선택 — 저장은 [💾] 클릭', 'ok');
+          document.getElementById('hsSuggestPanel').remove();
+        });
+      });
+    };
+
+    // 1. 학습 우선: HSMapping에서 영문명 매칭 시도
+    try {
+      const lr = await api('GET', '?op=search_products&q=' + encodeURIComponent(nameEn));
+      const learnedCands = [];
+      const seenHs = new Set();
+      ((lr && lr.products) || []).slice(0, 5).forEach(rec => {
+        const f = rec.fields || {};
+        const hs10 = String(f['HS코드'] || '').replace(/\D/g, '');
+        if (hs10.length !== 10 || seenHs.has(hs10)) return;
+        const t = lookupTariff(hs10);
+        if (!t) return;   // 공식표에 없는 학습 데이터는 무시 (학습 rate 사용 금지)
+        seenHs.add(hs10);
+        learnedCands.push({
+          hs10, reason: `학습 매핑 (사용횟수 ${f['사용횟수'] || 0}회)`,
+          rates: t, source: 'learned',
+        });
+      });
+      if (learnedCands.length > 0) {
+        renderCandidates(learnedCands, '🎓 학습 데이터에서 매칭 — AI 호출 안 함 (비용 절약). 세율은 공식 관세표 우선.');
+        return;
+      }
+    } catch (e) { /* 학습 검색 실패해도 AI로 fallback */ }
+
+    // 2. AI 호출
+    body.innerHTML = '⏳ Anthropic AI 호출 중... (3~5초)';
+    try {
+      const r = await fetch('/api/hs-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nameEn, material }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) {
+        const hint = data.hint ? '<br/><span style="color:#888; font-size:11px;">' + escapeAttr(data.hint) + '</span>' : '';
+        body.innerHTML = `<div style="color:#c0392b; padding:14px 0;">❌ ${escapeAttr(data.error || ('HTTP ' + r.status))}${hint}</div>`;
+        return;
+      }
+      if (data.candidates && data.candidates.length > 0) {
+        renderCandidates(data.candidates, '🤖 AI 추천 + 공식 관세율표 (11,326 HS) 교차검증 통과');
+      } else {
+        body.innerHTML = `<div style="color:#b26a00; padding:14px 0;">⚠ AI 후보가 공식 관세표에 없습니다. 영문명/재질을 더 구체적으로 입력해보세요.</div>`;
+      }
+    } catch (e) {
+      body.innerHTML = `<div style="color:#c0392b; padding:14px 0;">❌ 호출 실패: ${escapeAttr(e.message)}</div>`;
+    }
+  };
 
   // 적용 FTA 변경 시: 추천과 비교하여 색상(추천=골드 / 변경=주황) + C/O 안내 갱신
   window.onFtaChange = function (sel) {
@@ -377,17 +587,30 @@
     });
     updateGroupHsSummary(gk);
     if (pids.length) await autoSaveHs(pids, value);   // 즉시 자동 저장(HS코드)
-    // ② HS→세율 자동 채움: 1회 조회 → 그룹 각 제품의 빈 세율/영문명 칸만 채움(관세사 입력값 보호)
+    // v3.2.20: HS→세율 자동 채움 — 공식 관세표 11,326 강제 (학습 rate 사용 금지)
+    if (!KANGHAGO_TARIFF) await loadTariffJson();
+    const tariff = lookupTariff(value);
+    if (tariff) {
+      rows.forEach(r => {
+        setRateForce(r, 'input[data-field="기본세율"]', tariff.A);
+        setRateForce(r, 'input[data-field="FTA_한중"]', tariff.CN);
+        setRateForce(r, 'input[data-field="아태세율"]', tariff.E1);
+        recomputeRowFta(r);
+      });
+    } else {
+      // 공식표에 없음 — leaf 후보 toast
+      const digits = String(value).replace(/\D/g, '');
+      if (digits.length === 10) {
+        const leafs = findTariffLeafCandidates(value, 5);
+        const leafFmt = leafs.length ? leafs.map(l => l.hs.slice(0,4)+'.'+l.hs.slice(4,6)+'-'+l.hs.slice(6,10)).join(' / ') : '(같은 6자리 prefix 후보 없음)';
+        toast('⚠ 실존하지 않는 HS — leaf 후보: ' + leafFmt.substring(0, 100), 'err');
+      }
+    }
+    // 영문명은 학습 데이터에서 (빈 칸만)
     try {
       const rr = await api('GET', '?op=hs_rates&code=' + encodeURIComponent(value));
-      const rt = rr && rr.rates;
-      if (rt) rows.forEach(r => {
-        setRateIfEmpty(r, 'input[data-field="기본세율"]', rt.기본세율);
-        setRateIfEmpty(r, 'input[data-field="FTA_한중"]', rt.FTA_한중);
-        setRateIfEmpty(r, 'input[data-field="아태세율"]', rt.아태세율);
-        if (rr.description) setRateIfEmpty(r, 'input[data-field="Description"]', rr.description);
-      });
-    } catch (e) { /* 신규 HS 등 — 세율 빈 채로(필수검증이 막음) */ }
+      if (rr && rr.description) rows.forEach(r => setRateIfEmpty(r, 'input[data-field="Description"]', rr.description));
+    } catch (e) { /* 무시 */ }
     // 세율 여전히 빈 제품(신규 HS 등) 주황 강조 → 관세사 직접 입력 유도
     rows.forEach(r => {
       emptyRequiredFields(r).filter(m => m.label !== 'HS코드').forEach(m => { if (m.inp) m.inp.style.borderColor = '#e8a04c'; });
@@ -453,6 +676,8 @@
         </td>
         <td>
           ${confirmed ? '<span class="confirmed">✓ 확정됨</span> ' : ''}
+          <!-- v3.2.20: AI HS 추천 (학습 우선 → AI + 공식표 교차검증) -->
+          <button onclick="openHsSuggestRow('${p.id}')" title="🤖 HS 추천 — 영문명+재질로 후보 2~3개" style="background:linear-gradient(135deg,#1B5E9A,#2872B5); color:#fff; border:none; padding:5px 9px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; margin-right:4px;">🤖 HS</button>
           <button class="save-btn" onclick="saveRow('${p.id}')">💾 저장</button>
         </td>
       </tr>`;
