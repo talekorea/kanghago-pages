@@ -43,7 +43,47 @@ function extractJson(text) {
   try { return JSON.parse(s.slice(start, end + 1)); } catch (e) { return null; }
 }
 
-function buildPrompt(mode, nameEn, material, hs10) {
+// v3.2.27: 영문명·재질 모순 감지 (heuristic)
+//   영문명에 fiber 키워드 / 재질에 다른 fiber → 충돌
+function detectConflict(nameEn, material) {
+  if (!nameEn || !material) return null;
+  const lowerN = nameEn.toLowerCase();
+  const lowerM = material.toLowerCase();
+  // 영문명에 명시된 fiber
+  const fibersInName = [];
+  if (/\bcotton\b/.test(lowerN)) fibersInName.push('cotton');
+  if (/\bsynthetic\b|\bpolyester\b|\bnylon\b|\bacrylic\b/.test(lowerN)) fibersInName.push('synthetic');
+  if (/\bwool\b/.test(lowerN)) fibersInName.push('wool');
+  if (/\bsilk\b/.test(lowerN)) fibersInName.push('silk');
+  if (/\blinen\b|\bflax\b/.test(lowerN)) fibersInName.push('linen');
+  // 재질에 명시된 fiber
+  const fiberInMat = /\bcotton\b/.test(lowerM) ? 'cotton'
+                  : /\bsynthetic\b|\bpolyester\b|\bnylon\b|\bacrylic\b/.test(lowerM) ? 'synthetic'
+                  : /\bwool\b/.test(lowerM) ? 'wool'
+                  : /\bsilk\b/.test(lowerM) ? 'silk'
+                  : /\blinen\b|\bflax\b/.test(lowerM) ? 'linen'
+                  : null;
+  if (fibersInName.length && fiberInMat && !fibersInName.includes(fiberInMat)) {
+    return `영문명=${fibersInName.join('/')} / 재질=${fiberInMat}`;
+  }
+  return null;
+}
+
+// v3.2.27: 후보 hs10의 류(앞 2자리)가 갈리는지 감지
+function detectChapterSplit(candidates) {
+  if (!candidates || candidates.length < 2) return null;
+  const chapters = new Set();
+  candidates.forEach(c => {
+    const hs = String(c.hs10 || '').replace(/\D/g, '');
+    if (hs.length >= 2) chapters.add(hs.slice(0, 2));
+  });
+  if (chapters.size > 1) {
+    return `후보 류 갈림: ${Array.from(chapters).map(c => c + '류').join(' / ')}`;
+  }
+  return null;
+}
+
+function buildPrompt(mode, nameEn, material, hs10, construction) {
   if (mode === 'hs2name') {
     const tariff = TARIFF[hs10];
     const tariffInfo = `공식 세율: A=${tariff.A}% / CN=${tariff.CN}% / E1=${tariff.E1}%`;
@@ -59,23 +99,29 @@ ${tariffInfo}
 **JSON 배열만 반환** — 설명 텍스트 금지:
 [{"nameEn":"...", "material":"...", "reason":"한 줄 근거"}]`;
   }
-  // name2hs (기본)
+  // name2hs (기본) — v3.2.27: construction (knit/woven) 우선 지시 반영
+  const constructionHint = construction === 'knit'
+    ? '\n- 의류라면 편물(knitted) → 61류(6101~6117) 우선 고려'
+    : construction === 'woven'
+      ? '\n- 의류라면 직물(woven) → 62류(6201~6217) 우선 고려'
+      : '';
   return `다음 제품의 한국 HSK 10자리 후보를 2~3개 제시하라.
-각 후보에 한 줄 근거를 달고, 한국 관세율표 기준으로 판단하라.
+각 후보에 한 줄 근거를 달고, 한국 관세율표 기준으로 판단하라.${constructionHint}
 **JSON 배열만 반환** — 설명 텍스트 금지:
 [{"hs10":"0000000000","reason":"한 줄 근거"}]
 
 제품 정보 (신뢰원):
 - 영문 품명: ${nameEn || '(미입력)'}
-- 재질: ${material || '(미입력)'}`;
+- 재질: ${material || '(미입력)'}
+- 편물/직물: ${construction === 'knit' ? '편물(knitted)' : construction === 'woven' ? '직물(woven)' : '(미정)'}`;
 }
 
-async function callAnthropic(mode, nameEn, material, hs10) {
+async function callAnthropic(mode, nameEn, material, hs10, construction) {
   if (!ANTHROPIC_API_KEY) {
     throw Object.assign(new Error('ANTHROPIC_API_KEY 환경 변수가 설정되지 않았습니다'),
       { hint: 'Vercel 환경 변수에 ANTHROPIC_API_KEY 추가 + 재배포' });
   }
-  const userMsg = buildPrompt(mode, nameEn, material, hs10);
+  const userMsg = buildPrompt(mode, nameEn, material, hs10, construction);
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
@@ -155,6 +201,8 @@ module.exports = async (req, res) => {
     const material = String(body.material || '').trim();
     const hs10Raw = String(body.hs10 || '').trim();
     const hs10 = normalize10(hs10Raw);
+    // v3.2.27: 편물/직물 — 의류 류(61/62) 분기 힌트
+    const construction = (body.construction === 'knit' || body.construction === 'woven') ? body.construction : null;
 
     // mode 결정 (기존 호환: mode 없으면 입력 패턴으로 유추)
     let mode = (modeIn === 'hs2name' || modeIn === 'name2hs') ? modeIn
@@ -183,20 +231,32 @@ module.exports = async (req, res) => {
       if (!nameEn) return res.status(400).json({ ok: false, error: '영문 품명(nameEn) 필요 (name2hs 모드)' });
     }
 
-    const aiCands = await callAnthropic(mode, nameEn, material, hs10);
+    const aiCands = await callAnthropic(mode, nameEn, material, hs10, construction);
     const candidates = (mode === 'hs2name')
       ? buildNameCandidates(aiCands, hs10)
       : validateHsCandidates(aiCands);
+
+    // v3.2.27: 모순/모호 감지
+    const conflictNotes = [];
+    if (mode === 'name2hs') {
+      const c1 = detectConflict(nameEn, material);
+      if (c1) conflictNotes.push(c1);
+      const c2 = detectChapterSplit(candidates);
+      if (c2) conflictNotes.push(c2);
+    }
+    const conflict = conflictNotes.length > 0;
+    const conflictNote = conflict ? conflictNotes.join(' · ') : null;
 
     if (candidates.length === 0) {
       return res.status(200).json({
         ok: true, mode, candidates: [],
         warning: 'AI 후보가 공식 관세표에 매칭되지 않습니다. 입력을 더 구체적으로 해주세요.',
+        conflict, conflictNote,
         aiRaw: aiCands,
       });
     }
 
-    return res.status(200).json({ ok: true, mode, candidates, count: candidates.length });
+    return res.status(200).json({ ok: true, mode, candidates, count: candidates.length, conflict, conflictNote });
   } catch (e) {
     console.error('[hs-suggest]', e);
     return res.status(500).json({
