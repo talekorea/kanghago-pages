@@ -163,21 +163,7 @@
     if (h.length !== 10) return null;
     return KANGHAGO_TARIFF[h] || null;
   }
-  // v3.2.27: 의류 행 판정 — HS 61·62 또는 영문명 의류 키워드
-  const APPAREL_KEYWORDS = /\b(suit|trousers|pants|shirt|dress|jacket|blouse|skirt|coat|sweater|cardigan|pullover|t-shirt|jersey|sweatshirt|hoodie|jumper|knitwear|trunks|shorts|underwear|brief|panties|bra|hosiery|sock|stocking|tights|gown|kimono|robe|kaftan)\b/i;
-  function isApparelRow(hs, nameEn) {
-    const d = String(hs || '').replace(/\D/g, '');
-    if (d.length >= 2 && (d.startsWith('61') || d.startsWith('62'))) return true;
-    if (nameEn && APPAREL_KEYWORDS.test(nameEn)) return true;
-    return false;
-  }
-  function toggleConstructionVisibility(tr) {
-    const wrap = tr.querySelector('[data-construction-wrap]');
-    if (!wrap) return;
-    const hs = (tr.querySelector('input[data-field="HS코드"]') || {}).value || '';
-    const nameEn = (tr.querySelector('input[data-field="Description"]') || {}).value || '';
-    wrap.style.display = isApparelRow(hs, nameEn) ? '' : 'none';
-  }
+  // v3.2.29: construction(편물/직물) 입력 칸 폐기. HS가 편물/직물 규정 — AI가 양쪽 후보 자동.
 
   function findTariffLeafCandidates(hsRaw, max = 5) {
     if (!KANGHAGO_TARIFF) return [];
@@ -424,13 +410,10 @@
     const descInp = tr.querySelector('input[data-field="Description"]');
     const matInp = tr.querySelector('input[data-field="Material"]');
     const hsInp = tr.querySelector('input[data-field="HS코드"]');
-    const constructionSel = tr.querySelector('select[data-field="construction"]');
     const nameEn = (descInp.value || '').trim();
     const material = (matInp.value || '').trim();
     const hs10Raw = (hsInp.value || '').trim();
-    // v3.2.27: 의류 행이고 selection이 knit/woven이면 페이로드에 포함
-    const constructionVal = (constructionSel && isApparelRow(hs10Raw, nameEn) && (constructionSel.value === 'knit' || constructionSel.value === 'woven'))
-      ? constructionSel.value : null;
+    // v3.2.29: construction 페이로드 폐기 (AI가 양쪽 후보 자동 제시)
     if (!nameEn && !hs10Raw) {
       toast('영문명 또는 HS코드 중 하나는 입력하세요', 'err');
       return;
@@ -583,7 +566,7 @@
       const r = await fetch('/api/hs-suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, nameEn: payloadNameEn, material: payloadMaterial, hs10: payloadHs, construction: constructionVal }),
+        body: JSON.stringify({ mode, nameEn: payloadNameEn, material: payloadMaterial, hs10: payloadHs }),
       });
       const data = await r.json();
       // v3.2.24: 무효 HS — leaf 후보만 표시 (영문명 추천 X)
@@ -811,15 +794,7 @@
         <td style="text-align:center;">${imgCell}</td>
         <td style="font-family:'SF Mono',Consolas,monospace; font-size:11px;">${escapeHtml(f['상품ID'] || '-')}<br/>${linkCell}</td>
         <td><input data-field="Description" value="${escapeAttr(f['Description'] || '')}" placeholder="영문명" /></td>
-        <td>
-          <input data-field="Material" value="${escapeAttr(f['Material'] || '')}" placeholder="재질" />
-          <!-- v3.2.27: 편물/직물 select — 의류일 때만 표시 (data-construction-wrap). HS 61·62 또는 영문명 의류 키워드. -->
-          <select data-field="construction" data-construction-wrap class="construction-select" style="margin-top:4px; width:100%; font-size:11px; padding:3px 6px; display:none;">
-            <option value="">편물/직물?</option>
-            <option value="knit"${(f['construction'] || f['편물직물']) === 'knit' ? ' selected' : ''}>편물 (knitted)</option>
-            <option value="woven"${(f['construction'] || f['편물직물']) === 'woven' ? ' selected' : ''}>직물 (woven)</option>
-          </select>
-        </td>
+        <td><input data-field="Material" value="${escapeAttr(f['Material'] || '')}" placeholder="재질" /></td>
         <td>
           <!-- v3.2.23: 🤖 HS 추천을 HS 입력 칸 바로 위로 (작업자 핵심 동선) -->
           <div class="hs-cell-wrap">
@@ -854,8 +829,7 @@
       inp.addEventListener('input', () => inp.classList.toggle('modified', inp.value !== orig));
     });
     setupAgentAutocomplete();  // 작업2·3: 자동완성 위임 등록 (1회)
-    // v3.2.27: 모든 행에 편물/직물 select 초기 가시성 적용 (HS·영문명 기반)
-    tbody.querySelectorAll('tr[data-id]').forEach(tr => toggleConstructionVisibility(tr));
+    // v3.2.29: construction select 폐기 — toggleConstructionVisibility 호출 제거
   }
 
   // ===== 작업2·3: 품명↔HS 자동완성 (도구 §3 패턴 이식) =====
@@ -875,10 +849,7 @@
       if (inp.matches('input[data-field="Description"], input[data-field="Material"], input[data-field="HS코드"]')) {
         inp.dataset.touchedSeq = String(++window.__hsTouchedCounter || (window.__hsTouchedCounter = 1));
       }
-      // v3.2.27: 영문명·HS 변경 → 의류 판정 갱신 → 편물/직물 select 토글
-      if (inp.matches('input[data-field="Description"], input[data-field="HS코드"]')) {
-        const trg = inp.closest('tr'); if (trg) toggleConstructionVisibility(trg);
-      }
+      // v3.2.29: toggleConstructionVisibility 호출 제거 (select 폐기됨)
       // HS코드 개별 수정 → 그룹 헤더 HS요약 즉시 갱신
       if (inp.matches('input[data-field="HS코드"]')) {
         const trg = inp.closest('tr'); if (trg) updateGroupHsSummary(trg.dataset.group);
@@ -994,11 +965,15 @@
     tr.querySelectorAll('input[data-field="HS코드"],input[data-field="기본세율"],input[data-field="FTA_한중"],input[data-field="아태세율"]')
       .forEach(i => { i.style.borderColor = ''; });
     const fields = {};
+    // v3.2.29: 화이트리스트(ALLOWED_PRODUCT_FIELDS) 외 필드 차단 — 거부된 필드 발생 사전 차단.
+    //   dataset.field 비어있거나 화이트리스트 외면 페이로드 미포함.
+    const AGENT_SAVEABLE = new Set(['Description', 'Material', 'HS코드', 'FTA_한중', '아태세율', '기본세율', '적용FTA']);
     tr.querySelectorAll('input, select').forEach(inp => {
       const key = inp.dataset.field;
+      if (!key || !AGENT_SAVEABLE.has(key)) return;   // 화이트리스트 외 차단
       let val = inp.value.trim();
       if (inp.type === 'number') val = val === '' ? null : parseFloat(val);
-      if (key === 'HS코드') { val = normalizeHsCode(val); inp.value = val; }   // 수정 A: 저장 시 형식 보장
+      if (key === 'HS코드') { val = normalizeHsCode(val); inp.value = val; }
       fields[key] = val;
     });
     // 관세사확정 = true 추가 (저장 시 자동 확정 토글)
@@ -1022,7 +997,12 @@
     btn.disabled = true; btn.textContent = '저장 중...';
     try {
       const r = await api('POST', '', { op: 'product_patch', shipmentId: shipment.id, productId: pid, fields });
-      if (r.rejected && r.rejected.length) toast('⚠ 거부된 필드: ' + r.rejected.join(', '), 'err');
+      // v3.2.29: 거부된 필드는 더 이상 발생 안 함(화이트리스트 사전 차단). 발생 시 명확히 안내.
+      if (r.rejected && r.rejected.length) {
+        const rejectedList = r.rejected.join(', ');
+        console.warn('[v3.2.29] 거부된 필드 발생 (예상 외):', rejectedList);
+        toast('⚠ 서버에서 거부된 필드: ' + rejectedList + ' — 개발자 확인 필요', 'err');
+      }
       toast('✓ 저장 완료');
       tr.querySelectorAll('input,select').forEach(i => i.classList.remove('modified'));
       // 갱신: 확정 표시

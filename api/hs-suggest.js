@@ -83,7 +83,7 @@ function detectChapterSplit(candidates) {
   return null;
 }
 
-function buildPrompt(mode, nameEn, material, hs10, construction) {
+function buildPrompt(mode, nameEn, material, hs10) {
   if (mode === 'hs2name') {
     const tariff = TARIFF[hs10];
     const tariffInfo = `공식 세율: A=${tariff.A}% / CN=${tariff.CN}% / E1=${tariff.E1}%`;
@@ -99,29 +99,25 @@ ${tariffInfo}
 **JSON 배열만 반환** — 설명 텍스트 금지:
 [{"nameEn":"...", "material":"...", "reason":"한 줄 근거"}]`;
   }
-  // name2hs (기본) — v3.2.27: construction (knit/woven) 우선 지시 반영
-  const constructionHint = construction === 'knit'
-    ? '\n- 의류라면 편물(knitted) → 61류(6101~6117) 우선 고려'
-    : construction === 'woven'
-      ? '\n- 의류라면 직물(woven) → 62류(6201~6217) 우선 고려'
-      : '';
+  // name2hs (기본) — v3.2.29: construction 입력 폐기. 의류일 때 편물(61)/직물(62) 양쪽 후보 지시.
   return `다음 제품의 한국 HSK 10자리 후보를 2~3개 제시하라.
-각 후보에 한 줄 근거를 달고, 한국 관세율표 기준으로 판단하라.${constructionHint}
+각 후보에 한 줄 근거를 달고, 한국 관세율표 기준으로 판단하라.
+- 의류는 편물(61류) / 직물(62류) 구분이 중요. 영문명에서 불확실하면 양쪽 후보를 모두 제시하라
+  (예: 6104 계열·6204 계열 둘 다). 사용자가 HS로 최종 선택.
 **JSON 배열만 반환** — 설명 텍스트 금지:
 [{"hs10":"0000000000","reason":"한 줄 근거"}]
 
 제품 정보 (신뢰원):
 - 영문 품명: ${nameEn || '(미입력)'}
-- 재질: ${material || '(미입력)'}
-- 편물/직물: ${construction === 'knit' ? '편물(knitted)' : construction === 'woven' ? '직물(woven)' : '(미정)'}`;
+- 재질: ${material || '(미입력)'}`;
 }
 
-async function callAnthropic(mode, nameEn, material, hs10, construction) {
+async function callAnthropic(mode, nameEn, material, hs10) {
   if (!ANTHROPIC_API_KEY) {
     throw Object.assign(new Error('ANTHROPIC_API_KEY 환경 변수가 설정되지 않았습니다'),
       { hint: 'Vercel 환경 변수에 ANTHROPIC_API_KEY 추가 + 재배포' });
   }
-  const userMsg = buildPrompt(mode, nameEn, material, hs10, construction);
+  const userMsg = buildPrompt(mode, nameEn, material, hs10);
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
@@ -201,8 +197,7 @@ module.exports = async (req, res) => {
     const material = String(body.material || '').trim();
     const hs10Raw = String(body.hs10 || '').trim();
     const hs10 = normalize10(hs10Raw);
-    // v3.2.27: 편물/직물 — 의류 류(61/62) 분기 힌트
-    const construction = (body.construction === 'knit' || body.construction === 'woven') ? body.construction : null;
+    // v3.2.29: construction 입력 폐기 — AI 프롬프트가 의류 양쪽 후보(61·62) 자동 제시
 
     // mode 결정 (기존 호환: mode 없으면 입력 패턴으로 유추)
     let mode = (modeIn === 'hs2name' || modeIn === 'name2hs') ? modeIn
@@ -231,7 +226,7 @@ module.exports = async (req, res) => {
       if (!nameEn) return res.status(400).json({ ok: false, error: '영문 품명(nameEn) 필요 (name2hs 모드)' });
     }
 
-    const aiCands = await callAnthropic(mode, nameEn, material, hs10, construction);
+    const aiCands = await callAnthropic(mode, nameEn, material, hs10);
     const candidates = (mode === 'hs2name')
       ? buildNameCandidates(aiCands, hs10)
       : validateHsCandidates(aiCands);
