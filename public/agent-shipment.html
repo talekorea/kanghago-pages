@@ -295,39 +295,40 @@
     return String(s).trim();
   }
 
-  // v3.2.26: 조건부 필수 검증 — 공식표(tariff.json)에 협정 값이 있을 때만 그 칸을 필수로.
-  //   필수: HS코드(유효 10자리) + 기본세율(A)
-  //   조건부: 한중(CN)·아태(E1)는 tariff[HS]에 값 있는데 비어있으면 누락. null이면 빈칸 정상.
-  function emptyRequiredFields(tr) {
+  // v3.2.28: 검증 전 KANGHAGO_TARIFF 로드 보장 (비동기). 미로드면 '실존하지 않음' 판정 보류.
+  //   v3.2.26 정책: 필수=HS(유효)+기본세율, 조건부=한중/아태(tariff에 값 있을 때만).
+  async function emptyRequiredFields(tr) {
+    if (!KANGHAGO_TARIFF) await loadTariffJson();
+    const tariffReady = !!(KANGHAGO_TARIFF && Object.keys(KANGHAGO_TARIFF).length);
     const missing = [];
     const getVal = sel => {
       const inp = tr.querySelector(sel);
       return { inp, v: inp ? String(inp.value).trim() : '' };
     };
-    // 1. HS코드 필수 + 10자리 유효성 (v3.2.20 lookupTariff)
+    // 1. HS코드 필수 — 빈칸이면 누락. 10자리 + 공식표 매칭은 tariff 로드된 경우만 판정.
     const hs = getVal('input[data-field="HS코드"]');
     if (hs.v === '') {
       missing.push({ label: 'HS코드', inp: hs.inp });
-    } else {
-      // 10자리 유효성 — 공식표 매칭 안 되면 경고 (lookupTariff null)
-      const tariffData = (typeof lookupTariff === 'function') ? lookupTariff(hs.v) : null;
+    } else if (tariffReady) {
+      const tariffData = lookupTariff(hs.v);
       if (!tariffData) {
         missing.push({ label: 'HS코드(실존하지 않음)', inp: hs.inp });
       }
     }
+    // (tariff 미로드 — 'HS코드(실존하지 않음)' 판정 보류. 다음 호출 시 재검증 또는 console.warn)
     // 2. 기본세율 필수
     const base = getVal('input[data-field="기본세율"]');
     if (base.v === '') missing.push({ label: '기본세율', inp: base.inp });
-    // 3. 한중·아태 조건부 — 공식표에 값 있을 때만 필수
-    const tariff = (typeof lookupTariff === 'function') ? lookupTariff(hs.v) : null;
-    if (tariff) {
-      const cn = getVal('input[data-field="FTA_한중"]');
-      const e1 = getVal('input[data-field="아태세율"]');
-      if (tariff.CN != null && cn.v === '') missing.push({ label: '한중세율(FTA_한중)', inp: cn.inp });
-      if (tariff.E1 != null && e1.v === '') missing.push({ label: '아태세율', inp: e1.inp });
-      // tariff.CN/E1 === null → 빈칸 정상 (해당 협정 미적용)
+    // 3. 한중·아태 조건부 — 공식표 값 있을 때만 필수 (tariff 로드 + HS 유효)
+    if (tariffReady) {
+      const tariff = lookupTariff(hs.v);
+      if (tariff) {
+        const cn = getVal('input[data-field="FTA_한중"]');
+        const e1 = getVal('input[data-field="아태세율"]');
+        if (tariff.CN != null && cn.v === '') missing.push({ label: '한중세율(FTA_한중)', inp: cn.inp });
+        if (tariff.E1 != null && e1.v === '') missing.push({ label: '아태세율', inp: e1.inp });
+      }
     }
-    // 공식표에 HS 없으면 한중·아태 검증 스킵 (HS 자체가 무효라 별도 경고로 처리됨)
     return missing;
   }
 
@@ -761,9 +762,11 @@
       if (rr && rr.description) rows.forEach(r => setRateIfEmpty(r, 'input[data-field="Description"]', rr.description));
     } catch (e) { /* 무시 */ }
     // 세율 여전히 빈 제품(신규 HS 등) 주황 강조 → 관세사 직접 입력 유도
-    rows.forEach(r => {
-      emptyRequiredFields(r).filter(m => m.label !== 'HS코드').forEach(m => { if (m.inp) m.inp.style.borderColor = '#e8a04c'; });
-    });
+    // v3.2.28: emptyRequiredFields async — await로 호출
+    for (const r of rows) {
+      const m = await emptyRequiredFields(r);
+      m.filter(x => x.label !== 'HS코드' && x.label !== 'HS코드(실존하지 않음)').forEach(x => { if (x.inp) x.inp.style.borderColor = '#e8a04c'; });
+    }
   };
 
   function renderProducts() {
@@ -980,7 +983,8 @@
     const tr = document.querySelector(`tr[data-id="${pid}"]`);
     if (!tr) return;
     // ★ 필수 입력 검증: HS코드 + 세율3개 빈칸이면 저장 차단(0은 통과). 영문명/재질은 필수 아님.
-    const missing = emptyRequiredFields(tr);
+    // v3.2.28: emptyRequiredFields async — await
+    const missing = await emptyRequiredFields(tr);
     if (missing.length) {
       missing.forEach(m => { if (m.inp) m.inp.style.borderColor = '#c0392b'; });
       toast('필수 입력 누락: ' + missing.map(m => m.label).join(', '), 'err');
@@ -1038,7 +1042,38 @@
     btn.disabled = false; btn.textContent = '💾 저장';
   };
 
+  // v3.2.28: 확정 전 전체 행 검증 — 빈 행이 하나라도 있으면 차단 + 어느 주문/어느 칸인지 안내.
+  //   (확정 후 수정은 자유 — 차단은 '빈 채로 확정' 케이스만 막음. saveRow는 그대로 동작.)
   window.confirmShipment = async () => {
+    // 1. tariff 로드 보장 (검증 전)
+    if (!KANGHAGO_TARIFF) await loadTariffJson();
+    // 2. 모든 제품 행 검증
+    const rows = document.querySelectorAll('#prodBody tr[data-id]');
+    if (rows.length === 0) {
+      toast('제품이 없습니다 — 확정 불가', 'err');
+      return;
+    }
+    const incomplete = [];
+    for (const tr of rows) {
+      const missing = await emptyRequiredFields(tr);
+      if (missing.length > 0) {
+        // 그룹키(주문번호 prefix) 추출 — data-group 사용
+        const gk = tr.dataset.group || '?';
+        incomplete.push({ tr, gk, labels: missing.map(m => m.label) });
+        // 누락 칸 빨강 강조
+        missing.forEach(m => { if (m.inp) m.inp.style.borderColor = '#c0392b'; });
+      }
+    }
+    if (incomplete.length > 0) {
+      // 첫 5개만 메시지에 (너무 길면 잘림)
+      const summary = incomplete.slice(0, 5).map(x => `${x.gk}: ${x.labels.join('/')}`).join(' · ');
+      const moreText = incomplete.length > 5 ? ` … 외 ${incomplete.length - 5}건` : '';
+      toast(`⚠ 확정 차단 — ${incomplete.length}개 행 누락. ${summary}${moreText}`, 'err');
+      // 첫 누락 행으로 스크롤
+      if (incomplete[0].tr) incomplete[0].tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    // 3. 통과 — 사서함 확정
     if (!confirm(shipment.fields['사서함'] + ' 사서함을 관세사확정완료로 전환합니다.\n진행하시겠습니까?')) return;
     try {
       await api('POST', '', { op: 'confirm_shipment', shipmentId: shipment.id });
