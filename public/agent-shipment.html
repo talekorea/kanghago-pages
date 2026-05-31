@@ -42,9 +42,28 @@
   select.fta-select.fta-override { background:#ffe0b2; border-color:#e8830c; font-weight:600; }
   .fta-info { cursor:help; color:var(--gold); font-weight:800; margin-left:3px; font-size:13px; }
   .co-note { font-size:10px; color:#c0392b; margin-top:3px; line-height:1.3; }
-  td .save-btn { padding:5px 10px; background:var(--navy); color:#fff; border:none; border-radius:4px;
-    font-size:11px; cursor:pointer; font-weight:600; }
-  td .save-btn:disabled { background:#ccc; cursor:not-allowed; }
+  /* v3.2.23: 저장 버튼 크게 — 작업 효율 (라벨 + 큰 폰트 + 풀폭) */
+  td .save-btn { padding:10px 18px; background:var(--navy); color:#fff; border:none; border-radius:6px;
+    font-size:14px; cursor:pointer; font-weight:700; box-shadow:0 2px 6px rgba(27,42,59,0.25);
+    transition:transform 0.08s, box-shadow 0.08s; min-width:84px; }
+  td .save-btn:hover { transform:translateY(-1px); box-shadow:0 4px 10px rgba(27,42,59,0.35); }
+  td .save-btn:disabled { background:#ccc; cursor:not-allowed; box-shadow:none; transform:none; }
+  /* v3.2.23: HS 추천 버튼 — HS 칸 바로 위 (셀 안 컨테이너로 묶음) */
+  .hs-cell-wrap { display:flex; flex-direction:column; gap:4px; }
+  .hs-cell-wrap input { width:100%; }
+  /* v3.2.23: 헤더 3분할 — 좌 로고 / 가운데 사서함 / 우 액션. flex-wrap으로 좁은 화면 대응 */
+  header.v3 { display:flex; align-items:center; gap:14px; padding:10px 16px;
+    background:var(--navy); color:#F4EFE6; flex-wrap:wrap; }
+  header.v3 .logo-block { display:flex; align-items:center; gap:10px; }
+  header.v3 .logo-block img { height:38px; width:auto; }
+  header.v3 .logo-block .brand { font-size:13px; font-weight:600; letter-spacing:0.05em; color:#F4EFE6; }
+  header.v3 .center-block { flex:1; min-width:200px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:6px 14px; background:rgba(255,255,255,0.06); border-radius:8px; }
+  header.v3 .center-block .label { font-size:10px; color:#cfc7b6; letter-spacing:0.08em; }
+  header.v3 .center-block .val { font-size:14px; font-weight:700; color:#fff; }
+  header.v3 .action-block { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  header.v3 a { color:#ffd87a; text-decoration:none; font-size:12px; }
+  header.v3 a:hover { text-decoration:underline; }
   td .confirmed { color:#1b5e20; font-size:11px; font-weight:700; }
   .err { padding:14px 18px; background:#fff5f5; border:1px solid #f5c2c7; color:#c0392b;
     border-radius:8px; margin-bottom:16px; }
@@ -58,21 +77,32 @@
 </style>
 </head>
 <body>
-<header>
-  <div><a href="/agent-dashboard.html">← 대시보드</a><span id="meLabel" style="font-size:12px;color:#cfc7b6;"></span></div>
-  <h1 id="shipTitle">사서함 작업</h1>
-  <button onclick="logout()">로그아웃</button>
+<!-- v3.2.23: 헤더 3분할 — 좌 로고 / 가운데 사서함 정보 / 우 액션 -->
+<header class="v3">
+  <div class="logo-block">
+    <img src="/kanghago_logo.png" alt="강하고" onerror="this.style.display='none'" />
+    <span class="brand">강하고 관세사 포털</span>
+  </div>
+  <div class="center-block" id="shipmentMeta">
+    <div><span class="label">사서함</span> <span class="val" id="mailbox">-</span></div>
+    <div><span class="label">고객</span> <span class="val" id="customerLabel">-</span></div>
+    <div><span class="label">상태</span> <span class="status val" id="status">-</span></div>
+  </div>
+  <div class="action-block">
+    <a href="/agent-dashboard.html">← 대시보드</a>
+    <span id="meLabel" style="font-size:11px; color:#cfc7b6;"></span>
+    <button id="confirmBtn" class="btn-confirm" onclick="confirmShipment()" style="background:var(--gold); color:#1B2A3B; border:none; padding:8px 14px; border-radius:6px; font-weight:700; cursor:pointer;">✅ 관세사 확정</button>
+    <button onclick="logout()" style="background:transparent; color:#F4EFE6; border:1px solid #cfc7b6; padding:7px 12px; border-radius:6px; cursor:pointer; font-size:12px;">로그아웃</button>
+  </div>
 </header>
 
 <main>
   <div id="error" class="err" style="display:none;"></div>
   <div id="content" style="display:none;">
-    <div class="meta">
-      <div>사서함 <strong id="mailbox">-</strong></div>
-      <div>상태 <span class="status" id="status">-</span></div>
-      <div style="margin-left:auto;" class="actions">
-        <button id="confirmBtn" class="btn-confirm" onclick="confirmShipment()">✅ 관세사 확정</button>
-      </div>
+    <!-- v3.2.23: meta 영역은 헤더에 흡수. shipTitle은 hidden 호환 (스크립트 일부가 참조) -->
+    <h1 id="shipTitle" style="display:none;">사서함 작업</h1>
+    <div class="meta" style="display:none;">
+      <div style="margin-left:auto;" class="actions"></div>
     </div>
     <table id="prodTable">
       <thead>
@@ -192,6 +222,14 @@
       shipment = data.shipment; products = data.products || [];
       document.getElementById('shipTitle').textContent = `🛃 ${shipment.fields['사서함']} 작업`;
       document.getElementById('mailbox').textContent = shipment.fields['사서함'];
+      // v3.2.23: 헤더 가운데 고객 라벨 채움 — 회원명 + 회사명 (data.customer 있으면)
+      const cf = (data.customer && data.customer.fields) || {};
+      const custName = cf['회원명'] || shipment.fields['수취_수취인'] || '';
+      const custCompany = cf['회사명'] || shipment.fields['수취_회사'] || '';
+      const customerLabel = document.getElementById('customerLabel');
+      if (customerLabel) {
+        customerLabel.textContent = custName ? (custCompany ? `${custName} (${custCompany})` : custName) : '-';
+      }
       const statusLabel = shipment.fields['상태'];
       const statusEl = document.getElementById('status');
       statusEl.textContent = statusLabel;
@@ -693,7 +731,13 @@
         <td style="font-family:'SF Mono',Consolas,monospace; font-size:11px;">${escapeHtml(f['상품ID'] || '-')}<br/>${linkCell}</td>
         <td><input data-field="Description" value="${escapeAttr(f['Description'] || '')}" placeholder="영문명" /></td>
         <td><input data-field="Material" value="${escapeAttr(f['Material'] || '')}" placeholder="재질" /></td>
-        <td><input data-field="HS코드" value="${escapeAttr(f['HS코드'] || '')}" placeholder="0000.00-0000" /></td>
+        <td>
+          <!-- v3.2.23: 🤖 HS 추천을 HS 입력 칸 바로 위로 (작업자 핵심 동선) -->
+          <div class="hs-cell-wrap">
+            <button onclick="openHsSuggestRow('${p.id}')" title="🤖 HS 추천 — 양방향 (영문명·HS·둘 다)" style="background:linear-gradient(135deg,#1B5E9A,#2872B5); color:#fff; border:none; padding:5px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; align-self:stretch;">🤖 HS 추천</button>
+            <input data-field="HS코드" value="${escapeAttr(f['HS코드'] || '')}" placeholder="0000.00-0000" />
+          </div>
+        </td>
         <td><input data-field="기본세율" type="number" step="0.1" value="${f['기본세율'] ?? ''}" placeholder="A" /></td>
         <td><input data-field="FTA_한중" type="number" step="0.1" value="${f['FTA_한중'] ?? ''}" placeholder="FCN1" /></td>
         <td><input data-field="아태세율" type="number" step="0.1" value="${f['아태세율'] ?? ''}" placeholder="E1" /></td>
@@ -708,9 +752,8 @@
           <div class="co-note" data-conote>${coNoteFor(effectiveFta)}</div>
         </td>
         <td>
-          ${confirmed ? '<span class="confirmed">✓ 확정됨</span> ' : ''}
-          <!-- v3.2.20: AI HS 추천 (학습 우선 → AI + 공식표 교차검증) -->
-          <button onclick="openHsSuggestRow('${p.id}')" title="🤖 HS 추천 — 영문명+재질로 후보 2~3개 (학습 우선 → AI + 공식표 교차검증)" style="background:linear-gradient(135deg,#1B5E9A,#2872B5); color:#fff; border:none; padding:5px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; margin-right:4px;">🤖 HS 추천</button>
+          ${confirmed ? '<div class="confirmed" style="margin-bottom:5px;">✓ 확정됨</div>' : ''}
+          <!-- v3.2.23: 🤖 HS 추천은 HS 칸 위로 이동. 액션 셀은 저장 버튼 크게 -->
           <button class="save-btn" onclick="saveRow('${p.id}')">💾 저장</button>
         </td>
       </tr>`;
