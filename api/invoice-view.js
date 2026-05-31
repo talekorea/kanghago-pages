@@ -98,7 +98,9 @@ module.exports = async (req, res) => {
       co:       parseFloat(f['청구_CO_금액'])       || 0,
       parcel:   parseFloat(f['청구_택배_금액'])      || 0,
       freight:  parseFloat(f['청구_화물_금액'])      || 0,
+      milkrun:  parseFloat(f['청구_밀크런_금액'])    || 0,   // v3.2.38: ⌈CBM/1.5⌉×30,000
       coupang:  parseFloat(f['청구_쿠팡밀크런_금액']) || 0,
+      shipMethod: f['배송방식'] || '',
     };
     // v3.2.31: 발행처 강하고로 전환 (사장님 사업자 등록 완료)
     const issuer = {

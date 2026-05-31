@@ -1049,6 +1049,10 @@ function renderBoxes() {
               <input type="radio" name="boxDelivery_${seq}" value="화물" ${currentChoice === '화물' ? 'checked' : ''} onchange="setBoxDelivery('${seq}','화물')" />
               🚚 화물
             </label>
+            <label class="${currentChoice === '밀크런' ? 'selected' : ''}" style="--box-color: ${color};">
+              <input type="radio" name="boxDelivery_${seq}" value="밀크런" ${currentChoice === '밀크런' ? 'checked' : ''} onchange="setBoxDelivery('${seq}','밀크런')" />
+              🥛 밀크런
+            </label>
           </div>
         </div>
       </div>
@@ -1091,13 +1095,17 @@ function setBoxDelivery(seq, type) {
   }
 }
 
-// 호환성: 박스별 결정을 전체 selectedDelivery로 다수결 합산
+// 호환성: 박스별 결정을 전체 selectedDelivery로 다수결 합산 (v3.2.38: 밀크런 포함 3택)
 function syncOverallDelivery() {
   if (!state.boxDeliveries) return;
   const values = Object.values(state.boxDeliveries);
   if (values.length === 0) return;
-  const cargoCount = values.filter(v => v === '화물').length;
-  state.selectedDelivery = cargoCount > values.length / 2 ? '화물' : '택배';
+  const counts = { '택배': 0, '화물': 0, '밀크런': 0 };
+  values.forEach(v => { if (counts[v] !== undefined) counts[v]++; });
+  let winner = '택배', max = counts['택배'];
+  if (counts['화물'] > max) { winner = '화물'; max = counts['화물']; }
+  if (counts['밀크런'] > max) { winner = '밀크런'; max = counts['밀크런']; }
+  state.selectedDelivery = winner;
 }
 
 function selectDelivery(type) {
