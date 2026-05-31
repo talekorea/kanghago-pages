@@ -662,6 +662,7 @@
       +   `<span style="float:right; font-weight:400; display:inline-flex; gap:4px; align-items:center;" onclick="event.stopPropagation();">`
       +     `<input class="grp-hs-input" data-grp="${gk}" placeholder="HS 일괄 (0000.00-0000)" style="width:150px; font-size:12px; padding:2px 6px; border:1px solid #ccc; border-radius:4px;" onclick="event.stopPropagation();" onkeydown="if(event.key==='Enter'){event.preventDefault();event.stopPropagation();applyGroupHs('${gk}');}" />`
       +     `<button type="button" onclick="event.stopPropagation(); applyGroupHs('${gk}');" style="font-size:11px; padding:3px 9px; background:var(--gold); color:#fff; border:none; border-radius:4px; cursor:pointer;">HS 일괄</button>`
+      +     `<button type="button" onclick="event.stopPropagation(); saveGroupAll('${gk}');" title="이 주문 모든 행 일괄 저장 (필수검증 통과분만)" style="font-size:11px; padding:3px 11px; background:var(--navy); color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600; margin-left:6px;">💾 전체 저장</button>`
       +   `</span>`
       +   `<span class="grp-arrow" data-arrow="${gk}" style="display:inline-block; width:16px; color:var(--gold);">▶</span> `
       +   `주문 <span style="font-family:'SF Mono',monospace;">${label}</span>`
@@ -714,6 +715,40 @@
     }
     if (gk != null) updateGroupHsSummary(gk);
   }
+  // v3.2.34: 그룹 전체 저장 — 그룹 내 모든 행 순차 saveRow.
+  //   실패 행은 어느 주문·어느 칸 안내. 통과분만 저장 (검증은 saveRow 내부에서).
+  window.saveGroupAll = async (gk) => {
+    if (!KANGHAGO_TARIFF) await loadTariffJson();
+    const rows = document.querySelectorAll(`#prodBody tr[data-group="${_gsel(gk)}"]`);
+    if (rows.length === 0) { toast('이 그룹에 행이 없습니다', 'err'); return; }
+    let ok = 0; const failed = [];
+    for (const tr of rows) {
+      const pid = tr.dataset.id;
+      if (!pid) continue;
+      // 사전 검증 — 실패 시 saveRow 호출 안 함 (UI 깜빡임 방지)
+      const missing = await emptyRequiredFields(tr);
+      if (missing.length > 0) {
+        missing.forEach(m => { if (m.inp) m.inp.style.borderColor = '#c0392b'; });
+        failed.push({ pid, labels: missing.map(m => m.label) });
+        continue;
+      }
+      try {
+        await window.saveRow(pid);
+        ok++;
+      } catch (e) {
+        failed.push({ pid, labels: ['저장 실패: ' + (e.message || '')] });
+      }
+    }
+    if (failed.length > 0) {
+      const sample = failed.slice(0, 3).map(f => f.pid.slice(-6) + ': ' + f.labels.join('/')).join(' · ');
+      const moreText = failed.length > 3 ? ` … 외 ${failed.length - 3}건` : '';
+      toast(`⚠ 주문 ${gk}: ${ok}건 저장 / ${failed.length}건 누락 — ${sample}${moreText}`, 'err');
+    } else {
+      toast(`✓ 주문 ${gk}: 전체 저장 완료 (${ok}건)`, 'ok');
+    }
+    console.info(`[v3.2.34 saveGroupAll] gk=${gk} → 저장 ${ok}건 / 실패 ${failed.length}건`);
+  };
+
   // v3.2.32: HS 일괄 — 세율 자동 채움 + 검증 일치 (개별 경로와 동일 lookupTariff)
   //   사장님 보고: 1행만 채워지고 나머지 빈칸 → rows NodeList 캡처 stale·race 의심
   //   fix: tariff 로드 먼저 보장 + 세율 적용 직전 rows 재조회 + setRateForce 강제
@@ -761,11 +796,44 @@
       }
     }
 
-    // 4. 영문명 학습 데이터 (빈 칸만)
-    try {
-      const rr = await api('GET', '?op=hs_rates&code=' + encodeURIComponent(value));
-      if (rr && rr.description) rows.forEach(r => setRateIfEmpty(r, 'input[data-field="Description"]', rr.description));
-    } catch (e) { /* 무시 */ }
+    // 4. 영문명 자동 채움 — 빈 영문명 행만 (관세사 입력 보존)
+    //    v3.2.34: 학습 데이터 우선 → 없으면 AI hs2name 1회 호출 (행마다 호출 X — 비용 절약)
+    const emptyDescRows = Array.from(rows).filter(r => {
+      const di = r.querySelector('input[data-field="Description"]');
+      return di && String(di.value).trim() === '';
+    });
+    if (emptyDescRows.length > 0 && tariff) {
+      let descToFill = '';
+      // 4a. 학습 데이터 (HSMapping op=hs_rates)
+      try {
+        const rr = await api('GET', '?op=hs_rates&code=' + encodeURIComponent(value));
+        if (rr && rr.description) descToFill = rr.description;
+      } catch (e) { /* 무시 */ }
+      // 4b. 학습 없으면 AI hs2name 1회 호출
+      if (!descToFill) {
+        try {
+          const aiResp = await fetch('/api/hs-suggest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'hs2name', hs10: value }),
+          });
+          const aiData = await aiResp.json();
+          if (aiData && aiData.ok && aiData.candidates && aiData.candidates.length > 0) {
+            descToFill = aiData.candidates[0].nameEn || '';
+            console.info('[v3.2.34 영문명 자동] AI hs2name 1회 호출 →', emptyDescRows.length, '행에 재사용:', descToFill);
+          }
+        } catch (e) { console.warn('[v3.2.34] AI hs2name 실패:', e.message); }
+      } else {
+        console.info('[v3.2.34 영문명 자동] 학습 데이터 →', emptyDescRows.length, '행에 재사용:', descToFill);
+      }
+      // 4c. 빈 영문명 행에만 채움. .value= 직접 set (input 이벤트 dispatch X) → touched 안 됨 (v3.2.24 정책)
+      if (descToFill) {
+        emptyDescRows.forEach(r => {
+          const di = r.querySelector('input[data-field="Description"]');
+          if (di) { di.value = descToFill; di.classList.add('modified'); }
+        });
+      }
+    }
 
     // 5. v3.2.32: 검증 통일 — 개별 경로(saveRow)와 동일 emptyRequiredFields. tariff 로드 끝났으므로 정확.
     for (const r of rows) {
