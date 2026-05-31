@@ -376,7 +376,7 @@
   //   2) AI 호출: /api/hs-suggest (영문명+재질) → 공식표 교차검증 후 후보 2~3개
   //   3) [선택] → HS 칸 + A/CN/E1 자동 채움 → 그룹 일괄 (applyGroupHs)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // v3.2.22: 양방향 HS 추천 — nameEn / hs10 / 둘 다 → mode 자동
+  // v3.2.24: 신뢰원 = 마지막 편집 칸 → 단방향 추천. both 모드 제거.
   window.openHsSuggestRow = async function (pid) {
     const tr = document.querySelector(`tr[data-id="${pid}"]`);
     if (!tr) return;
@@ -392,10 +392,20 @@
     }
     if (!KANGHAGO_TARIFF) await loadTariffJson();
 
-    const hasName = !!nameEn;
-    const hasHs = !!hs10Raw;
-    const mode = (hasName && hasHs) ? 'both' : (hasHs ? 'hs2name' : 'name2hs');
-    const modeLabel = mode === 'both' ? '정합성 검증' : (mode === 'hs2name' ? 'HS → 영문명' : '영문명 → HS');
+    // 신뢰원 결정: 가장 최근 touched 칸
+    const seqDesc = parseInt(descInp.dataset.touchedSeq || '0', 10);
+    const seqMat  = parseInt(matInp.dataset.touchedSeq  || '0', 10);
+    const seqHs   = parseInt(hsInp.dataset.touchedSeq   || '0', 10);
+    const maxSeq = Math.max(seqDesc, seqMat, seqHs);
+    let trustSource;
+    if (maxSeq > 0) trustSource = (seqHs === maxSeq) ? 'hs' : 'name';
+    else trustSource = hs10Raw && !nameEn ? 'hs' : 'name';
+
+    const mode = (trustSource === 'hs') ? 'hs2name' : 'name2hs';
+    const modeLabel = (mode === 'hs2name') ? 'HS → 영문명' : '영문명 → HS';
+    const payloadNameEn = (mode === 'name2hs') ? nameEn : '';
+    const payloadMaterial = (mode === 'name2hs') ? material : '';
+    const payloadHs = (mode === 'hs2name') ? hs10Raw : '';
 
     const old = document.getElementById('hsSuggestPanel');
     if (old) old.remove();
@@ -408,14 +418,15 @@
         <div>
           <h3 style="margin:0; color:#1B2A3B; font-size:16px;">🤖 HS 추천 <span style="font-size:11px; padding:2px 8px; border-radius:10px; background:#1B5E9A; color:#fff; font-weight:600; margin-left:6px;">${modeLabel}</span></h3>
           <div style="font-size:11px; color:#666; margin-top:3px;">
-            ${hasName ? '영문명: "<strong>'+escapeAttr(nameEn)+'</strong>"' : '영문명: <span style="color:#bbb;">(빈칸)</span>'}
-            ${material ? ' · 재질 <strong>'+escapeAttr(material)+'</strong>' : ''}
-            ${hasHs ? ' · HS <strong style="font-family:monospace;">'+escapeAttr(hs10Raw)+'</strong>' : ''}
+            ${mode === 'hs2name'
+              ? '신뢰원: HS <strong style="font-family:monospace;">' + escapeAttr(hs10Raw) + '</strong>'
+              : '신뢰원: 영문명 "<strong>' + escapeAttr(nameEn) + '</strong>"' + (material ? ' · 재질 <strong>' + escapeAttr(material) + '</strong>' : '')}
           </div>
+          <div style="font-size:10px; color:#999; margin-top:2px;">※ 마지막 편집 칸을 신뢰원으로. 다른 칸 값은 무시.</div>
         </div>
         <button onclick="document.getElementById('hsSuggestPanel').remove()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#888;">×</button>
       </div>
-      <div id="hsSuggestBody" style="font-size:13px; color:#666;">⏳ ${hasName ? '학습 데이터 확인 중...' : 'AI 호출 중...'}</div>
+      <div id="hsSuggestBody" style="font-size:13px; color:#666;">⏳ ${mode === 'name2hs' ? '학습 데이터 확인 중...' : 'AI 호출 중...'}</div>
     `;
     document.body.appendChild(panel);
 
@@ -445,7 +456,7 @@
           <div style="border:1px solid #ddd; border-radius:6px; padding:10px 12px; margin-bottom:8px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">${titleLine} ${badge}</div>
-              <button data-hs="${c.hs10 || ''}" data-name="${escapeAttr(c.nameEn || '')}" data-a="${c.rates && c.rates.A != null ? c.rates.A : ''}" data-cn="${c.rates && c.rates.CN != null ? c.rates.CN : ''}" data-e1="${c.rates && c.rates.E1 != null ? c.rates.E1 : ''}" class="hs-suggest-pick" style="background:#0a7b40; color:#fff; border:none; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">선택</button>
+              <button data-hs="${c.hs10 || ''}" data-name="${escapeAttr(c.nameEn || '')}" data-mat="${escapeAttr(c.material || '')}" data-a="${c.rates && c.rates.A != null ? c.rates.A : ''}" data-cn="${c.rates && c.rates.CN != null ? c.rates.CN : ''}" data-e1="${c.rates && c.rates.E1 != null ? c.rates.E1 : ''}" class="hs-suggest-pick" style="background:#0a7b40; color:#fff; border:none; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">선택</button>
             </div>
             <div style="font-size:11px; color:#666; margin-bottom:4px;">${escapeAttr(c.reason)}</div>
             ${c.rates ? `<div style="font-size:11px; color:#444;">
@@ -467,9 +478,15 @@
         b.addEventListener('click', () => {
           const hs10 = b.dataset.hs;
           const pickedName = b.dataset.name;
+          const pickedMat = b.dataset.mat || '';
+          // v3.2.24: 자동 채움 — .value= 직접 set (input 이벤트 X → touched 안 됨)
           if (pickedName && descInp) {
             descInp.value = pickedName;
             descInp.classList.add('modified');
+          }
+          if (pickedMat && matInp) {
+            matInp.value = pickedMat;
+            matInp.classList.add('modified');
           }
           if (hs10 && hsInp) {
             const fmt = hs10.slice(0,4) + '.' + hs10.slice(4,6) + '-' + hs10.slice(6,10);
@@ -488,10 +505,10 @@
       });
     };
 
-    // 1. 학습 우선 — 영문명 매칭 (hs2name 모드 제외)
-    if (mode !== 'hs2name') {
+    // 1. 학습 우선 — name2hs 모드에서만 (영문명 매칭)
+    if (mode === 'name2hs') {
       try {
-        const lr = await api('GET', '?op=search_products&q=' + encodeURIComponent(nameEn));
+        const lr = await api('GET', '?op=search_products&q=' + encodeURIComponent(payloadNameEn));
         const learnedCands = [];
         const seenHs = new Set();
         ((lr && lr.products) || []).slice(0, 5).forEach(rec => {
@@ -513,27 +530,40 @@
       } catch (e) { /* AI fallback */ }
     }
 
-    // 2. AI 호출 (양방향)
+    // 2. AI 호출 — 신뢰원만 페이로드 (다른 칸 값 의도적 비움)
     body.innerHTML = '⏳ Anthropic AI 호출 중... (3~5초)';
     try {
       const r = await fetch('/api/hs-suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nameEn, material, hs10: hs10Raw }),
+        body: JSON.stringify({ mode, nameEn: payloadNameEn, material: payloadMaterial, hs10: payloadHs }),
       });
       const data = await r.json();
+      // v3.2.24: 무효 HS — leaf 후보만 표시 (영문명 추천 X)
+      if (data.invalid === true) {
+        const leafs = (data.leafCandidates || []).map(L => ({
+          hs10: L.hs10, nameEn: '', material: '',
+          reason: `(공식표 유효 leaf — HS ${hs10Raw} 대신 사용)`,
+          rates: L.rates, source: 'leaf',
+        }));
+        if (leafs.length > 0) {
+          renderCandidates(leafs, '⚠ 실존하지 않는 HS — 유효한 leaf 후보 (영문명 추천은 무효 HS이므로 안 함)', data.error);
+        } else {
+          body.innerHTML = `<div style="color:#c0392b; padding:14px 0;">❌ ${escapeAttr(data.error)}<br/><span style="font-size:11px; color:#888;">leaf 후보도 없음 — HS 6자리를 다시 확인하세요</span></div>`;
+        }
+        return;
+      }
       if (!r.ok || !data.ok) {
         const hint = data.hint ? '<br/><span style="color:#888; font-size:11px;">' + escapeAttr(data.hint) + '</span>' : '';
         body.innerHTML = `<div style="color:#c0392b; padding:14px 0;">❌ ${escapeAttr(data.error || ('HTTP ' + r.status))}${hint}</div>`;
         return;
       }
       const labelByMode = { 'name2hs': '🤖 AI 추천 + 공식표 (11,326 HS) 교차검증',
-                            'hs2name': '🤖 AI 영문명 후보 + 공식 세율',
-                            'both':    '🤖 AI 정합성 검증 + 보강 후보' };
+                            'hs2name': '🤖 AI 영문명·재질 후보 (HS 신뢰원) + 공식 세율 자동' };
       if (data.candidates && data.candidates.length > 0) {
-        renderCandidates(data.candidates, labelByMode[data.mode || mode] || '🤖 AI 추천', data.note);
+        renderCandidates(data.candidates, labelByMode[data.mode || mode] || '🤖 AI 추천');
       } else {
-        body.innerHTML = `<div style="color:#b26a00; padding:14px 0;">⚠ AI 후보가 공식 관세표에 없습니다.${data.note ? '<br/><span style="font-size:11px;">'+escapeAttr(data.note)+'</span>' : ''}</div>`;
+        body.innerHTML = `<div style="color:#b26a00; padding:14px 0;">⚠ AI 후보가 공식 관세표에 없습니다.</div>`;
       }
     } catch (e) {
       body.innerHTML = `<div style="color:#c0392b; padding:14px 0;">❌ 호출 실패: ${escapeAttr(e.message)}</div>`;
@@ -780,6 +810,10 @@
         recomputeRowFta(inp.closest('tr'));
         return;
       }
+      // v3.2.24: 사용자 직접 편집 추적 — 영문명·재질·HS 마지막 편집 칸을 🤖 추천 신뢰원으로
+      if (inp.matches('input[data-field="Description"], input[data-field="Material"], input[data-field="HS코드"]')) {
+        inp.dataset.touchedSeq = String(++window.__hsTouchedCounter || (window.__hsTouchedCounter = 1));
+      }
       // HS코드 개별 수정 → 그룹 헤더 HS요약 즉시 갱신
       if (inp.matches('input[data-field="HS코드"]')) {
         const trg = inp.closest('tr'); if (trg) updateGroupHsSummary(trg.dataset.group);
@@ -787,6 +821,13 @@
       if (!(inp.matches('input[data-field="Description"]') || inp.matches('input[data-field="HS코드"]'))) return;
       clearTimeout(_acTimer);
       _acTimer = setTimeout(() => agentSearchSuggest(inp), 450);
+    });
+    // paste도 touched로 (input 이벤트와 별개로 발생할 수 있음)
+    tbody.addEventListener('paste', (e) => {
+      const inp = e.target;
+      if (inp && inp.matches && inp.matches('input[data-field="Description"], input[data-field="Material"], input[data-field="HS코드"]')) {
+        inp.dataset.touchedSeq = String(++window.__hsTouchedCounter || (window.__hsTouchedCounter = 1));
+      }
     });
     // HS코드 개별 수정 자동 저장 (blur 시 1회 — HS코드만 PATCH, 자동완성 검색(input)과 분리)
     tbody.addEventListener('change', (e) => {

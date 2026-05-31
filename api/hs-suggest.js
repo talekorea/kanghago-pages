@@ -1,14 +1,15 @@
-// v3.2.22 (2026-05-31): AI HS 추천 — 양방향 (hs2name / name2hs / both)
+// v3.2.24 (2026-05-31): AI HS 추천 — 신뢰원 = 마지막 편집 칸 (단방향)
 //
-// POST /api/hs-suggest { nameEn?, material?, hs10?, note? }
-//   - 영문명만 → HS 후보 생성 (name2hs)
-//   - HS만     → 영문명 후보 + 공식세율 (hs2name)
-//   - 둘 다    → 정합성 검증 + 보강 후보 (both)
+// POST /api/hs-suggest { mode, nameEn?, material?, hs10? }
+//   mode='name2hs' → 영문명·재질 → HS 후보 (기존)
+//   mode='hs2name' → HS → 영문명·재질 후보 (HS 유효 필수)
+//   ※ 'both' 모드 폐기 — 신뢰원만 근거로 단방향 추천 (다른 칸 값은 무시)
 //
-// 출력: { ok, mode, candidates: [{hs10?, nameEn?, reason, rates?, source}], note? }
+// HS 무효 (10자리이나 공식표 미존재) → { ok:false, invalid:true, leafCandidates:[...] }
+//   호출자는 영문명 추천을 제시하지 말 것.
 
 const { handleCors, readBody } = require('./_lib');
-const TARIFF = require('../data/tariff.json');   // 11,326 HS × {A, CN, E1}
+const TARIFF = require('../data/tariff.json');
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = 'claude-sonnet-4-5';
@@ -45,29 +46,18 @@ function extractJson(text) {
 function buildPrompt(mode, nameEn, material, hs10) {
   if (mode === 'hs2name') {
     const tariff = TARIFF[hs10];
-    const tariffInfo = tariff ? `(공식 세율: A=${tariff.A}% / CN=${tariff.CN}% / E1=${tariff.E1}%)` : '(공식표 미존재)';
-    return `다음 한국 HSK 10자리 ${hs10} 코드에 해당하는 제품의 영문 품명(Description) 후보를 2~3개 제시하라.
-한국 관세율표 ${hs10} ${tariffInfo} 기준으로, 통관 신고에 적합한 짧은 영문 품명을 추천하라.
+    const tariffInfo = `공식 세율: A=${tariff.A}% / CN=${tariff.CN}% / E1=${tariff.E1}%`;
+    return `다음 한국 HSK 10자리 코드에 해당하는 제품의 영문 품명(Description)과 재질을 2~3개 후보로 제시하라.
+HS코드: ${hs10}
+${tariffInfo}
+
+규칙:
+- 통관 신고에 적합한 짧은 영문 품명 (소문자 시작, 명사구)
+- 재질은 영문 (cotton / plastic / aluminum 등). 알 수 없으면 빈 문자열.
+- 신뢰원은 HS코드만. 다른 입력은 무시하고 이 HS가 가리키는 품목을 그대로 묘사하라.
+
 **JSON 배열만 반환** — 설명 텍스트 금지:
-[{"nameEn":"...", "reason":"한 줄 근거"}]
-
-참고:
-- 재질: ${material || '(미입력)'}
-- HS코드: ${hs10}`;
-  }
-  if (mode === 'both') {
-    const tariff = TARIFF[hs10];
-    const tariffInfo = tariff ? `유효 (A=${tariff.A}/CN=${tariff.CN}/E1=${tariff.E1})` : '⚠ 공식표 미존재';
-    return `다음 정보가 HS코드와 영문 품명이 서로 부합하는지 검토하라.
-- 영문 품명: ${nameEn}
-- 재질: ${material || '(미입력)'}
-- HS코드 (입력): ${hs10}  [공식 관세표: ${tariffInfo}]
-
-**JSON만 반환**:
-[
-  {"hs10":"입력한 HS 또는 더 적합한 HS", "reason":"정합성 + 한 줄 근거. 다르면 왜 그런지"},
-  ...(최대 3개)
-]`;
+[{"nameEn":"...", "material":"...", "reason":"한 줄 근거"}]`;
   }
   // name2hs (기본)
   return `다음 제품의 한국 HSK 10자리 후보를 2~3개 제시하라.
@@ -75,23 +65,22 @@ function buildPrompt(mode, nameEn, material, hs10) {
 **JSON 배열만 반환** — 설명 텍스트 금지:
 [{"hs10":"0000000000","reason":"한 줄 근거"}]
 
-제품 정보:
+제품 정보 (신뢰원):
 - 영문 품명: ${nameEn || '(미입력)'}
 - 재질: ${material || '(미입력)'}`;
 }
 
 async function callAnthropic(mode, nameEn, material, hs10) {
   if (!ANTHROPIC_API_KEY) {
-    throw Object.assign(new Error('ANTHROPIC_API_KEY 환경 변수가 설정되지 않았습니다'), { hint: 'Vercel 환경 변수에 ANTHROPIC_API_KEY 추가 + 재배포' });
+    throw Object.assign(new Error('ANTHROPIC_API_KEY 환경 변수가 설정되지 않았습니다'),
+      { hint: 'Vercel 환경 변수에 ANTHROPIC_API_KEY 추가 + 재배포' });
   }
-
   const userMsg = buildPrompt(mode, nameEn, material, hs10);
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({ model: MODEL, max_tokens: MAX_TOKENS, messages: [{ role: 'user', content: userMsg }] }),
   });
-
   if (!r.ok) {
     const errText = await r.text().catch(() => '');
     throw Object.assign(new Error(`Anthropic API ${r.status}`), { detail: errText.slice(0, 200) });
@@ -100,12 +89,13 @@ async function callAnthropic(mode, nameEn, material, hs10) {
   const text = (data.content && data.content[0] && data.content[0].text) || '';
   const parsed = extractJson(text);
   if (!Array.isArray(parsed)) {
-    throw Object.assign(new Error('AI 응답에서 JSON 배열을 추출하지 못했습니다'), { detail: text.slice(0, 200) });
+    throw Object.assign(new Error('AI 응답에서 JSON 배열을 추출하지 못했습니다'),
+      { detail: text.slice(0, 200) });
   }
   return parsed;
 }
 
-// name2hs / both 모드: AI 후보 hs10 → 공식표 교차검증 + 세율 부착
+// name2hs 모드: AI 후보 hs10 → 공식표 교차검증 + 세율 부착
 function validateHsCandidates(aiCands) {
   const out = [];
   const seen = new Set();
@@ -133,19 +123,21 @@ function validateHsCandidates(aiCands) {
   return out;
 }
 
-// hs2name 모드: AI 영문명 후보 → 정리 (HS는 입력 그대로 + 공식세율 부착)
+// hs2name 모드: AI 영문명·재질 후보 → 정리 (HS는 입력 그대로 + 공식세율 부착)
 function buildNameCandidates(aiCands, hs10) {
-  const rates = TARIFF[hs10] || null;
+  const rates = TARIFF[hs10];   // hs2name 호출 시점에 이미 유효성 검증됨
   const out = [];
   const seen = new Set();
   for (const c of aiCands) {
     const nameEn = String(c.nameEn || c.name_en || c.english || c['영문명'] || '').trim().slice(0, 120);
+    const material = String(c.material || c['재질'] || '').trim().slice(0, 60);
     if (!nameEn || seen.has(nameEn.toLowerCase())) continue;
     seen.add(nameEn.toLowerCase());
     const reason = (c.reason || c.근거 || '').toString().trim().slice(0, 220);
     out.push({
-      hs10, nameEn, reason: reason || '(근거 없음)',
-      rates: rates || undefined,
+      hs10, nameEn, material,
+      reason: reason || '(근거 없음)',
+      rates,
       source: 'ai-name',
     });
   }
@@ -158,63 +150,53 @@ module.exports = async (req, res) => {
 
   try {
     const body = (req.body && typeof req.body === 'object') ? req.body : await readBody(req).catch(() => ({}));
+    const modeIn = String(body.mode || '').trim();
     const nameEn = String(body.nameEn || '').trim();
     const material = String(body.material || '').trim();
     const hs10Raw = String(body.hs10 || '').trim();
     const hs10 = normalize10(hs10Raw);
 
-    if (!nameEn && !hs10) {
-      return res.status(400).json({ ok: false, error: '영문 품명(nameEn) 또는 HS코드(hs10) 중 최소 하나 필요' });
-    }
+    // mode 결정 (기존 호환: mode 없으면 입력 패턴으로 유추)
+    let mode = (modeIn === 'hs2name' || modeIn === 'name2hs') ? modeIn
+             : (hs10 && !nameEn) ? 'hs2name'
+             : 'name2hs';
 
-    // 모드 결정
-    let mode;
-    if (hs10 && nameEn) mode = 'both';
-    else if (hs10 && !nameEn) mode = 'hs2name';
-    else mode = 'name2hs';
-
-    // hs10 유효성 사전 검증 (10자리지만 공식표에 없는 경우)
-    let invalidHsNote = null;
-    let leafCandidates = [];
-    if (hs10 && hs10.length === 10 && !TARIFF[hs10]) {
-      leafCandidates = findLeafCandidates(hs10, 5);
-      const leafFmt = leafCandidates.map(k => `${k.slice(0,4)}.${k.slice(4,6)}-${k.slice(6,10)}`).join(' / ');
-      invalidHsNote = `⚠ HS ${hs10Raw} 공식 11,326 표에 없음. 같은 6자리 leaf 후보: ${leafFmt || '(없음)'}`;
-    } else if (hs10 && hs10.length < 10) {
-      invalidHsNote = `⚠ HS 10자리 필요 (입력 ${hs10.length}자리). 정확한 코드를 입력해주세요`;
-    }
-
-    // AI 호출
-    const aiCands = await callAnthropic(mode, nameEn, material, hs10);
-
-    let candidates;
+    // hs2name 모드: HS 유효성 사전 검증
     if (mode === 'hs2name') {
-      candidates = buildNameCandidates(aiCands, hs10);
-      // 무효 HS → 영문명 후보 신뢰도 낮으므로 leaf 후보를 같이 제시 (선택 시 HS도 교체)
-      if (invalidHsNote && leafCandidates.length) {
-        leafCandidates.forEach(leaf => {
-          candidates.push({
-            hs10: leaf, nameEn: '',
-            reason: `(leaf 후보 — HS ${hs10Raw} 대신 사용 권장)`,
-            rates: TARIFF[leaf],
-            source: 'leaf',
-          });
+      if (!hs10 || hs10.length !== 10) {
+        return res.status(400).json({ ok: false, error: 'HS 10자리 필요 (hs2name 모드)' });
+      }
+      if (!TARIFF[hs10]) {
+        // 무효 HS — 영문명 추천 안 함. leaf 후보만 반환.
+        const leafs = findLeafCandidates(hs10, 5);
+        return res.status(200).json({
+          ok: false,
+          invalid: true,
+          error: `⚠ HS ${hs10Raw} 공식 11,326 표에 없음`,
+          leafCandidates: leafs.map(k => ({
+            hs10: k, formatted: `${k.slice(0,4)}.${k.slice(4,6)}-${k.slice(6,10)}`, rates: TARIFF[k],
+          })),
         });
       }
     } else {
-      candidates = validateHsCandidates(aiCands);
+      // name2hs 모드: 영문명 필수
+      if (!nameEn) return res.status(400).json({ ok: false, error: '영문 품명(nameEn) 필요 (name2hs 모드)' });
     }
+
+    const aiCands = await callAnthropic(mode, nameEn, material, hs10);
+    const candidates = (mode === 'hs2name')
+      ? buildNameCandidates(aiCands, hs10)
+      : validateHsCandidates(aiCands);
 
     if (candidates.length === 0) {
       return res.status(200).json({
         ok: true, mode, candidates: [],
         warning: 'AI 후보가 공식 관세표에 매칭되지 않습니다. 입력을 더 구체적으로 해주세요.',
-        note: invalidHsNote,
         aiRaw: aiCands,
       });
     }
 
-    return res.status(200).json({ ok: true, mode, candidates, count: candidates.length, note: invalidHsNote });
+    return res.status(200).json({ ok: true, mode, candidates, count: candidates.length });
   } catch (e) {
     console.error('[hs-suggest]', e);
     return res.status(500).json({
