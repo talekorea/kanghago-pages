@@ -398,7 +398,9 @@ module.exports = async (req, res) => {
         const q = (req.query.q || '').trim();
         if (q.length < 2) return res.json({ products: [] });
         const qEsc = q.toLowerCase().replace(/'/g, "\\'");
-        const f = `OR(FIND('${qEsc}',LOWER({Description}&'')),FIND('${qEsc}',LOWER({HS코드}&'')),FIND('${qEsc}',LOWER({통관품명_한글}&'')))`;
+        // v3.2.35: 관세사 확정한 Products만 자동완성 후보 (학습 정책 — 오염 차단)
+        //   미확정 옛 제품(예: Latex Loop band → 4016.99 사용횟수 0)이 추천에 안 나옴
+        const f = `AND({관세사확정},OR(FIND('${qEsc}',LOWER({Description}&'')),FIND('${qEsc}',LOWER({HS코드}&'')),FIND('${qEsc}',LOWER({통관품명_한글}&''))))`;
         const url = `/${TABLES.Products}?filterByFormula=${encodeURIComponent(f)}`
           + `&sort%5B0%5D%5Bfield%5D=${encodeURIComponent('사용횟수')}&sort%5B0%5D%5Bdirection%5D=desc`
           + `&sort%5B1%5D%5Bfield%5D=${encodeURIComponent('마지막사용일시')}&sort%5B1%5D%5Bdirection%5D=desc`
@@ -417,6 +419,8 @@ module.exports = async (req, res) => {
       }
       if (op === 'hs_rates') {
         // HS코드 → HSMapping 세율 조회 (학습값 재사용). 세율 있는 행 우선, 사용횟수 많은 것.
+        // v3.2.35: HSMapping write는 learnFromConfirmation(확정 시만)에서만 → 여기 read는 안전.
+        //   그래도 사용횟수 > 0 우선 + Description 누락(오염) 제외.
         const code = String(req.query.code || '').trim();
         if (!code) return res.json({ rates: null });
         const f = `{HS코드}='${code.replace(/'/g, "\\'")}'`;
@@ -425,6 +429,7 @@ module.exports = async (req, res) => {
         catch (e) { console.warn('[agent hs_rates]', e.message); }
         const withRates = recs.map(r => r.fields)
           .filter(rf => rf['기본세율'] != null || rf['FTA_한중'] != null || rf['아태세율'] != null)
+          .filter(rf => (rf['사용횟수'] || 0) > 0)   // v3.2.35: 사용횟수 0(오염 가능성) 제외
           .sort((a, b) => (b['사용횟수'] || 0) - (a['사용횟수'] || 0));
         const rf = withRates[0] || (recs[0] && recs[0].fields);
         if (!rf) return res.json({ rates: null });

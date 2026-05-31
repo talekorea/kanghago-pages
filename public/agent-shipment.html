@@ -796,18 +796,17 @@
       }
     }
 
-    // 4. 영문명 자동 채움 — 빈 영문명 행만 (관세사 입력 보존)
-    //    v3.2.34: 학습 데이터 우선 → 없으면 AI hs2name 1회 호출 (행마다 호출 X — 비용 절약)
-    const emptyDescRows = Array.from(rows).filter(r => {
-      const di = r.querySelector('input[data-field="Description"]');
-      return di && String(di.value).trim() === '';
-    });
-    if (emptyDescRows.length > 0 && tariff) {
+    // 4. 영문명 통일 — HS가 진실원. 전 행에 동일 영문명 적용 (빈 행 + 기존 영문명 모두 덮어쓰기).
+    //    v3.2.35: 사장님 정책 — '같은 HS면 같은 영문명' (통관 신고 일관성 강화).
+    //    학습 데이터 우선 (관세사 확정한 매핑만 hs_rates에 반환) → 없으면 AI hs2name 1회 호출.
+    //    공식표 매칭 (tariff) 없을 땐 AI도 안 부름 (잘못된 HS에 영문명 추천 의미 없음).
+    if (tariff && rows.length > 0) {
       let descToFill = '';
-      // 4a. 학습 데이터 (HSMapping op=hs_rates)
+      let sourceLabel = '';
+      // 4a. 학습 데이터 우선 (HSMapping op=hs_rates — v3.2.35: 확정·사용횟수>0 매핑만)
       try {
         const rr = await api('GET', '?op=hs_rates&code=' + encodeURIComponent(value));
-        if (rr && rr.description) descToFill = rr.description;
+        if (rr && rr.description) { descToFill = rr.description; sourceLabel = '학습'; }
       } catch (e) { /* 무시 */ }
       // 4b. 학습 없으면 AI hs2name 1회 호출
       if (!descToFill) {
@@ -820,18 +819,18 @@
           const aiData = await aiResp.json();
           if (aiData && aiData.ok && aiData.candidates && aiData.candidates.length > 0) {
             descToFill = aiData.candidates[0].nameEn || '';
-            console.info('[v3.2.34 영문명 자동] AI hs2name 1회 호출 →', emptyDescRows.length, '행에 재사용:', descToFill);
+            sourceLabel = 'AI';
           }
-        } catch (e) { console.warn('[v3.2.34] AI hs2name 실패:', e.message); }
-      } else {
-        console.info('[v3.2.34 영문명 자동] 학습 데이터 →', emptyDescRows.length, '행에 재사용:', descToFill);
+        } catch (e) { console.warn('[v3.2.35] AI hs2name 실패:', e.message); }
       }
-      // 4c. 빈 영문명 행에만 채움. .value= 직접 set (input 이벤트 dispatch X) → touched 안 됨 (v3.2.24 정책)
+      // 4c. v3.2.35: 전 행에 통일 적용 (빈 행·기존 영문명 모두 덮어쓰기).
+      //     .value= 직접 set (input 이벤트 X) → touched 안 됨 (v3.2.24 신뢰원 정책 유지)
       if (descToFill) {
-        emptyDescRows.forEach(r => {
+        rows.forEach(r => {
           const di = r.querySelector('input[data-field="Description"]');
           if (di) { di.value = descToFill; di.classList.add('modified'); }
         });
+        console.info(`[v3.2.35 영문명 통일] HS ${value} ${sourceLabel} → ${rows.length}행 전부 '${descToFill}'로 통일`);
       }
     }
 
