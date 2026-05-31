@@ -303,9 +303,15 @@
     if (i && val != null && val !== '' && String(i.value).trim() === '') i.value = val;
   }
   // v3.2.20: 공식 tariff에서 무조건 덮어쓰기 (학습 rate 사용 금지 — E1 8% 오류 방지)
+  // v3.2.25: 값이 null/undefined면 옛 값 비우기 (옛 잘못된 값 청소 + 0으로 폴백 금지).
+  //   숫자 0은 정상 set (관세 0%인 경우 — A=0 정상값).
+  //   값 있으면 덮어쓰기, 없으면 비우기.
   function setRateForce(tr, sel, val) {
     const i = tr.querySelector(sel);
-    if (i && val != null && val !== '') {
+    if (!i) return;
+    if (val == null || val === '') {
+      i.value = '';   // v3.2.25: 빈/null/undefined → 옛 값 청소 (해당 협정 없음 명시)
+    } else {
       i.value = val;
       i.classList.add('modified');
     }
@@ -492,9 +498,11 @@
             const fmt = hs10.slice(0,4) + '.' + hs10.slice(4,6) + '-' + hs10.slice(6,10);
             hsInp.value = fmt;
             hsInp.classList.add('modified');
-            if (b.dataset.a  !== '') setRateForce(tr, 'input[data-field="기본세율"]', b.dataset.a);
-            if (b.dataset.cn !== '') setRateForce(tr, 'input[data-field="FTA_한중"]', b.dataset.cn);
-            if (b.dataset.e1 !== '') setRateForce(tr, 'input[data-field="아태세율"]', b.dataset.e1);
+            // v3.2.25: 각 협정 개별 처리 — 값 있으면 채우고, 없으면 빈/—로 비움 (0 폴백 금지).
+            //   data-a/cn/e1: '' (빈 문자열) = 해당 협정 미적용 → 칸 비우기.
+            setRateForce(tr, 'input[data-field="기본세율"]', b.dataset.a);
+            setRateForce(tr, 'input[data-field="FTA_한중"]', b.dataset.cn);
+            setRateForce(tr, 'input[data-field="아태세율"]', b.dataset.e1);
             recomputeRowFta(tr);
             updateGroupHsSummary(tr.dataset.group);
           }
