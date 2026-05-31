@@ -81,8 +81,8 @@
           <th style="width:70px;">사진</th>
           <th style="width:74px;">상품ID</th>
           <th>영문명 (Description)</th>
-          <th style="width:120px;">HS 코드</th>
           <th style="width:120px;">Material/재질</th>
+          <th style="width:120px;">HS 코드</th>
           <th style="width:75px;">기본 (A)</th>
           <th style="width:80px;">한중 (FCN1)</th>
           <th style="width:80px;">아태 (E1)</th>
@@ -659,8 +659,8 @@
         <td style="text-align:center;">${imgCell}</td>
         <td style="font-family:'SF Mono',Consolas,monospace; font-size:11px;">${escapeHtml(f['상품ID'] || '-')}<br/>${linkCell}</td>
         <td><input data-field="Description" value="${escapeAttr(f['Description'] || '')}" placeholder="영문명" /></td>
-        <td><input data-field="HS코드" value="${escapeAttr(f['HS코드'] || '')}" placeholder="0000.00-0000" /></td>
         <td><input data-field="Material" value="${escapeAttr(f['Material'] || '')}" placeholder="재질" /></td>
+        <td><input data-field="HS코드" value="${escapeAttr(f['HS코드'] || '')}" placeholder="0000.00-0000" /></td>
         <td><input data-field="기본세율" type="number" step="0.1" value="${f['기본세율'] ?? ''}" placeholder="A" /></td>
         <td><input data-field="FTA_한중" type="number" step="0.1" value="${f['FTA_한중'] ?? ''}" placeholder="FCN1" /></td>
         <td><input data-field="아태세율" type="number" step="0.1" value="${f['아태세율'] ?? ''}" placeholder="E1" /></td>
@@ -677,7 +677,7 @@
         <td>
           ${confirmed ? '<span class="confirmed">✓ 확정됨</span> ' : ''}
           <!-- v3.2.20: AI HS 추천 (학습 우선 → AI + 공식표 교차검증) -->
-          <button onclick="openHsSuggestRow('${p.id}')" title="🤖 HS 추천 — 영문명+재질로 후보 2~3개" style="background:linear-gradient(135deg,#1B5E9A,#2872B5); color:#fff; border:none; padding:5px 9px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; margin-right:4px;">🤖 HS</button>
+          <button onclick="openHsSuggestRow('${p.id}')" title="🤖 HS 추천 — 영문명+재질로 후보 2~3개 (학습 우선 → AI + 공식표 교차검증)" style="background:linear-gradient(135deg,#1B5E9A,#2872B5); color:#fff; border:none; padding:5px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; margin-right:4px;">🤖 HS 추천</button>
           <button class="save-btn" onclick="saveRow('${p.id}')">💾 저장</button>
         </td>
       </tr>`;
