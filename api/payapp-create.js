@@ -1,3 +1,4 @@
+// v3.2.36 build: 2026-05-31T22:52:24.379776
 // 페이앱(PayApp) 결제 요청 생성 프록시 — 1단계 (수동 발송, 2026-05-30)
 // POST /api/payapp-create
 //   body: {
@@ -68,6 +69,35 @@ module.exports = async (req, res) => {
   let body;
   try { body = await readBody(req); }
   catch (e) { return res.status(400).json({ ok: false, error: 'invalid JSON body' }); }
+
+  // v3.2.36: cancel 통합 — Vercel Hobby 함수 한도 회피 (action='cancel'이면 paycancel)
+  if (body.action === 'cancel') {
+    const mul_no = String(body.mul_no || '').trim();
+    const memo = String(body.memo || '금액 변경으로 인한 재생성').slice(0, 60);
+    if (!mul_no) return res.status(400).json({ ok: false, error: 'mul_no 필수' });
+    const params = new URLSearchParams();
+    params.append('cmd', 'paycancel');
+    params.append('userid', USERID);
+    params.append('linkkey', LINKKEY);
+    params.append('mul_no', mul_no);
+    params.append('cancelmemo', memo);
+    try {
+      const r = await fetch(PAYAPP_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const text = await r.text();
+      const resp = parsePayappResponse(text);
+      const stateOk = String(resp.state || '').trim() === '1' || String(resp.success || '').toLowerCase() === 'true';
+      if (!stateOk) {
+        return res.status(200).json({ ok: false, cancelled: false, detail: resp.errorMessage || resp.errmsg || text.slice(0, 300), mul_no });
+      }
+      return res.status(200).json({ ok: true, cancelled: true, mul_no, memo });
+    } catch (e) {
+      return res.status(502).json({ ok: false, error: 'payapp cancel failed', detail: e.message });
+    }
+  }
 
   const { mailbox, shipmentId, amount, goodname, customer_name, customer_phone } = body;
 
