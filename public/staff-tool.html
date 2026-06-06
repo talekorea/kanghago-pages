@@ -462,6 +462,8 @@
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#fff7e6; color:#1B2A3B; border:1px solid var(--gold);" onclick="openExcelUploadModal()" title="표준 양식 엑셀로 사서함 데이터 업로드 — 알리피드 대체 트랙">📂 엑셀 업로드</button>
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openAgentAdmin()">👥 관세사 관리</button>
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openMemberAdmin()">🏢 회원 관리</button>
+    <!-- v3.2.42: 직원 관리 (admin만, 관세사 패턴 미러) -->
+    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#eef5ff; color:#1B2A3B; border:1px solid #1B5E9A;" onclick="openStaffAdmin()" title="직원 계정 발급·관리 (ADMIN_INVITE_TOKEN 필요)">🧑‍💼 직원 관리</button>
     <!-- v3.2.41 (2026-06-05): 선적일별 부킹 요약 — 그날 사서함 박스 무게·CBM 합산 → 위챗 복사 -->
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#e8f7ef; color:#1B2A3B; border:1px solid #2BB673;" onclick="openBookingSummary()" title="선적일 선택 → 그날 사서함 박스 무게·CBM 합계 → 위챗 복사">📦 선적일별 부킹 요약</button>
     <span data-i18n="bulk_import.hint">알리피드 회원관리 페이지에서 50명씩 복사해서 일괄 등록</span>
@@ -528,6 +530,72 @@
       <button class="secondary small" onclick="memberReload()" style="padding:7px 13px; margin-left:auto;">🔄 새로고침</button>
     </div>
     <div id="memberListBody"><div style="padding:18px; text-align:center; color:#888;">관리자 토큰 입력 후 탭 클릭</div></div>
+  </div>
+</div>
+
+<!-- v3.2.42 (2026-06-06): 직원 관리 모달 (관세사 모달 패턴 미러, role='staff' 고정 발급) -->
+<div id="staffAdminModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.6); z-index:9999; padding:20px; overflow-y:auto;">
+  <div style="max-width:900px; margin:30px auto; background:#fff; border-radius:12px; padding:24px; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h2 style="margin:0;">🧑‍💼 직원 관리</h2>
+      <button onclick="closeStaffAdmin()" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--text-dim);">×</button>
+    </div>
+
+    <!-- 관리자 토큰 입력 (관세사 관리와 동일 ADMIN_INVITE_TOKEN) -->
+    <div style="margin-bottom:14px; padding:11px 14px; background:#fff8e1; border:1px solid #d4c5a8; border-radius:6px;">
+      <label style="font-size:12px; font-weight:600; display:block; margin-bottom:6px;">
+        🔑 관리자 토큰 (관세사·회원 관리와 동일 <code>ADMIN_INVITE_TOKEN</code>)
+      </label>
+      <input id="staffAdminToken" type="password" placeholder="Vercel env 토큰" style="width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:5px; font-family:monospace; font-size:13px;" />
+      <div style="font-size:11px; color:#888; margin-top:5px;">sessionStorage·localStorage 모두 저장 — 도구 재실행에도 유지. 관세사·회원 관리와 같은 토큰 자동 공유.</div>
+    </div>
+
+    <!-- 신규 직원 등록 -->
+    <div style="background:var(--ivory); border-radius:8px; padding:14px 16px; margin-bottom:18px;">
+      <h3 style="margin:0 0 10px 0; font-size:14px;">🆕 새 직원 등록 (role=staff 고정)</h3>
+      <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+        <div style="flex:1; min-width:180px;">
+          <label style="font-size:11px; color:#666; display:block;">이메일</label>
+          <input id="staffInviteEmail" type="email" placeholder="staff@kanghago.com" style="width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:5px;" />
+        </div>
+        <div style="flex:1; min-width:120px;">
+          <label style="font-size:11px; color:#666; display:block;">이름 (선택)</label>
+          <input id="staffInviteName" type="text" placeholder="홍길동" style="width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:5px;" />
+        </div>
+        <div style="flex:1; min-width:170px;">
+          <label style="font-size:11px; color:#666; display:block;">비밀번호 (10자 이상 권장 — 통관·결제 접근)</label>
+          <input id="staffInvitePassword" type="text" placeholder="강한 비번 (영문+숫자+기호 12자+)" style="width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:5px; font-family:monospace;" />
+        </div>
+        <button class="primary" onclick="staffInvite()" style="padding:9px 18px;">등록</button>
+      </div>
+      <div id="staffInviteMsg" style="font-size:12px; margin-top:8px;"></div>
+      <div style="font-size:11px; color:#9a7b2a; margin-top:6px;">
+        ⚠️ 직원 계정은 <strong>통관·결제·청구서·인보이스</strong>에 접근합니다. 약한 비번(123456, password, 회사명 등) 절대 금지.
+        admin 권한은 모달에서 발급 불가 — Supabase SQL Editor에서 수동만 (권한 상승 차단).
+      </div>
+    </div>
+
+    <!-- 직원 목록 -->
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 style="margin:0; font-size:14px;">📋 등록된 직원</h3>
+        <button class="secondary small" onclick="staffReload()">🔄 새로고침</button>
+      </div>
+      <table id="staffList" style="width:100%; font-size:13px; border-collapse:collapse;">
+        <thead style="background:var(--ivory);">
+          <tr>
+            <th style="text-align:left; padding:8px;">이메일</th>
+            <th style="text-align:left; padding:8px;">이름</th>
+            <th style="padding:8px;">역할</th>
+            <th style="padding:8px;">활성</th>
+            <th style="padding:8px;">가입일</th>
+            <th style="padding:8px;">최근 로그인</th>
+            <th style="padding:8px;">동작</th>
+          </tr>
+        </thead>
+        <tbody id="staffListBody"><tr><td colspan="7" style="padding:18px; text-align:center; color:#888;">관리자 토큰 입력 후 [새로고침] 클릭</td></tr></tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -6947,6 +7015,132 @@ async function agentToggle(agentId, active) {
     await adminApiCall('POST', '', { op: 'admin_toggle', agentId, active: !!active });
     agentReload();
   } catch (e) { alert('실패: ' + e.message); }
+}
+
+// ===== v3.2.42 (2026-06-06): 직원 관리 — 관세사 관리 패턴 미러 =====
+// Auth: 같은 ADMIN_INVITE_TOKEN(loadAdminToken·persistAdminToken·adminApiCall 공유).
+// op: staff_admin_list / staff_admin_create / staff_admin_toggle / staff_admin_set_password
+// 백엔드: agent.js — 모두 role='staff' 고정 발급 (admin은 SQL Editor만, 권한 상승 차단).
+function openStaffAdmin() {
+  const saved = loadAdminToken();
+  if (saved) document.getElementById('staffAdminToken').value = saved;
+  document.getElementById('staffAdminModal').style.display = 'block';
+  if (saved) staffReload();
+}
+function closeStaffAdmin() {
+  document.getElementById('staffAdminModal').style.display = 'none';
+}
+function getStaffAdminToken() {
+  const t = (document.getElementById('staffAdminToken').value || '').trim();
+  if (t) persistAdminToken(t);
+  return t;
+}
+
+// 약한 비번 1차 검사 (브라우저 측 — 백엔드도 6자 강제, UI에선 통관·결제 계정이라 더 엄격 권장)
+function checkWeakPassword(pw) {
+  if (!pw || pw.length < 6) return '비밀번호는 6자 이상 필수';
+  const lower = pw.toLowerCase();
+  const blacklist = ['password', '123456', 'qwerty', 'kanghago', 'kanghago1', 'staff', 'admin', 'test1234', '111111', 'abc123'];
+  if (blacklist.includes(lower)) return '너무 흔한 비번 (' + pw + ') — 다른 비번으로';
+  if (pw.length < 10) return '권장: 10자 이상 (현재 ' + pw.length + '자). 통관·결제 접근 계정이라 강한 비번이 안전합니다. 계속하시려면 다시 등록 누르세요.';
+  return null;   // OK
+}
+
+async function staffInvite() {
+  const emailEl = document.getElementById('staffInviteEmail');
+  const nameEl = document.getElementById('staffInviteName');
+  const pwEl = document.getElementById('staffInvitePassword');
+  const msgEl = document.getElementById('staffInviteMsg');
+  const email = (emailEl.value || '').trim();
+  const name = (nameEl.value || '').trim() || null;
+  const password = (pwEl.value || '').trim();
+  if (!email) { msgEl.innerHTML = '<span style="color:#c0392b;">⚠ 이메일 필수</span>'; return; }
+  // 비번 검사 — 약한 비번 경고(blacklist는 차단, 짧은 비번은 confirm)
+  const warn = checkWeakPassword(password);
+  if (warn) {
+    // 6자 미만 또는 blacklist → 즉시 차단
+    if (warn.indexOf('권장') !== 0) { msgEl.innerHTML = '<span style="color:#c0392b;">⚠ ' + warn + '</span>'; return; }
+    // "권장: 10자 이상" — 사장님이 다시 누르면 통과 (한 번 경고 후 강행 허용)
+    if (msgEl.dataset.warned !== '1') {
+      msgEl.innerHTML = '<span style="color:#9a7b2a;">⚠ ' + warn + '</span>';
+      msgEl.dataset.warned = '1';
+      return;
+    }
+    // 두 번째 클릭이면 진행
+    msgEl.dataset.warned = '';
+  }
+  msgEl.innerHTML = '<span style="color:#888;">등록 중...</span>';
+  try {
+    const r = await adminApiCall('POST', '', { op: 'staff_admin_create', email, name, password });
+    msgEl.innerHTML = '<span style="color:#1b5e20;">✓ 직원 등록 완료 — ' + r.staff.email + ' (role=staff, 즉시 로그인 가능)</span>';
+    emailEl.value = ''; nameEl.value = ''; pwEl.value = '';
+    msgEl.dataset.warned = '';
+    staffReload();
+  } catch (e) {
+    msgEl.innerHTML = '<span style="color:#c0392b;">❌ ' + e.message + '</span>';
+  }
+}
+
+async function staffSetPassword(email) {
+  const pw = prompt(email + '\n새 비밀번호 (10자 이상 권장):');
+  if (pw === null) return;
+  const trimmed = pw.trim();
+  const warn = checkWeakPassword(trimmed);
+  if (warn && warn.indexOf('권장') !== 0) { alert('⚠ ' + warn); return; }
+  try {
+    await adminApiCall('POST', '', { op: 'staff_admin_set_password', email, password: trimmed });
+    alert('✓ 비밀번호가 변경되었습니다: ' + email);
+  } catch (e) {
+    alert('실패: ' + e.message);
+  }
+}
+
+async function staffToggle(staffId, active) {
+  if (!confirm(active ? '직원을 활성화하시겠습니까?' : '직원을 비활성화하시겠습니까? (로그인 차단)')) return;
+  try {
+    await adminApiCall('POST', '', { op: 'staff_admin_toggle', staffId, active: !!active });
+    staffReload();
+  } catch (e) { alert('실패: ' + e.message); }
+}
+
+async function staffReload() {
+  const tbody = document.getElementById('staffListBody');
+  tbody.innerHTML = '<tr><td colspan="7" style="padding:18px; text-align:center; color:#888;">로딩 중...</td></tr>';
+  try {
+    const r = await adminApiCall('GET', '?op=staff_admin_list');
+    const staffList = r.staff || [];
+    if (!staffList.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="padding:18px; text-align:center; color:#888;">등록된 직원 없음</td></tr>';
+      return;
+    }
+    tbody.innerHTML = staffList.map(function(s) {
+      const created = s.created_at ? new Date(s.created_at).toLocaleDateString('ko-KR') : '-';
+      const lastLogin = s.last_login_at ? new Date(s.last_login_at).toLocaleDateString('ko-KR') : '미접속';
+      const roleBadge = s.role === 'admin'
+        ? '<span style="color:#1B5E9A; font-weight:700;">admin</span>'
+        : '<span style="color:#666;">staff</span>';
+      const activeBadge = s.active
+        ? '<span style="color:#1b5e20; font-weight:700;">✓ 활성</span>'
+        : '<span style="color:#c0392b; font-weight:700;">✗ 비활성</span>';
+      const emailEsc = (s.email || '').replace(/'/g, "\\'");
+      return '<tr style="border-bottom:1px solid #f0ebe1;">'
+        + '<td style="padding:8px;">' + s.email + '</td>'
+        + '<td style="padding:8px;">' + (s.name || '-') + '</td>'
+        + '<td style="padding:8px; text-align:center;">' + roleBadge + '</td>'
+        + '<td style="padding:8px; text-align:center;">' + activeBadge + '</td>'
+        + '<td style="padding:8px; text-align:center; font-size:11px; color:#666;">' + created + '</td>'
+        + '<td style="padding:8px; text-align:center; font-size:11px; color:#666;">' + lastLogin + '</td>'
+        + '<td style="padding:8px; text-align:center; white-space:nowrap;">'
+        +   '<button class="small" onclick="staffSetPassword(\'' + emailEsc + '\')"'
+        +     ' style="padding:4px 9px; background:#1B2A3B; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px; margin-right:4px;">🔑 비번</button>'
+        +   '<button class="small" onclick="staffToggle(\'' + s.id + '\',' + (s.active ? 'false' : 'true') + ')"'
+        +     ' style="padding:4px 10px; background:' + (s.active ? '#c0392b' : '#1b5e20') + '; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px;">'
+        +     (s.active ? '비활성화' : '활성화') + '</button>'
+        + '</td></tr>';
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:18px; text-align:center; color:#c0392b;">❌ ' + e.message + '</td></tr>';
+  }
 }
 
 // ===== 강하고 v2.0: 회원 관리 (관세사 관리와 동일 ADMIN_INVITE_TOKEN) =====
@@ -13468,10 +13662,11 @@ async function copyBookingText() {
     el.textContent = text;
   }
 
-  // /api/staff?op=me 검증 → active+role 받아 진입
+  // /api/agent?op=staff_me 검증 → active+role 받아 진입
+  //   (Hobby 12함수 한도로 api/staff.js를 agent.js의 op=staff_me로 통합 — 2026-06-06)
   async function verifyActiveAndEnter(accessToken, opts) {
     var silent = opts && opts.silent;
-    var r = await fetch('/api/staff?op=me', { headers: { 'Authorization': 'Bearer ' + accessToken } });
+    var r = await fetch('/api/agent?op=staff_me', { headers: { 'Authorization': 'Bearer ' + accessToken } });
     var out = await r.json().catch(function() { return {}; });
     if (!r.ok) {
       try { await supabase.auth.signOut(); } catch (e) {}   // 비활성/미등록 → 토큰 폐기

@@ -81,6 +81,42 @@ async function loadAgent(userId, email) {
   return agent;
 }
 
+// v3.2.42 (2026-06-06): staff_users 조회 — 도구 v3.2.42 inline 로그인 게이트용 (op=staff_me).
+//   loadAgent 패턴 그대로, 테이블만 staff_users로. role(admin/staff) 추가 반환.
+async function loadStaff(userId, email) {
+  const hdr = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/staff_users?id=eq.${userId}&select=id,email,name,role,active`,
+    { headers: hdr }
+  );
+  if (!r.ok) { const err = new Error('직원 조회 실패'); err.status = 500; throw err; }
+  let rows = await r.json();
+  let matchedByEmail = false;
+  // id 매칭 실패 시 email 폴백 (loadAgent와 동일 — auth user id 재발급 케이스 복구)
+  if (!rows.length && email) {
+    const r2 = await fetch(
+      `${SUPABASE_URL}/rest/v1/staff_users?email=eq.${encodeURIComponent(email)}&select=id,email,name,role,active`,
+      { headers: hdr }
+    );
+    if (r2.ok) { rows = await r2.json(); matchedByEmail = rows.length > 0; }
+  }
+  if (!rows.length) {
+    const err = new Error('등록되지 않은 직원입니다 (강하고 관리자에게 계정 발급 요청)');
+    err.status = 403; throw err;
+  }
+  const staff = rows[0];
+  if (!staff.active) {
+    const err = new Error('비활성 직원 계정입니다'); err.status = 403; throw err;
+  }
+  const filter = matchedByEmail ? `email=eq.${encodeURIComponent(email)}` : `id=eq.${userId}`;
+  fetch(`${SUPABASE_URL}/rest/v1/staff_users?${filter}`, {
+    method: 'PATCH',
+    headers: { ...hdr, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ last_login_at: new Date().toISOString() }),
+  }).catch(() => {});
+  return staff;
+}
+
 // 감사 로그 (실패해도 진행 — 비핵심)
 async function logAction(agent, shipmentId, productId, before, after) {
   try {
@@ -325,6 +361,72 @@ async function adminCreateAgentWithPassword(email, name, password) {
   return await upsertCustomsAgent(userId, email, name);
 }
 
+// ===== v3.2.42 (2026-06-06): 직원 관리 — 관세사 패턴 미러 =====
+//   adminCreateAgentWithPassword/adminListAgents/adminToggleAgent의 staff_users 버전.
+//   role='staff'만 발급 가능. role='admin'은 Supabase SQL Editor 수동만 (보안).
+async function upsertStaffUser(userId, email, name) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/staff_users?on_conflict=id`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation,resolution=merge-duplicates',
+    },
+    // role='staff' 고정 — admin은 SQL Editor에서 수동만 (모달에서 admin 발급 불가, 권한 상승 차단)
+    body: JSON.stringify({ id: userId, email, name: name || null, role: 'staff', active: true }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error('staff_users upsert 실패: ' + JSON.stringify(data));
+  return Array.isArray(data) ? data[0] : data;
+}
+
+async function adminListStaff() {
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/staff_users?select=id,email,name,role,active,created_at,last_login_at&order=created_at.desc`,
+    { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+  );
+  if (!r.ok) throw new Error('직원 목록 조회 실패 HTTP ' + r.status);
+  return await r.json();
+}
+
+async function adminToggleStaff(staffId, active) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/staff_users?id=eq.${staffId}`, {
+    method: 'PATCH',
+    headers: {
+      'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json', 'Prefer': 'return=representation',
+    },
+    body: JSON.stringify({ active: !!active }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error('직원 활성 토글 실패: ' + JSON.stringify(data));
+  return Array.isArray(data) ? data[0] : data;
+}
+
+// 비밀번호 포함 직원 신규 생성 — adminCreateAgentWithPassword와 동일 흐름, 테이블만 다름.
+//   기존 auth 사용자(예: 관세사로 이미 등록된 이메일)면 비번 reset + staff_users insert.
+async function adminCreateStaffWithPassword(email, name, password) {
+  const r1 = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { name } }),
+  });
+  const auth = await r1.json();
+  if (!r1.ok) {
+    const exists = r1.status === 422 || /already|exist|registered/i.test(auth.msg || auth.error_description || auth.error || '');
+    if (exists) {
+      const existing = await findAuthUserByEmail(email);
+      if (!existing) throw new Error('생성 실패 + 기존 사용자 조회 실패: ' + JSON.stringify(auth));
+      await adminSetUserPassword(existing.id, password);
+      return await upsertStaffUser(existing.id, email, name);
+    }
+    throw new Error('Supabase 사용자 생성 실패: ' + (auth.msg || auth.error_description || auth.error || r1.status));
+  }
+  const userId = auth.id || (auth.user && auth.user.id);
+  if (!userId) throw new Error('생성 응답에 user.id 없음');
+  return await upsertStaffUser(userId, email, name);
+}
+
 module.exports = async (req, res) => {
   if (handleCors(req, res)) return;
   try {
@@ -336,8 +438,41 @@ module.exports = async (req, res) => {
         const agents = await adminListAgents();
         return res.json({ agents });
       }
+      // v3.2.42 (2026-06-06): 직원 관리 — 관세사 admin_* 패턴 미러 (staff_admin_*)
+      if (req.method === 'GET' && req.query.op === 'staff_admin_list') {
+        const staff = await adminListStaff();
+        return res.json({ staff });
+      }
       if (req.method === 'POST') {
         const body = await readBody(req);
+        // 직원 관리 op (v3.2.42) — 같은 ADMIN_INVITE_TOKEN, role='staff' 고정 발급
+        if (body.op === 'staff_admin_create') {
+          const { email, name, password } = body;
+          if (!email) return res.status(400).json({ error: 'email 필수' });
+          if (!password || String(password).length < 6) return res.status(400).json({ error: 'password 6자 이상 필수' });
+          const staff = await adminCreateStaffWithPassword(String(email).trim().toLowerCase(), name || null, String(password));
+          return res.json({ ok: true, staff });
+        }
+        if (body.op === 'staff_admin_toggle') {
+          const { staffId, active } = body;
+          if (!staffId) return res.status(400).json({ error: 'staffId 필수' });
+          const staff = await adminToggleStaff(staffId, !!active);
+          return res.json({ ok: true, staff });
+        }
+        if (body.op === 'staff_admin_set_password') {
+          const { email, staffId, password } = body;
+          if (!password || String(password).length < 6) return res.status(400).json({ error: 'password 6자 이상 필수' });
+          let userId = staffId, staffEmail = email;
+          if (!userId) {
+            if (!email) return res.status(400).json({ error: 'email 또는 staffId 필요' });
+            const u = await findAuthUserByEmail(email);
+            if (!u) return res.status(404).json({ error: '직원 auth 사용자 없음' });
+            userId = u.id; staffEmail = u.email;
+          }
+          await adminSetUserPassword(userId, String(password));
+          return res.json({ ok: true, userId, email: staffEmail });
+        }
+        // ↓ 기존 관세사 admin op 분기
         if (body.op === 'admin_invite') {
           const { email, name } = body;
           if (!email) return res.status(400).json({ error: 'email 필수' });
@@ -376,8 +511,24 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Unknown admin op' });
     }
 
-    // ===== 관세사 op (Authorization: Bearer <Supabase JWT>) =====
+    // v3.2.42 (2026-06-06): 직원 포털 통합 — Hobby 12 함수 한도 회피.
+    //   기존 api/staff.js 삭제, 그 op=me를 여기 op=staff_me로 흡수.
+    //   토큰 검증은 동일(Supabase JWT). loadAgent(customs_agents)는 안 거치고
+    //   바로 loadStaff(staff_users) → 직원 role/active 반환. 도구 v3.2.42 inline 게이트 사용.
     const user = await verifySupabaseToken(authH);
+    if (req.method === 'GET' && req.query.op === 'staff_me') {
+      const staff = await loadStaff(user.id, user.email);
+      return res.json({
+        staff: {
+          email: staff.email,
+          name: staff.name,
+          role: staff.role,
+          active: staff.active,
+        },
+      });
+    }
+
+    // ===== 관세사 op (Authorization: Bearer <Supabase JWT>) =====
     const agent = await loadAgent(user.id, user.email);
 
     if (req.method === 'GET') {
