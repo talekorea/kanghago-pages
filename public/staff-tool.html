@@ -889,7 +889,7 @@
                제품 행에선 숨김. 데이터(state.products[].fields)는 그대로 유지됨. -->
           <th data-i18n="th.description" style="display:none;">Description (영문)</th>
           <th data-i18n="th.material" style="display:none;">Material</th>
-          <th style="display:none;"><span data-i18n="th.hscode">HS코드</span></th>
+          <th style="width:140px;"><span data-i18n="th.hscode">HS코드</span></th>
           <th class="num" style="width:55px;display:none;"><span data-i18n="th.base_rate">기본</span> <span class="small-dim">%</span></th>
           <th class="num" style="width:55px;display:none;"><span data-i18n="th.fta_kc">한중</span> <span class="small-dim">%</span></th>
           <th class="num" style="width:55px;display:none;"><span>아태</span> <span class="small-dim">% (E1)</span></th>
@@ -4552,7 +4552,6 @@ function renderProducts() {
           : (f['관세사메모'] && f['관세사메모'].includes('유사 매칭')
             ? '<div style="font-size:9px;color:#C9973A;margin-top:2px;text-align:center;" title="' + escAttr(f['관세사메모']) + '">⚠ 유사</div>'
             : '')}
-        ${_hsDisp}
         <div style="margin-top:3px;">${_prodChips}</div>
       </td>
       <td class="desc-cell" style="display:none;">
@@ -4561,8 +4560,10 @@ function renderProducts() {
       <td style="display:none;">
         <input type="text" data-field="Material" value="${escAttr(f['Material'] || '')}" placeholder="${t('placeholder.material')}" style="min-width:80px;${empBg}" ${empAttr} title="${empTitle}" />
       </td>
-      <td style="display:none;">
-        <input type="text" class="hs" data-field="HS코드" value="${escAttr(hsValue)}" placeholder="0000.00-0000" readonly title="관세사 확정값" style="background:#f4f1ea;" />
+      <td style="min-width:140px;">
+        <!-- v3.2.46 ②-a: 관세사확정 전이면 직원이 제품별 HS 직접 입력 가능 (세율은 읽기전용·공식표 자동). 확정 후엔 관세사 값 보호. -->
+        <input type="text" class="hs" data-field="HS코드" value="${escAttr(hsValue)}" placeholder="0000.00-0000" ${isConfirmed ? 'readonly title="관세사 확정값 — 수정 불가" style="background:#f4f1ea; width:112px;"' : 'title="제품별 HS 직접 입력 (관세사 확정 전까지) — 입력 시 공식표 세율 자동" style="width:112px;"'} />
+        ${isConfirmed ? '' : `<button type="button" class="row-hs-suggest" data-pid="${escAttr(p.id)}" title="🤖 HS 추천 (영문명·재질 → 학습/AI)" style="margin-top:3px; font-size:10px; padding:2px 7px; background:linear-gradient(135deg,#1B5E9A,#2872B5); color:#fff; border:none; border-radius:4px; cursor:pointer;">🤖 추천</button>`}
         ${autoFilled ? '<div style="font-size:9px;color:var(--blue);margin-top:2px;">' + (currentLang==='ko'?'자동':currentLang==='zh'?'自动':'auto') + '</div>' : ''}
       </td>
       <td class="num" style="display:none;">
@@ -4808,9 +4809,43 @@ function renderProducts() {
 
         log(`✓ HS ${formatted}${descSuggest ? ' → ' + descSuggest : ''}${baseRate !== undefined ? ` · 세율 ${baseRate}/${kcRate}/${aptaRate}` : ''}${src ? ' [' + (src==='dict' ? '표준사전' : '캐시') + ']' : ''}`, 'dim');
 
+        // v3.2.46 ②-a: HS 유효성 경고(공식표 11,326 미매칭 시 leaf 후보) + 제품별 적용FTA 자동(pickBestTariff).
+        //   ★ 관세사확정=true 는 만들지 않음 (확정은 관세사 페이지에서만 — HSMapping 오염 방지).
+        if (formatted.replace(/\D/g, '').length === 10) {
+          const _tf = (typeof lookupTariff === 'function') ? lookupTariff(formatted) : null;
+          if (_tf) {
+            hsInp.style.borderColor = '#0a7b40';
+            if (f['관세사확정'] !== true && typeof pickBestTariff === 'function') {
+              const best = pickBestTariff({ A: _tf.A, CN: _tf.CN, RC: _tf.RC, E1: _tf.E1 });
+              if (best) f['적용FTA'] = best.fta;   // 제품별 최저세율 자동(동률 한중) → §8·§9·인보이스 반영
+            }
+          } else {
+            hsInp.style.borderColor = '#c0392b';
+            const cands = (typeof findTariffLeafCandidates === 'function') ? findTariffLeafCandidates(formatted, 8) : [];
+            const cstr = cands.length ? cands.map(c => `${c.hs.slice(0,4)}.${c.hs.slice(4,6)}-${c.hs.slice(6,10)}`).join(' / ') : '(같은 6자리 prefix 후보 없음)';
+            if (typeof toastWarn === 'function') toastWarn(`⚠ '${formatted}' 실존하지 않는 HS — leaf 후보: ${cstr.substring(0,120)}`, { title: 'HS 유효성', subtitle: '공식표 11,326 미매칭' });
+          }
+        }
+
         state.modifiedProducts.add(p.id);
         prevHsValue = formatted;
         refreshAll();
+      });
+    }
+
+    // v3.2.46 ②-a: 제품행 🤖 HS 추천 버튼 (관세사확정 전 제품만 렌더됨). openHsSuggestPanel 재사용.
+    const rowHsSuggestBtn = tr.querySelector('.row-hs-suggest');
+    if (rowHsSuggestBtn && hsInp) {
+      rowHsSuggestBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const descEl = tr.querySelector('input[data-field="Description"]');
+        const matEl  = tr.querySelector('input[data-field="Material"]');
+        const nameEn = ((descEl && descEl.value) || f['Description'] || '').trim();
+        const material = ((matEl && matEl.value) || f['Material'] || '').trim();
+        const gk = groupKeyOf(f['상품ID']);
+        const trustSource = nameEn ? 'name' : 'hs';
+        // 패널이 hsInp.value 세팅 후 blur 디스패치 → 위 blur 핸들러가 세율·적용FTA·refreshAll 처리
+        openHsSuggestPanel(gk, rowHsSuggestBtn, nameEn, material, hsInp, descEl, matEl, hsInp.value, trustSource);
       });
     }
 
@@ -8377,8 +8412,14 @@ async function saveAll(skipReload) {
         if (matVal) {
           fields['Material'] = matVal;
         }
+        // v3.2.46 ②-a: 직원이 §3에서 직접 입력한 HS코드 저장 (관세사확정 전 제품만).
+        //   ★ '관세사확정'=true 는 설정하지 않음 → HSMapping 확정 기록 오염 방지(확정은 관세사 페이지에서만).
+        //   ★ 세율은 저장하지 않음 — 공식표(kanghago_tariff.js)가 진실원, HS로 재도출.
+        const hsInputEl = tr?.querySelector('input[data-field="HS코드"]');
+        const hsVal = (hsInputEl?.value ?? f['HS코드'] ?? '').trim();
+        if (hsVal) fields['HS코드'] = hsVal;
       }
-      // 세율/HS코드는 관세사 확정값 — 여기서 저장하지 않음.
+      // 세율은 관세사 확정값(공식표 자동) — 여기서 저장하지 않음. HS코드는 위 미확정 블록에서만 저장.
 
       productUpdates.push({ id: p.id, fields });
     });
