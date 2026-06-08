@@ -910,6 +910,12 @@
           <td class="num" id="totalProductsCny" style="padding:10px 12px;">¥0</td>
           <td class="num" id="totalProductsUsd" style="padding:10px 12px;">$0</td>
         </tr>
+        <!-- v3.2.48 ③: 배송요금 합계 (현지배송비 — 합계CNY 비례로 신고가에 분배) -->
+        <tr style="background:var(--bg-soft); font-size:12px;">
+          <td colspan="12" style="text-align:right; padding:6px 12px; color:var(--text-dim);">배송요금 합계 (현지배송비 · 합계CNY 비례 신고가 분배):</td>
+          <td class="num" id="totalLocalShipCny" style="padding:6px 12px; color:#0a7b40;">¥0</td>
+          <td></td>
+        </tr>
       </tfoot>
     </table>
   </div>
@@ -5221,6 +5227,13 @@ function recalculate() {
   if (tpc) tpc.textContent = '¥' + totalProductsCny.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   const tpu = document.getElementById('totalProductsUsd');
   if (tpu) tpu.textContent = '$' + totalProductsUsd.toFixed(2);
+  // v3.2.48 ③: 배송요금 합계 = Σ(현지배송비 합계CNY 분배) — buildLocalShipShareCNY 소비(보존: Σ=주문 현지배송비)
+  const tls = document.getElementById('totalLocalShipCny');
+  if (tls) {
+    let totalShipCny = 0;
+    if (typeof buildLocalShipShareCNY === 'function') buildLocalShipShareCNY().forEach(v => { totalShipCny += parseFloat(v) || 0; });
+    tls.textContent = '¥' + totalShipCny.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
 
   // CostItems 합계 (USD 환산)
   let totalCostsUsd = 0;
@@ -9522,20 +9535,20 @@ async function downloadInvoiceExcel(opts) {
 
     // ── 시트 1: COMMERCIAL INVOICE ──
     const ws1 = wb.addWorksheet('테일코리아인보이스');
-    // 사장님 스펙: Description 25 / Quantity 10 / Unit Price 12 / Amount 14 / HS 14 / 기본·CO미·CO발 각 8 / Material 18 / N/W 10
+    // v3.2.48 ⑤⑧: N/W(KG) 열 삭제 → 9열. Description 25 / Quantity 10 / Unit Price 12 / Amount 14 / HS 14 / 기본·CO미·CO발 각 8~10 / Material 18
     ws1.columns = [
       { width: 25 }, { width: 10 }, { width: 12 }, { width: 14 }, { width: 14 },
-      { width: 8 },  { width: 10 }, { width: 10 }, { width: 18 }, { width: 10 },
+      { width: 8 },  { width: 10 }, { width: 10 }, { width: 18 },
     ];
-    writeFormHeader(ws1, 'COMMERCIAL INVOICE', 10);
+    writeFormHeader(ws1, 'COMMERCIAL INVOICE', 9);
 
-    // 헤더 행: 회색 배경 + bold 12pt
+    // 헤더 행: 회색 배경 + bold 12pt (⑦ 전 셀 가운데)
     const invHead = ws1.addRow(['Description', 'Quantity', 'Unit Price', 'Amount', 'HS CODE',
-      '기본', 'CO미발행', 'CO발행', 'Material', 'N/W(KG)']);
+      '기본', 'CO미발행', 'CO발행', 'Material']);
     invHead.font = { ...FONT, bold: true, size: 12 };
     invHead.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
     invHead.height = 26;
-    for (let c = 1; c <= 10; c++) {
+    for (let c = 1; c <= 9; c++) {
       const cell = invHead.getCell(c);
       cell.border = allBorder;
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E2D5' } };
@@ -9543,52 +9556,54 @@ async function downloadInvoiceExcel(opts) {
 
     let totQty = 0, totAmt = 0;
     const exportProducts = (state.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0);
+    // v3.2.48 ⑤⑧: 품명(Description)+재질(Material) 동일 라인 합산 (주문 무관, 인보이스 전체).
+    //   Σ수량·Σ금액 보존 — Amount=Σ(라인금액), Unit Price=Amount/Qty(가중평균). 라인 수 감소.
+    const invMerge = new Map();
     exportProducts.forEach(p => {
       const pf = p.fields || {};
+      const desc = pf['Description'] || pf['상품ID'] || '';
+      const mat = pf['Material'] || '';
+      const key = desc + ' ' + mat;
       const qty = parseFloat(pf['수량']) || 0;
-      const unitUsd = getProductUnitUsd(p);
-      const amount = unitUsd * qty;
-      // 기본 = 기본세율 / CO미발행 = 원산지증명서 없으면 FTA 불가 → 기본세율 / CO발행 = 한중FTA 협정세율
-      const baseR = pf['기본세율'] ?? '';
-      const ftaR = pf['FTA_한중'] ?? '';
-      totQty += qty; totAmt += amount;
+      const amount = getProductUnitUsd(p) * qty;
+      if (!invMerge.has(key)) invMerge.set(key, { desc, mat, qty: 0, amount: 0, hs: '', baseR: '', ftaR: '' });
+      const m = invMerge.get(key);
+      m.qty += qty; m.amount += amount;
+      if (m.hs === '' && pf['HS코드']) m.hs = pf['HS코드'];
+      if (m.baseR === '' && pf['기본세율'] != null && pf['기본세율'] !== '') m.baseR = pf['기본세율'];
+      if (m.ftaR === '' && pf['FTA_한중'] != null && pf['FTA_한중'] !== '') m.ftaR = pf['FTA_한중'];
+    });
+    [...invMerge.values()].forEach(m => {
+      const unitPrice = m.qty > 0 ? m.amount / m.qty : 0;
+      totQty += m.qty; totAmt += m.amount;
       const row = ws1.addRow([
-        pf['Description'] || pf['상품ID'] || '', qty,
-        Number(unitUsd.toFixed(4)), Number(amount.toFixed(2)),
-        pf['HS코드'] || '', baseR, baseR, ftaR, pf['Material'] || '', '',
+        m.desc, m.qty,
+        Number(unitPrice.toFixed(4)), Number(m.amount.toFixed(2)),
+        m.hs, m.baseR, m.baseR, m.ftaR, m.mat,
       ]);
       row.font = { ...FONT, size: 10 };
       row.height = 18;
-      // 정렬·숫자 포맷
-      row.getCell(1).alignment = { vertical: 'middle', wrapText: true };
-      row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
-      row.getCell(2).numFmt = '#,##0';
-      row.getCell(3).alignment = { vertical: 'middle', horizontal: 'right' };
-      row.getCell(3).numFmt = '"$"#,##0.0000';
-      row.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' };
-      row.getCell(4).numFmt = '"$"#,##0.00';
-      row.getCell(5).alignment = { vertical: 'middle', horizontal: 'center' };
-      for (let c = 6; c <= 8; c++) {
+      // ⑦ 전 셀 가운데(가로·세로). Description은 wrapText 유지.
+      for (let c = 1; c <= 9; c++) {
         const cell = row.getCell(c);
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        if (typeof cell.value === 'number') cell.numFmt = '0.0"%"';
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: c === 1 || c === 9 };
+        cell.border = allBorder;
       }
-      row.getCell(9).alignment = { vertical: 'middle' };
-      row.getCell(10).alignment = { vertical: 'middle', horizontal: 'right' };
-      for (let c = 1; c <= 10; c++) row.getCell(c).border = allBorder;
+      row.getCell(2).numFmt = '#,##0';
+      row.getCell(3).numFmt = '"$"#,##0.0000';
+      row.getCell(4).numFmt = '"$"#,##0.00';
+      for (let c = 6; c <= 8; c++) { const cell = row.getCell(c); if (typeof cell.value === 'number') cell.numFmt = '0.0"%"'; }
     });
 
-    // TOTAL — 굵게 + 상단 두꺼운 선
-    const invTot = ws1.addRow(['TOTAL', totQty, '', Number(totAmt.toFixed(2)), '', '', '', '', '', '']);
+    // TOTAL — 굵게 + 상단 두꺼운 선 (⑦ 가운데)
+    const invTot = ws1.addRow(['TOTAL', totQty, '', Number(totAmt.toFixed(2)), '', '', '', '', '']);
     invTot.font = { ...FONT, bold: true, size: 11 };
     invTot.height = 22;
-    invTot.getCell(1).alignment = { vertical: 'middle', horizontal: 'right' };
-    invTot.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
     invTot.getCell(2).numFmt = '#,##0';
-    invTot.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' };
     invTot.getCell(4).numFmt = '"$"#,##0.00';
-    for (let c = 1; c <= 10; c++) {
+    for (let c = 1; c <= 9; c++) {
       const cell = invTot.getCell(c);
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
       cell.border = { top: MEDIUM, left: THIN, bottom: MEDIUM, right: THIN };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8F4E9' } };
     }
@@ -9602,7 +9617,7 @@ async function downloadInvoiceExcel(opts) {
       // 도장 자리만큼 행 높이 확보 (약 7행)
       for (let r = stampStartRow; r < stampStartRow + 7; r++) ws1.getRow(r).height = 22;
     } else {
-      ws1.mergeCells('F' + (stampStartRow + 2) + ':J' + (stampStartRow + 2));
+      ws1.mergeCells('F' + (stampStartRow + 2) + ':I' + (stampStartRow + 2));
       const sc = ws1.getCell('F' + (stampStartRow + 2));
       sc.value = '[ 도장 — QINGDAO TALELOR · STAMP_IMAGE_BASE64 채우면 자동 임베드 ]';
       sc.font = { ...FONT, italic: true, size: 9, color: { argb: 'FF999999' } };
@@ -9645,7 +9660,9 @@ async function downloadInvoiceExcel(opts) {
       const gw = parseFloat(box.gw) || wt;   // G/W 필드 없으면 N/W로 폴백
       const cbm = parseFloat(box.cbm) || 0;
       pTotWt += wt; pTotGw += gw; pTotCbm += cbm;
-      const prods = (box.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0);
+      // v3.2.48 ⑤④: 박스 내 제품을 §3과 동일하게 상품ID 순서(주문+시퀀스) 정렬
+      const prods = (box.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0)
+        .sort((a, b) => String((a.fields || {})['상품ID'] || '').localeCompare(String((b.fields || {})['상품ID'] || ''), undefined, { numeric: true }));
       const rowsList = prods.length ? prods : [null];
       const rStart = ws2.rowCount + 1;
       rowsList.forEach(p => {
@@ -9671,16 +9688,17 @@ async function downloadInvoiceExcel(opts) {
           const pf2 = p.fields || {};
           const imgUrl = (pf2['상품이미지'] && pf2['상품이미지'][0] && (pf2['상품이미지'][0].thumbnails?.large?.url || pf2['상품이미지'][0].url))
             || pf2['이미지URL'] || (/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(pf2['제품링크'] || '') ? pf2['제품링크'] : '');
-          if (imgUrl) { packImgJobs.push({ url: imgUrl, rowNumber: row.number }); row.height = 56; }
+          if (imgUrl) { packImgJobs.push({ url: imgUrl, rowNumber: row.number }); row.height = 74; }   // ⑦ 사진 행 확대
         }
-        row.getCell(5).alignment = { vertical: 'middle', wrapText: true };
-        row.getCell(7).alignment = { vertical: 'middle', horizontal: 'right' };
+        // ⑦ 전 셀 가운데(가로·세로). Description·Material은 wrapText 유지. 폰트=인보이스 동일(10pt).
+        for (let c = 1; c <= 13; c++) {
+          const cell = row.getCell(c);
+          cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: c === 5 || c === 13 };
+          cell.border = allBorder;
+        }
         row.getCell(7).numFmt = '#,##0';
-        row.getCell(8).alignment = { vertical: 'middle', horizontal: 'right' };
         row.getCell(8).numFmt = '"$"#,##0.00';
-        row.getCell(9).alignment = { vertical: 'middle', horizontal: 'right' };
         row.getCell(9).numFmt = '"$"#,##0.0000';
-        for (let c = 1; c <= 13; c++) row.getCell(c).border = allBorder;
       });
       const rEnd = ws2.rowCount;
       // v3.2.12 #8·#9: B(TAPE 영문) + C(C/T NO. — 사서함 prefix만, 고객명 제거) 박스 단위 병합
@@ -9745,7 +9763,7 @@ async function downloadInvoiceExcel(opts) {
           const ext = /image\/png/i.test(j.b64) ? 'png' : (/image\/webp/i.test(j.b64) ? 'png' : 'jpeg');
           const imgId = wb.addImage({ base64: j.b64.split(',')[1], extension: ext });
           // F열(col index 5, 0-based) · 행 0-based = rowNumber-1
-          ws2.addImage(imgId, { tl: { col: 5.1, row: (j.rowNumber - 1) + 0.1 }, ext: { width: 52, height: 52 } });
+          ws2.addImage(imgId, { tl: { col: 5.08, row: (j.rowNumber - 1) + 0.08 }, ext: { width: 70, height: 70 } });   // ⑦ 셀에 맞게 확대
           embedded++;
         } catch (e) { console.warn('[H3] 패킹 이미지 임베드 실패:', e.message); }
       });
