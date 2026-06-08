@@ -1728,6 +1728,7 @@ async function openHsSuggestPanel(gk, btn, nameEn, material, hsInp, descInp, mat
     const rows = cands.map((c, i) => {
       const A  = c.rates && c.rates.A  != null ? c.rates.A + '%'  : '—';
       const CN = c.rates && c.rates.CN != null ? c.rates.CN + '%' : '—';
+      const RC = c.rates && c.rates.RC != null ? c.rates.RC + '%' : '—';
       const E1 = c.rates && c.rates.E1 != null ? c.rates.E1 + '%' : '—';
       const hasHs10 = !!c.hs10;
       const hasNameOut = !!c.nameEn;
@@ -1751,6 +1752,7 @@ async function openHsSuggestPanel(gk, btn, nameEn, material, hsInp, descInp, mat
           ${c.rates ? `<div style="font-size:11px; color:#444;">
             <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0;">기본 ${A}</span>
             <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0; margin-left:4px;">한중 ${CN}</span>
+            <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0; margin-left:4px;">RCEP ${RC}</span>
             <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0; margin-left:4px;">아태 ${E1}</span>
           </div>` : '<div style="font-size:11px; color:#aaa;">(공식표 미존재 — 세율 자동 안 됨)</div>'}
         </div>
@@ -7815,10 +7817,10 @@ function renderTariffEstimate() {
   // v3.2.18: 3카드만 (기본/한중/아태). 적용세율 카드 제거 — 가장 유리한 FTA에 ⭐ 강조.
   //   적용 FTA 값은 §3 적용FTA에 그대로 남아 신고/관부가세 계산에 사용됨 (화면만 빼는 것).
   const scenarios = [
-    { key: 'base', label: '기본세율 (A)',      rateKey: '기본세율' },
-    { key: 'kc',   label: '한중 FTA (FCN1)',   rateKey: 'FTA_한중' },
-    { key: 'rcep', label: 'RCEP 중국 (FRCCN1)', rateKey: 'FTA_RCEP중국' },
-    { key: 'apta', label: '아태협정 (E1)',     rateKey: '아태세율' },
+    { key: 'base', label: '기본세율', rateKey: '기본세율' },
+    { key: 'kc',   label: '한중 FTA', rateKey: 'FTA_한중' },
+    { key: 'rcep', label: 'RCEP',     rateKey: 'FTA_RCEP중국' },
+    { key: 'apta', label: '아태협정', rateKey: '아태세율' },
   ];
 
   // v3.2.26: 카드 상태 분기 — '협정 없음' vs '미입력' 구분
@@ -9024,7 +9026,7 @@ function getInvoiceFilename() {
 function getInvoiceRemarks() {
   const cf = (state.customer && state.customer.fields) || {};
   const sf = (state.shipment && state.shipment.fields) || {};
-  const FTA_LABEL = { '한중FTA': '한중 FTA (FCN1)', '아태FTA': '아태협정 (E1, APTA)', '일반': '일반 세율 (A)', '미선택': '미선택' };
+  const FTA_LABEL = { '한중FTA': '한중 FTA', '아태FTA': '아태협정', '일반': '일반 세율', '미선택': '미선택' };
   const ftaDisplay = FTA_LABEL[sf['선택FTA']] || sf['선택FTA'] || '미선택';
   const taxpayer = cf['회사명'] || cf['회원명'] || '-';
   return [
@@ -11157,9 +11159,9 @@ function buildInvoiceData() {
   // Shipments.선택FTA: 일반 / 한중FTA / 아태FTA / 미선택
   // applied_fta (5원칙): 일반 / 한중FTA / 아태협정
   const FTA_DISPLAY = {
-    '한중FTA': '한중 FTA (FCN1)',
-    '아태FTA': '아태협정 (E1, APTA)',
-    '일반': '일반 세율 (A)',
+    '한중FTA': '한중 FTA',
+    '아태FTA': '아태협정',
+    '일반': '일반 세율',
     '미선택': '미선택',
   };
   const FTA_APPLIED = {
@@ -13324,9 +13326,10 @@ function renderProductSuggestions(inp, records) {
     const used = f['사용횟수'] || 0;
     const last = f['마지막사용일시'] || f['마지막사용일'] || '';
     const rateInfo = [
-      (typeof f['기본세율'] === 'number') ? `A ${f['기본세율']}%` : null,
-      (typeof f['FTA_한중'] === 'number') ? `FCN1 ${f['FTA_한중']}%` : null,
-      (typeof f['아태세율'] === 'number') ? `E1 ${f['아태세율']}%` : null,
+      (typeof f['기본세율'] === 'number') ? `기본 ${f['기본세율']}%` : null,
+      (typeof f['FTA_한중'] === 'number') ? `한중 ${f['FTA_한중']}%` : null,
+      (typeof f['FTA_RCEP중국'] === 'number') ? `RCEP ${f['FTA_RCEP중국']}%` : null,
+      (typeof f['아태세율'] === 'number') ? `아태 ${f['아태세율']}%` : null,
     ].filter(Boolean).join(' · ');
     html += `<div class="suggest-item" data-record-id="${rec.id}"
       style="padding:9px 11px; cursor:pointer; border-bottom:1px solid #f4efe6;">

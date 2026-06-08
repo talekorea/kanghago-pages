@@ -113,10 +113,10 @@
           <th>영문명 (Description)</th>
           <th style="width:120px;">Material/재질</th>
           <th style="width:120px;">HS 코드</th>
-          <th style="width:75px;">기본 (A)</th>
-          <th style="width:80px;">한중 (FCN1)</th>
-          <th style="width:85px;">RCEP (FRCCN1)</th>
-          <th style="width:80px;">아태 (E1)</th>
+          <th style="width:75px;" title="관세율구분 A (기본세율)">기본</th>
+          <th style="width:80px;" title="관세율구분 FCN1 (한중 FTA)">한중</th>
+          <th style="width:85px;" title="관세율구분 FRCCN1 (RCEP 중국)">RCEP</th>
+          <th style="width:80px;" title="관세율구분 E1 (APTA)">아태</th>
           <th style="width:175px;">적용FTA <span style="font-size:9px; color:#888;">(★ 최저)</span></th>
           <th style="width:115px;">저장</th>
         </tr>
@@ -497,6 +497,7 @@
       const rows = cands.map((c, i) => {
         const A  = c.rates && c.rates.A  != null ? c.rates.A + '%'  : '—';
         const CN = c.rates && c.rates.CN != null ? c.rates.CN + '%' : '—';
+        const RC = c.rates && c.rates.RC != null ? c.rates.RC + '%' : '—';
         const E1 = c.rates && c.rates.E1 != null ? c.rates.E1 + '%' : '—';
         const hasHs10 = !!c.hs10;
         const hasNameOut = !!c.nameEn;
@@ -520,6 +521,7 @@
             ${c.rates ? `<div style="font-size:11px; color:#444;">
               <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0;">기본 ${A}</span>
               <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0; margin-left:4px;">한중 ${CN}</span>
+              <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0; margin-left:4px;">RCEP ${RC}</span>
               <span style="padding:2px 7px; border-radius:8px; background:#f0f0f0; margin-left:4px;">아태 ${E1}</span>
             </div>` : '<div style="font-size:11px; color:#aaa;">(공식표 미존재 — 세율 자동 안 됨)</div>'}
           </div>
@@ -887,7 +889,7 @@
       const isOverride = effectiveFta !== recommended;
       const rateLabel = (v) => (v == null ? '-' : v + '%');
       const recoReason = recommended === '한중' ? `한중 FTA가 ${rateLabel(kcR)}로 가장 저렴하여 추천됩니다`
-        : recommended === 'RCEP' ? `RCEP 중국(FRCCN1)이 ${rateLabel(rcepR)}로 가장 저렴하여 추천됩니다 (원산지기준·CO 서식 한중과 상이 — 확정 필요)`
+        : recommended === 'RCEP' ? `RCEP가 ${rateLabel(rcepR)}로 가장 저렴하여 추천됩니다 (원산지기준·CO 서식 한중과 상이 — 확정 필요)`
         : recommended === '아태' ? `아태협정(E1)이 ${rateLabel(aptaR)}로 가장 저렴하여 추천됩니다`
         : `일반 세율(${rateLabel(baseR)})이 최저이거나 FTA와 동률이라 일반을 추천합니다`;
       const coNoteFor = (fta) => fta === '한중' ? '* 한중 FTA C/O 필요 (없으면 일반 세율 적용)'
@@ -919,10 +921,10 @@
             <input data-field="HS코드" value="${escapeAttr(f['HS코드'] || '')}" placeholder="0000.00-0000" />
           </div>
         </td>
-        <td><input data-field="기본세율" type="number" step="0.1" value="${f['기본세율'] ?? ''}" placeholder="A" /></td>
-        <td><input data-field="FTA_한중" type="number" step="0.1" value="${f['FTA_한중'] ?? ''}" placeholder="FCN1" /></td>
-        <td><input data-field="FTA_RCEP중국" type="number" step="0.1" value="${f['FTA_RCEP중국'] ?? ''}" placeholder="FRCCN1" /></td>
-        <td><input data-field="아태세율" type="number" step="0.1" value="${f['아태세율'] ?? ''}" placeholder="E1" /></td>
+        <td><input data-field="기본세율" type="number" step="0.1" value="${f['기본세율'] ?? ''}" placeholder="—" title="기본세율(A)" /></td>
+        <td><input data-field="FTA_한중" type="number" step="0.1" value="${f['FTA_한중'] ?? ''}" placeholder="—" title="한중 FTA(FCN1)" /></td>
+        <td><input data-field="FTA_RCEP중국" type="number" step="0.1" value="${f['FTA_RCEP중국'] ?? ''}" placeholder="—" title="RCEP 중국(FRCCN1)" /></td>
+        <td><input data-field="아태세율" type="number" step="0.1" value="${f['아태세율'] ?? ''}" placeholder="—" title="APTA(E1)" /></td>
         <td>
           <select data-field="적용FTA" data-recommended="${recommended}" onchange="onFtaChange(this)"
             class="fta-select ${isOverride ? 'fta-override' : 'fta-reco'}">
@@ -1025,10 +1027,10 @@
     products.forEach(rec => {
       const f = rec.fields || {};
       const rates = [
-        (typeof f['기본세율']==='number') ? `A ${f['기본세율']}%` : null,
-        (typeof f['FTA_한중']==='number') ? `FCN1 ${f['FTA_한중']}%` : null,
-        (typeof f['FTA_RCEP중국']==='number') ? `FRCCN1 ${f['FTA_RCEP중국']}%` : null,
-        (typeof f['아태세율']==='number') ? `E1 ${f['아태세율']}%` : null,
+        (typeof f['기본세율']==='number') ? `기본 ${f['기본세율']}%` : null,
+        (typeof f['FTA_한중']==='number') ? `한중 ${f['FTA_한중']}%` : null,
+        (typeof f['FTA_RCEP중국']==='number') ? `RCEP ${f['FTA_RCEP중국']}%` : null,
+        (typeof f['아태세율']==='number') ? `아태 ${f['아태세율']}%` : null,
       ].filter(Boolean).join(' · ');
       html += `<div class="ag-item" data-id="${rec.id}" style="padding:9px 11px;cursor:pointer;border-bottom:1px solid #f4efe6;">
         <div style="font-weight:600;color:var(--navy);">${escapeHtml(f['Description']||'(영문명 없음)')} ${f['통관품명_한글']?`<span style="font-size:11px;color:#888;">/ ${escapeHtml(f['통관품명_한글'])}</span>`:''}</div>
