@@ -701,6 +701,20 @@ module.exports = async (req, res) => {
         return res.json({ ok: true });
       }
 
+      // v3.2.49 [Phase 1-G]: BL/CO 대조 확인 (관세사). 도구(직원)와 동일 단일 필드.
+      if (op === 'confirm_doc_match') {
+        const { shipmentId } = body;
+        if (!shipmentId) return res.status(400).json({ error: 'shipmentId 누락' });
+        const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
+        const prev = ship.fields['대조확인상태'] || '';
+        const today = new Date().toISOString().slice(0, 10);
+        await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, {
+          fields: { '대조확인상태': '확인완료', '대조확인일시': today, '대조확인자': '관세사:' + (agent.email || agent.name || '') }, typecast: true,
+        });
+        await logAction(agent, shipmentId, null, { '대조확인상태': prev }, { '대조확인상태': '확인완료' });
+        return res.json({ ok: true, 대조확인일시: today });
+      }
+
       return res.status(400).json({ error: 'Unknown op' });
     }
 

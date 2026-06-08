@@ -426,7 +426,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;">v3.2.42</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;">v3.2.42</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1222,8 +1222,20 @@
         <input type="date" id="blIssueDate" style="width:100%; padding:8px; border:1px solid #d4c5a8; border-radius:4px;" />
       </div>
     </div>
+    <!-- v3.2.49 [Phase 1-G]: BL 반영 — 선적항·선명 (커머셜 인보이스 헤더에 반영). 진실원=직원 입력. -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
+      <div>
+        <label style="font-size:11px; color:#666;">선적항 (Port of loading)</label>
+        <input type="text" id="portOfLoading" placeholder="Weihai, China" style="width:100%; padding:8px; border:1px solid #d4c5a8; border-radius:4px;" />
+      </div>
+      <div>
+        <label style="font-size:11px; color:#666;">선명 / Carrier (Vessel)</label>
+        <input type="text" id="vesselName" placeholder="예: SITC / Voyage" style="width:100%; padding:8px; border:1px solid #d4c5a8; border-radius:4px;" />
+      </div>
+    </div>
     <div style="font-size:11px; color:#888; margin-top:6px;">
-      💡 BL 번호·발급일은 입력하면 1초 후 자동 저장됩니다. <span id="blSaveStatus" style="font-weight:600;"></span>
+      💡 BL 번호·발급일·선적항·선명은 입력하면 1초 후 자동 저장됩니다. <span id="blSaveStatus" style="font-weight:600;"></span>
+      <br><span style="color:#a14a00;">⚠ BL의 중량·CBM은 우리 신고값(박스 입력)을 덮어쓰지 않습니다 — 선적항·선명·BL번호만 인보이스에 반영.</span>
     </div>
   </div>
 
@@ -1250,12 +1262,23 @@
           🏷️ CO 파일 (원산지증명서)
           <span id="coFileStatus" style="font-size:11px; margin-left:6px;"></span>
         </label>
-        <input type="file" id="coFileInput" accept=".pdf,.jpg,.jpeg,.png" style="width:100%; padding:6px; border:1px solid #c7dcf3; border-radius:4px; font-size:11px; background:#fff;" />
+        <input type="file" id="coFileInput" accept=".pdf,.jpg,.jpeg,.png" multiple style="width:100%; padding:6px; border:1px solid #c7dcf3; border-radius:4px; font-size:11px; background:#fff;" />
         <div id="coFileList" style="font-size:11px; color:#666; margin-top:4px;"></div>
       </div>
     </div>
     <div style="font-size:11px; color:#888; margin-top:8px;">
       💡 BL과 CO 파일을 업로드하면 최종 인보이스/패킹 다운로드가 활성화됩니다. (PDF·JPG·PNG 가능)
+    </div>
+    <!-- v3.2.49 [Phase 1-G]: BL/CO 대조 확인 배지 (휴먼에러 방지 — 사람이 눈으로 대조 후 확인) -->
+    <div id="docMatchBox" style="margin-top:12px; padding:10px 14px; border-radius:8px; background:#fff3e0; border:1px solid #e0a040;">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <span id="docMatchBadge" style="font-size:13px; font-weight:700; color:#a14a00;">⚠ 대조 확인 필요</span>
+        <button type="button" id="docMatchConfirmBtn" onclick="confirmDocMatch()" style="padding:7px 16px; background:#0a7b40; color:#fff; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">✓ 대조 확인 완료</button>
+      </div>
+      <div style="font-size:11px; color:#888; margin-top:6px;">
+        BL·CO 스캔본의 <strong>품명·수량·중량·HS·원산지</strong>가 신고서류와 일치하는지 눈으로 대조한 뒤 [확인 완료]를 누르세요. (자동 비교 안 함)<br>
+        ★ 확인 완료해야 <strong>최종(관세사 제출/통관) 다운로드</strong>가 활성화됩니다. 새 BL/CO 업로드 시 다시 대조 대기로 돌아갑니다.
+      </div>
     </div>
   </div>
 
@@ -3209,6 +3232,15 @@ async function ensureSchema() {
       // v3.0.7 [Phase C.2]: BL/CO 파일 첨부 (선하증권 + 원산지증명서 스캔본)
       { name: 'BL파일', type: 'multipleAttachments' },
       { name: 'CO파일', type: 'multipleAttachments' },
+      // v3.2.49 [Phase 1-G]: BL 반영(선적항·선명) + 대조확인(휴먼에러 배지)
+      { name: '선적항', type: 'singleLineText' },     // Port of loading (기본 Weihai, China, 직원 수정)
+      { name: '선명', type: 'singleLineText' },       // Vessel / Carrier
+      { name: '대조확인상태', type: 'singleSelect', options: { choices: [
+        { name: '대조대기', color: 'redLight2' },
+        { name: '확인완료', color: 'greenLight2' },
+      ]}},
+      { name: '대조확인일시', type: 'date', options: { dateFormat: { name: 'iso' } } },
+      { name: '대조확인자', type: 'singleLineText' },
       // v3.0.5: 테이프 색상 (사서함 단위, 패킹리스트 자료) — 한글 라벨 저장
       { name: '테이프색상', type: 'singleSelect', options: { choices: [
         { name: '빨강', color: 'redLight2' },
@@ -5428,28 +5460,105 @@ function selectTapeColor(label) {
 function renderBlCoFiles() {
   if (!state.shipment) return;
   const f = state.shipment.fields || {};
-  const renderList = (containerId, files) => {
+  const renderList = (containerId, kind, files) => {
     const el = document.getElementById(containerId);
     if (!el) return;
     if (!files || !files.length) { el.innerHTML = '<span style="color:#aaa;">업로드된 파일 없음</span>'; return; }
     el.innerHTML = files.map((file, i) => {
       const name = file.filename || file.url?.split('/').pop() || ('file_'+i);
       const size = file.size ? ` (${Math.round(file.size/1024)}KB)` : '';
+      // v3.2.49: 개별 삭제 버튼 (다중 CO 개별 제거)
       return `<div style="padding:3px 0; display:flex; align-items:center; gap:6px;">
         <span style="color:#0a7b40;">✓</span>
         ${file.url ? `<a href="${file.url}" target="_blank" rel="noopener" style="color:#1B5E9A; text-decoration:none;">📎 ${name}</a>` : `<span>📎 ${name}</span>`}
         <span style="color:#888; font-size:10px;">${size}</span>
+        <button type="button" onclick="deleteBlCoFile('${kind}',${i})" title="삭제" style="margin-left:auto; border:none; background:none; color:#c0392b; cursor:pointer; font-size:12px;">🗑</button>
       </div>`;
     }).join('');
   };
-  renderList('blFileList', f['BL파일']);
-  renderList('coFileList', f['CO파일']);
+  renderList('blFileList', 'bl', f['BL파일']);
+  renderList('coFileList', 'co', f['CO파일']);
   const blStatus = document.getElementById('blFileStatus');
   const coStatus = document.getElementById('coFileStatus');
   if (blStatus) blStatus.textContent = (f['BL파일'] && f['BL파일'].length) ? '✓ 업로드됨' : '미업로드';
-  if (coStatus) coStatus.textContent = (f['CO파일'] && f['CO파일'].length) ? '✓ 업로드됨' : '미업로드';
+  if (coStatus) coStatus.textContent = (f['CO파일'] && f['CO파일'].length) ? `✓ ${f['CO파일'].length}장 업로드됨` : '미업로드';
   if (blStatus) blStatus.style.color = (f['BL파일'] && f['BL파일'].length) ? '#0a7b40' : '#c0392b';
   if (coStatus) coStatus.style.color = (f['CO파일'] && f['CO파일'].length) ? '#0a7b40' : '#c0392b';
+  renderDocMatchBadge();
+}
+
+// v3.2.49 [Phase 1-G]: 첨부 개별 삭제 (다중 CO). 삭제도 BL/CO 변경이므로 대조확인 리셋.
+function deleteBlCoFile(kind, idx) {
+  if (!state.shipment || !state.shipment.fields) return;
+  const fieldName = (kind === 'bl') ? 'BL파일' : 'CO파일';
+  const arr = Array.isArray(state.shipment.fields[fieldName]) ? state.shipment.fields[fieldName].slice() : [];
+  if (idx < 0 || idx >= arr.length) return;
+  if (!confirm(`${fieldName} ${idx + 1}번 첨부를 삭제할까요?`)) return;
+  arr.splice(idx, 1);
+  state.shipment.fields[fieldName] = arr;
+  state.shipmentDirty = true;
+  resetDocMatch();   // 첨부 변경 → 대조 대기
+  renderBlCoFiles();
+  if (typeof saveAll === 'function') saveAll({ silent: true }).catch(() => {});
+}
+
+// v3.2.49: 대조확인 배지 렌더 (대조확인상태: 대조대기|확인완료). BL/CO 있을 때만 의미.
+function renderDocMatchBadge() {
+  const box = document.getElementById('docMatchBox');
+  const badge = document.getElementById('docMatchBadge');
+  const btn = document.getElementById('docMatchConfirmBtn');
+  if (!box || !badge) return;
+  const f = (state.shipment && state.shipment.fields) || {};
+  const hasDocs = (f['BL파일'] && f['BL파일'].length) || (f['CO파일'] && f['CO파일'].length) || f['BL번호'];
+  if (!hasDocs) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const done = f['대조확인상태'] === '확인완료';
+  if (done) {
+    box.style.background = '#e8f5e9'; box.style.borderColor = '#0a7b40';
+    badge.style.color = '#0a7b40';
+    badge.textContent = `✓ 대조 확인 완료${f['대조확인일시'] ? ' (' + f['대조확인일시'] + ')' : ''}${f['대조확인자'] ? ' · ' + f['대조확인자'] : ''}`;
+    if (btn) btn.style.display = 'none';
+  } else {
+    box.style.background = '#fff3e0'; box.style.borderColor = '#e0a040';
+    badge.style.color = '#a14a00';
+    badge.textContent = '⚠ 대조 확인 필요';
+    if (btn) btn.style.display = '';
+  }
+}
+
+// v3.2.49: 도구 상단 B/L NO. 표시
+function updateBlNoHeader() {
+  const el = document.getElementById('blNoHeader');
+  if (!el) return;
+  const bl = (state.shipment && state.shipment.fields && state.shipment.fields['BL번호']) || '';
+  el.textContent = bl ? ('B/L NO. ' + bl) : '';
+}
+
+// v3.2.49: 대조 대기로 리셋 (BL/CO 업로드·삭제·BL번호 변경 시)
+function resetDocMatch() {
+  if (!state.shipment) return;
+  state.shipment.fields = state.shipment.fields || {};
+  if (state.shipment.fields['대조확인상태'] !== '대조대기') {
+    state.shipment.fields['대조확인상태'] = '대조대기';
+    state.shipment.fields['대조확인일시'] = '';
+    state.shipment.fields['대조확인자'] = '';
+    state.shipmentDirty = true;
+  }
+  renderDocMatchBadge();
+}
+
+// v3.2.49: [확인 완료] — 사람이 눈으로 대조 후. 직원/관세사 공용(도구=staff).
+function confirmDocMatch() {
+  if (!state.shipment) { toastWarn && toastWarn('사서함 먼저 불러오세요'); return; }
+  state.shipment.fields = state.shipment.fields || {};
+  state.shipment.fields['대조확인상태'] = '확인완료';
+  state.shipment.fields['대조확인일시'] = new Date().toISOString().slice(0, 10);
+  state.shipment.fields['대조확인자'] = document.body.classList.contains('mode-staff') ? '직원' : '사장님';
+  state.shipmentDirty = true;
+  renderDocMatchBadge();
+  if (typeof saveAll === 'function') saveAll({ silent: true }).catch(() => {});
+  if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();
+  if (typeof log === 'function') log('✓ BL/CO 대조 확인 완료 — 최종 다운로드 활성화', 'ok');
 }
 
 // 파일 → base64 data URL
@@ -5465,29 +5574,28 @@ function fileToDataURL(file) {
 async function handleBlCoFileUpload(kind, fileInput) {
   if (!state.shipment) { toastWarn && toastWarn('사서함 먼저 불러오세요'); return; }
   if (!fileInput.files || !fileInput.files.length) return;
-  const file = fileInput.files[0];
   const fieldName = (kind === 'bl') ? 'BL파일' : 'CO파일';
+  const files = Array.from(fileInput.files);   // v3.2.49: 다중 선택 지원 (CO 2~5장 한 번에)
   try {
-    // 5MB 초과 경고 (Airtable 첨부는 더 큰 파일 가능하지만, base64 인코딩이 무거워짐)
-    if (file.size > 5 * 1024 * 1024) {
-      if (!confirm(`파일이 5MB를 넘습니다 (${Math.round(file.size/1024/1024)}MB). 업로드 시간이 오래 걸릴 수 있습니다. 계속할까요?`)) {
-        fileInput.value = ''; return;
-      }
-    }
-    const dataUrl = await fileToDataURL(file);
     if (!state.shipment.fields) state.shipment.fields = {};
-    // Airtable 첨부 형식: { url, filename } — base64 data URL을 url로 전달하면 Airtable이 흡수해 저장 URL로 교체
-    const existing = Array.isArray(state.shipment.fields[fieldName]) ? state.shipment.fields[fieldName].slice() : [];
-    existing.push({ url: dataUrl, filename: file.name });
-    state.shipment.fields[fieldName] = existing;
-    state.shipmentDirty = true;
-    renderBlCoFiles();
-    if (typeof log === 'function') log(`✓ ${kind.toUpperCase()} 파일 업로드 준비 완료: ${file.name} (저장 시 Airtable 업로드)`, 'ok');
-    // 즉시 저장(편의) — saveAll 호출
-    if (typeof saveAll === 'function') {
-      try { await saveAll({ silent: true }); }
-      catch (e) { /* silent 옵션이 없으면 무시 */ }
+    // v3.2.49: BL은 1장 정책 → replace(기존 비우고 1장). CO는 다중 → append.
+    let arr = (kind === 'bl') ? [] : (Array.isArray(state.shipment.fields[fieldName]) ? state.shipment.fields[fieldName].slice() : []);
+    for (const file of files) {
+      if (file.size > 5 * 1024 * 1024) {
+        if (!confirm(`'${file.name}'이(가) 5MB를 넘습니다 (${Math.round(file.size/1024/1024)}MB). 계속할까요?`)) continue;
+      }
+      const dataUrl = await fileToDataURL(file);
+      // Airtable 첨부 형식: { url, filename } — base64 data URL을 Airtable이 흡수해 저장 URL로 교체
+      arr.push({ url: dataUrl, filename: file.name });
+      if (kind === 'bl') break;   // BL은 1장만
     }
+    state.shipment.fields[fieldName] = arr;
+    state.shipmentDirty = true;
+    resetDocMatch();   // v3.2.49: BL/CO 변경 → 대조 대기 리셋 (재확인 강제)
+    renderBlCoFiles();
+    if (typeof log === 'function') log(`✓ ${kind.toUpperCase()} 파일 ${arr.length}장 업로드 준비 (저장 시 Airtable 업로드) — 대조 확인 필요`, 'ok');
+    if (typeof saveAll === 'function') { try { await saveAll({ silent: true }); } catch (e) {} }
+    if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();
   } catch (e) {
     console.error(e);
     if (typeof toastError === 'function') toastError('파일 업로드 실패: ' + e.message);
@@ -8377,6 +8485,19 @@ async function saveAll(skipReload) {
         fields: shipFields
       });
       log('✓ 환율 저장됨' + (blNumber ? ` · BL: ${blNumber}` : ''), 'ok');
+      // v3.2.49 [Phase 1-G]: 선적항·선명·대조확인 = 신규 필드 → 별도 PATCH(try/catch).
+      //   필드 미생성(scope 403) 시에도 위 핵심 저장이 깨지지 않도록 분리.
+      try {
+        const sf = state.shipment.fields || {};
+        const gFields = {
+          '선적항': ((document.getElementById('portOfLoading') || {}).value || sf['선적항'] || '').trim(),
+          '선명': ((document.getElementById('vesselName') || {}).value || sf['선명'] || '').trim(),
+          '대조확인일시': sf['대조확인일시'] || null,
+          '대조확인자': sf['대조확인자'] || '',
+        };
+        if (sf['대조확인상태']) gFields['대조확인상태'] = sf['대조확인상태'];
+        await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: gFields, typecast: true });
+      } catch (ge) { console.warn('[Phase1-G] 선적항/선명/대조 저장 실패(필드 미생성 가능 — Airtable에 5필드 수동추가 필요):', ge.message); }
     }
 
     // 2. Products 업데이트 (적용FTA, 박스번호, 단가USD/합계USD — 직원 권한 필드만)
@@ -8780,8 +8901,9 @@ function renderFinalConfirm() {
   const blNumOk = !!f['BL번호'];
   const blFileOk = !!(f['BL파일'] && Array.isArray(f['BL파일']) && f['BL파일'].length);
   const coFileOk = !!(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length);
+  const matchOk = f['대조확인상태'] === '확인완료';   // v3.2.49 [Phase 1-G]: BL/CO 대조 확인 게이트
   const finalReady = s1 && hasBoxes && rOk && hasWorkCosts
-                  && s2 && blNumOk && blFileOk && coFileOk;
+                  && s2 && blNumOk && blFileOk && coFileOk && matchOk;
 
   // v3.1.0 발행 후 진행 추적 (게이트 X, 정보만)
   const hasInvoiceIssued = !!f['청구서발행일시'];
@@ -8808,6 +8930,7 @@ function renderFinalConfirm() {
   if (!blNumOk) finalMiss.push('BL번호');
   if (!blFileOk) finalMiss.push('BL파일');
   if (!coFileOk) finalMiss.push('CO파일');
+  if (!matchOk) finalMiss.push('BL/CO 대조확인');
 
   body.innerHTML = `
     <div style="font-size:13px;">
@@ -8821,6 +8944,7 @@ function renderFinalConfirm() {
       ${chk(blNumOk, '⑥ BL 번호', f['BL번호'] || '')}
       ${chk(blFileOk, '⑦ BL 파일 업로드')}
       ${chk(coFileOk, '⑧ CO 파일 업로드')}
+      ${chk(matchOk, '⑨ BL/CO 대조 확인', matchOk ? (f['대조확인일시'] || '') : '§10에서 [확인 완료]')}
     </div>
     <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #ddd; font-size:13px;">
       <div style="font-weight:600; color:#666; font-size:12px; margin-bottom:4px;">📊 발행 후 진행 (정보, 게이트 X)</div>
@@ -9399,6 +9523,7 @@ async function downloadInvoiceExcel(opts) {
     if (!f['BL번호']) miss.push('BL번호');
     if (!(f['BL파일'] && Array.isArray(f['BL파일']) && f['BL파일'].length)) miss.push('BL파일');
     if (!(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length)) miss.push('CO파일');
+    if (f['대조확인상태'] !== '확인완료') miss.push('BL/CO 대조확인');   // v3.2.49 [Phase 1-G]
   }
 
   if (miss.length) {
@@ -9474,9 +9599,11 @@ async function downloadInvoiceExcel(opts) {
         { text: '   ' + INVOICE_ACCOUNT[1] + ' ' + INVOICE_ACCOUNT[2] },
         { text: '   ' + INVOICE_ACCOUNT[3] },
         { label: '3) NOTIFY PARTY:  Same as consignee', section: true },
-        { label: '4) Port of loading:  Weihai, China', section: true },
+        // v3.2.49 [Phase 1-G]: 선적항·선명·BL번호 반영 (진실원=직원 입력, 폴백 유지). ★ 중량·CBM은 박스 데이터만 — 미변경.
+        { label: '4) Port of loading:  ' + (f['선적항'] || 'Weihai, China'), section: true },
         { label: '5) Final destination:  INCHON, KOREA', section: true },
-        { label: '6) Carrier:', section: true },
+        { label: '6) Carrier:  ' + (f['선명'] || ''), section: true },
+        { label: '7) B/L No.:  ' + (f['BL번호'] || ''), section: true },
       ];
       // 우측 8)~11) — Remarks 라벨만 굵게(richText)
       const right = [
@@ -9831,14 +9958,30 @@ async function autoSaveBL() {
   const st = document.getElementById('blSaveStatus');
   const blNumber = ((document.getElementById('blNumber') || {}).value || '').trim();
   const blIssueDate = (document.getElementById('blIssueDate') || {}).value || '';
+  // v3.2.49 [Phase 1-G]: 선적항·선명도 함께 자동 저장 (커머셜 인보이스 헤더 반영)
+  const port = ((document.getElementById('portOfLoading') || {}).value || '').trim();
+  const vessel = ((document.getElementById('vesselName') || {}).value || '').trim();
   if (st) { st.textContent = '⏳ 저장 중...'; st.style.color = '#888'; }
   try {
+    const prevBl = (state.shipment.fields || {})['BL번호'] || '';
+    // 기존 필드(항상 존재) — 핵심 저장
     const fields = { 'BL번호': blNumber };
     if (blIssueDate) fields['BL발급일'] = blIssueDate;
     await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields });
     state.shipment.fields['BL번호'] = blNumber;
     if (blIssueDate) state.shipment.fields['BL발급일'] = blIssueDate;
+    // v3.2.49 [Phase 1-G]: 선적항·선명·대조 = 신규 필드 → 별도 PATCH(try/catch). 필드 미생성(scope 403) 시에도 핵심 저장 안 깨짐.
+    if (blNumber !== prevBl) { state.shipment.fields['대조확인상태'] = '대조대기'; state.shipment.fields['대조확인일시'] = ''; state.shipment.fields['대조확인자'] = ''; }
+    state.shipment.fields['선적항'] = port;
+    state.shipment.fields['선명'] = vessel;
+    try {
+      const gFields = { '선적항': port, '선명': vessel };
+      if (blNumber !== prevBl) { gFields['대조확인상태'] = '대조대기'; gFields['대조확인일시'] = null; gFields['대조확인자'] = ''; }
+      await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: gFields, typecast: true });
+    } catch (ge) { console.warn('[Phase1-G] 선적항/선명/대조 저장 실패(필드 미생성 가능):', ge.message); }
     if (st) { st.textContent = '✓ 자동 저장됨'; st.style.color = '#0a7b40'; }
+    updateBlNoHeader();
+    renderDocMatchBadge();
     if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();
   } catch (e) {
     if (st) { st.textContent = '❌ 저장 실패 — [Airtable에 저장]으로 재시도'; st.style.color = '#cc3333'; }
@@ -9855,6 +9998,19 @@ function fillBLAndCustomerResponse() {
   const blDateInput = document.getElementById('blIssueDate');
   if (blInput) blInput.value = f['BL번호'] || '';
   if (blDateInput) blDateInput.value = f['BL발급일'] || '';
+  // v3.2.49 [Phase 1-G]: 선적항·선명 복원 + 자동저장 바인딩
+  const portInput = document.getElementById('portOfLoading');
+  const vesselInput = document.getElementById('vesselName');
+  if (portInput) portInput.value = f['선적항'] || '';
+  if (vesselInput) vesselInput.value = f['선명'] || '';
+  [portInput, vesselInput].forEach(inp => {
+    if (inp && !inp.dataset.listenerAdded) {
+      inp.addEventListener('input', scheduleBLSave);
+      inp.dataset.listenerAdded = 'true';
+    }
+  });
+  updateBlNoHeader();      // 상단 B/L NO. 표시
+  renderDocMatchBadge();   // 대조 배지
 
   // BL 입력 시 modified 표시
   if (blInput && !blInput.dataset.listenerAdded) {

@@ -87,10 +87,13 @@
     <div><span class="label">사서함</span> <span class="val" id="mailbox">-</span></div>
     <div><span class="label">고객</span> <span class="val" id="customerLabel">-</span></div>
     <div><span class="label">상태</span> <span class="status val" id="status">-</span></div>
+    <!-- v3.2.49 [Phase 1-G]: BL/CO 대조 확인 배지 -->
+    <div><span class="label">대조</span> <span class="val" id="docMatchBadgeAgent" style="font-weight:700;">-</span></div>
   </div>
   <div class="action-block">
     <a href="/agent-dashboard.html">← 대시보드</a>
     <span id="meLabel" style="font-size:11px; color:#cfc7b6;"></span>
+    <button id="docMatchBtnAgent" onclick="confirmDocMatchAgent()" style="background:#0a7b40; color:#fff; border:none; padding:8px 12px; border-radius:6px; font-weight:700; cursor:pointer; font-size:12px; display:none;">✓ BL/CO 대조 확인</button>
     <button id="confirmBtn" class="btn-confirm" onclick="confirmShipment()" style="background:var(--gold); color:#1B2A3B; border:none; padding:8px 14px; border-radius:6px; font-weight:700; cursor:pointer;">✅ 관세사 확정</button>
     <button onclick="logout()" style="background:transparent; color:#F4EFE6; border:1px solid #cfc7b6; padding:7px 12px; border-radius:6px; cursor:pointer; font-size:12px;">로그아웃</button>
   </div>
@@ -252,10 +255,39 @@
         document.getElementById('confirmBtn').disabled = true;
         document.getElementById('confirmBtn').textContent = '✅ 이미 확정됨';
       }
+      renderDocMatchAgent();   // v3.2.49: BL/CO 대조 배지
       renderProducts();
       document.getElementById('content').style.display = '';
     } catch (e) { showError(e.message || String(e)); }
   }
+
+  // v3.2.49 [Phase 1-G]: BL/CO 대조 확인 배지 + 버튼 (관세사). 도구(직원)와 동일 단일 필드.
+  function renderDocMatchAgent() {
+    if (!shipment) return;
+    const f = shipment.fields || {};
+    const badge = document.getElementById('docMatchBadgeAgent');
+    const btn = document.getElementById('docMatchBtnAgent');
+    const hasDocs = (f['BL파일'] && f['BL파일'].length) || (f['CO파일'] && f['CO파일'].length) || f['BL번호'];
+    const done = f['대조확인상태'] === '확인완료';
+    if (badge) {
+      if (!hasDocs) { badge.textContent = '서류 없음'; badge.style.color = '#999'; }
+      else if (done) { badge.textContent = '✓ 확인완료' + (f['대조확인일시'] ? ' (' + f['대조확인일시'] + ')' : ''); badge.style.color = '#2BB673'; }
+      else { badge.textContent = '⚠ 대조 확인 필요'; badge.style.color = '#e0a040'; }
+    }
+    if (btn) btn.style.display = (hasDocs && !done) ? '' : 'none';
+  }
+
+  window.confirmDocMatchAgent = async () => {
+    if (!shipment) return;
+    if (!confirm('BL·CO 스캔본의 품명·수량·중량·HS·원산지를 신고서류와 대조 확인하셨습니까?\n[확인]을 누르면 대조 확인 완료로 기록됩니다.')) return;
+    try {
+      const r = await api('POST', '', { op: 'confirm_doc_match', shipmentId: shipment.id });
+      shipment.fields['대조확인상태'] = '확인완료';
+      shipment.fields['대조확인일시'] = (r && r.대조확인일시) || new Date().toISOString().slice(0, 10);
+      renderDocMatchAgent();
+      toast('✓ BL/CO 대조 확인 완료');
+    } catch (e) { toast('대조 확인 실패: ' + (e.message || e), 'err'); }
+  };
 
   async function api(method, qs, body) {
     const r = await fetch('/api/agent' + (qs || ''), {
