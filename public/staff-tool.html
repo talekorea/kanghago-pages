@@ -4574,7 +4574,7 @@ function renderProducts() {
       if (_tariffRow && _tariffRow[tk] != null) return _tariffRow[tk];
       return null;
     };
-    const _chip = (label, v, hi) => `<span style="display:inline-block; font-size:9px; padding:1px 5px; margin:2px 2px 0 0; border-radius:8px; background:${hi?'#fff3e0':'#f0f0f0'}; color:${hi?'#b26a00':'#555'}; font-weight:${hi?700:500};">${label} ${(v==null||isNaN(v))?'—':v+'%'}</span>`;
+    const _chip = (label, v, hi) => `<span style="display:inline-block; white-space:nowrap; font-size:8px; padding:1px 4px; margin:0 2px 0 0; border-radius:8px; background:${hi?'#fff3e0':'#f0f0f0'}; color:${hi?'#b26a00':'#555'}; font-weight:${hi?700:500};">${label} ${(v==null||isNaN(v))?'—':v+'%'}</span>`;
     const _prodChips = _chip('기본', _pr('기본세율','A'), fta==='없음')
       + _chip('한중', _pr('FTA_한중','CN'), fta==='한중')
       + _chip('RCEP', _pr('FTA_RCEP중국','RC'), fta==='RCEP')
@@ -4597,7 +4597,7 @@ function renderProducts() {
           : (f['관세사메모'] && f['관세사메모'].includes('유사 매칭')
             ? '<div style="font-size:9px;color:#C9973A;margin-top:2px;text-align:center;" title="' + escAttr(f['관세사메모']) + '">⚠ 유사</div>'
             : '')}
-        <div style="margin-top:3px;">${_prodChips}</div>
+        <div style="margin-top:3px; white-space:nowrap; overflow-x:auto;">${_prodChips}</div>
       </td>
       <td class="desc-cell" style="display:none;">
         <input type="text" data-field="Description" value="${escAttr(f['Description'] || '')}" placeholder="${t('placeholder.eng_name')}" ${empAttr} title="${empTitle}" style="${empBg}" />
