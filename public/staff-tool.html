@@ -2818,11 +2818,23 @@ function getSeaFreightKRW() {
   const rateUsdKrw = parseFloat(document.getElementById('rateUsdKrw')?.value) || 0;
   return calcSeaFreightKRW(totalCbm, shipDate, rateUsdKrw).krw;
 }
-// 선적일: 직원이 고른 값(state.shipDateOverride) 우선 → Shipments 출고요청일 폴백
+// v3.2.44: 진짜 선적일 = Orders.실제출고요청일 (알리피드 원본). Shipments.출고요청일은
+//   추출 시 today 폴백 더미 가능성 → 해상운임 요일/tier 오류 원인이라 자동값으로 안 씀.
+//   부킹요약(openBookingSummary)과 동일 소스로 통일 → §6·§11·§12·청구·부킹요약 동일 선적일.
+//   반환 { date, dates }. dates.length>1이면 다중 실제출고요청일 (호출처가 경고). 'date'=가장 빠른 날짜.
+function getActualShipDateFromOrders() {
+  const dates = [...new Set((state.orders || [])
+    .map(o => (o.fields || {})['실제출고요청일'])
+    .filter(Boolean))].sort();
+  return { date: dates[0] || '', dates };
+}
+// 선적일: 직원 수정값(state.shipDateOverride) 우선 → Orders.실제출고요청일 → (최후) Shipments.출고요청일.
 function getShipDate() {
   if (state.shipDateOverride) return state.shipDateOverride;
+  const actual = getActualShipDateFromOrders().date;
+  if (actual) return actual;
   const f = (state.shipment && state.shipment.fields) || {};
-  return f['출고요청일'] || '';
+  return f['출고요청일'] || '';   // Orders에 실제출고요청일 없을 때만 (최후 폴백)
 }
 
 // v3.0.6: 환율 주차 안전장치 — 입항일(선적+1)이 현재 적용 환율의 주차 범위 밖이면 경고.
@@ -6304,6 +6316,12 @@ function renderOverhead() {
   // v3.2.2 (2026-05-30): 애플 스타일 — 큰 입력칸 (최소 44px·font 14px), 카드형 시각 정돈
   // v3.2.15 (2026-05-31): 요일 라벨 + 입항=선적+1 강제 자동 (override 비울 때마다 재계산)
   const shipDate = getShipDate();
+  // v3.2.44: 선적일 출처 표시 + 다중 실제출고요청일 경고 (침묵 금지)
+  const actualInfo = getActualShipDateFromOrders();   // {date, dates}
+  const shipDateSource = state.shipDateOverride ? '직원 수정'
+    : actualInfo.date ? '실제출고요청일(Orders)'
+    : (((state.shipment && state.shipment.fields) || {})['출고요청일'] ? '출고요청일(Shipments·폴백)' : '없음');
+  const multiShipDate = actualInfo.dates.length > 1;
   const rateUsdKrw = parseFloat(document.getElementById('rateUsdKrw')?.value) || 0;
   const seaInfo = calcSeaFreightKRW(totalCbm, shipDate, rateUsdKrw);
   const rwChk = checkRateWeek();
@@ -6327,7 +6345,8 @@ function renderOverhead() {
           <input type="date" id="seaShipDate" value="${shipDate || ''}"
                  style="width:100%; padding:10px 14px; font-size:14px; border:1px solid #c4d5ea; border-radius:6px; background:#fff; font-family:ui-monospace,monospace;" />
           <div style="font-size:13px; color:var(--navy); margin-top:6px; font-weight:600;">${fmtDateDot(shipDate)}<span style="color:#0a7b40;">${dowLabel(shipDate)}</span></div>
-          <div style="font-size:10px; color:#888; margin-top:2px;">해상운임 요일 판정 근거</div>
+          <div style="font-size:10px; color:#888; margin-top:2px;">해상운임 요일 판정 근거 · 출처: ${shipDateSource}</div>
+          ${multiShipDate ? `<div style="margin-top:4px; padding:4px 8px; background:#ffebe9; color:#c0392b; border-radius:4px; font-size:10px; font-weight:700;">⚠ 실제출고요청일 ${actualInfo.dates.length}개(${actualInfo.dates.join(', ')}) — 가장 빠른 ${actualInfo.date} 적용. 부킹요약과 대조·확인 필요.</div>` : ''}
         </div>
         <div>
           <div style="font-size:11px; color:var(--text-dim); font-weight:600; letter-spacing:0.05em; margin-bottom:6px;">📅 입항예정일 <span style="color:#888; font-size:10px;">(선적+1 자동)</span></div>
@@ -11202,20 +11221,19 @@ function autoDetectDepartureDay() {
     if (hint) hint.textContent = '✏ 수동 선택 — 자동 추론 OFF';
     return;
   }
-  const f = (state.shipment && state.shipment.fields) || {};
-  const dateStr = state.shipDateOverride || f['출고요청일'] || '';
+  const dateStr = getShipDate();   // v3.2.44: 선적일 단일소스(Orders.실제출고요청일) — 더미 출고요청일 사용 금지
   if (!dateStr) {
     sel.value = 'MWF';
-    if (hint) hint.textContent = '출고요청일 미입력 — MWF 기본';
+    if (hint) hint.textContent = '선적일 미입력 — MWF 기본';
     return;
   }
-  const dow = new Date(dateStr).getDay();   // 0=일 ~ 6=토
+  const dow = new Date(dateStr + 'T00:00:00').getDay();   // 0=일 ~ 6=토 (KST 안전: T00:00:00 명시)
   // MWF = 월(1)/수(3)/금(5),  TTH = 화(2)/목(4)/토(6)/일(0)
   const newDay = (dow === 1 || dow === 3 || dow === 5) ? 'MWF' : 'TTH';
   sel.value = newDay;
   const KO = ['일','월','화','수','목','금','토'][dow];
   const label = newDay === 'MWF' ? '월·수·금' : '화·목·토·일';
-  if (hint) hint.textContent = `자동 — 출고요청일 ${dateStr} (${KO}) → ${label}`;
+  if (hint) hint.textContent = `자동 — 선적일 ${dateStr} (${KO}) → ${label}`;
 }
 
 function onDepartureDayManual() {
