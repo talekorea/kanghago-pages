@@ -972,11 +972,18 @@
 <div class="section hidden" id="boxSection">
   <h2><span data-i18n="section.box">5. 박스 관리</span> <span class="small-dim" data-i18n="section.box.sub">(상품의 박스번호 입력 → 박스 자동 생성)</span></h2>
   <!-- v3.0.5: 테이프 색상 선택 (사서함 단위 1개). 패킹리스트 생성 자료로 사용. Shipments에 저장. -->
-  <div id="tapeColorBox" style="margin:10px 0 14px; padding:12px 14px; background:var(--bg-soft); border:1px solid var(--line); border-radius:6px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-    <strong style="font-size:13px;">🎨 테이프 색상</strong>
-    <span style="font-size:11px; color:var(--text-dim);">이 사서함(고객)의 모든 화물은 선택한 색으로 테이핑합니다.</span>
-    <div id="tapeColorChips" style="display:flex; gap:8px; align-items:center; margin-left:auto;"></div>
-    <span id="tapeColorLabel" style="font-size:12px; font-weight:600; min-width:48px; text-align:right;">미선택</span>
+  <!-- v3.2.50 [Phase 1-F]: UI 강화 — 큰 색상 칩 + 미선택 시 박스 입력 차단 -->
+  <div id="tapeColorBox" style="margin:10px 0 14px; padding:16px 18px; background:#fff8e1; border:2px solid var(--gold); border-radius:10px;">
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <strong style="font-size:16px; color:var(--navy);">🎨 테이프 색상 <span style="color:#c0392b;">*</span></strong>
+      <span style="font-size:12px; color:var(--text-dim);">이 사서함(고객)의 모든 화물은 선택한 색으로 테이핑합니다. <strong style="color:#c0392b;">먼저 선택해야 박스 입력이 열립니다.</strong></span>
+      <span id="tapeColorLabel" style="font-size:15px; font-weight:700; margin-left:auto; min-width:56px; text-align:right;">미선택</span>
+    </div>
+    <div id="tapeColorChips" style="display:flex; gap:14px; align-items:center; margin-top:12px; flex-wrap:wrap;"></div>
+  </div>
+  <!-- v3.2.50: 색상 미선택 안내 (선택 시 자동 숨김) -->
+  <div id="tapeColorNotice" style="display:none; margin:0 0 14px; padding:12px 16px; background:#ffebe9; border:1px solid #e0a040; border-radius:8px; color:#a14a00; font-size:13px; font-weight:600;">
+    ⚠ 테이프 색상을 먼저 선택하세요 — 색상 선택 전에는 박스 번호·치수·무게를 입력할 수 없습니다.
   </div>
   <div class="warn-banner" data-i18n="tip.box" data-i18n-html>
     💡 상품 표의 <strong>박스번호</strong>에 <code>1</code>, <code>1-3</code>, <code>1,2,5</code> 형식으로 입력하면 박스가 자동 생성됩니다.
@@ -5016,6 +5023,7 @@ function renderProducts() {
   });
 
   updateModifiedCounter();
+  if (typeof applyBoxInputLock === 'function') applyBoxInputLock();   // v3.2.50: 박스번호 입력 잠금 재적용
 }
 
 function escAttr(s) {
@@ -5433,14 +5441,21 @@ function renderTapeColor() {
   if (!wrap) return;
   // 현재 선택값: state.shipment.fields['테이프색상'] (색 라벨 한글로 저장)
   const cur = (state.shipment && state.shipment.fields && state.shipment.fields['테이프색상']) || '';
+  // v3.2.50 [Phase 1-F]: 큰 칩 + 라벨 + 선택 체크 — 시인성 강화
   wrap.innerHTML = TAPE_COLORS.map(c => {
     const selected = (c.label === cur);
-    const ring = selected ? 'box-shadow:0 0 0 3px var(--gold); border-color:var(--gold);' : 'border-color:#bbb;';
+    const ring = selected ? 'box-shadow:0 0 0 4px var(--gold); border-color:var(--gold);' : 'border-color:#bbb;';
+    const checkColor = (c.key === 'white' || c.key === 'yellow') ? '#222' : '#fff';
+    const check = selected ? `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:${checkColor};">✓</span>` : '';
     return `<button type="button" title="${c.label}" data-tape="${c.label}"
-      style="width:26px;height:26px;border-radius:50%;cursor:pointer;border:1px solid #bbb;${ring}background:${c.hex};padding:0;"
-      onclick="selectTapeColor('${c.label}')"></button>`;
+      style="display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;cursor:pointer;padding:0;"
+      onclick="selectTapeColor('${c.label}')">
+      <span style="position:relative;width:46px;height:46px;border-radius:50%;border:2px solid #bbb;${ring}background:${c.hex};display:block;">${check}</span>
+      <span style="font-size:12px;font-weight:${selected ? '700' : '500'};color:${selected ? 'var(--navy)' : '#888'};">${c.label}</span>
+    </button>`;
   }).join('');
-  if (lbl) lbl.textContent = cur || '미선택';
+  if (lbl) { lbl.textContent = cur || '미선택'; lbl.style.color = cur ? '#0a7b40' : '#c0392b'; }
+  applyBoxInputLock();
 }
 function selectTapeColor(label) {
   if (!state.shipment) return;
@@ -5449,7 +5464,26 @@ function selectTapeColor(label) {
   const cur = state.shipment.fields['테이프색상'] || '';
   state.shipment.fields['테이프색상'] = (cur === label) ? '' : label;
   state.shipmentDirty = true;   // 저장 대상 표시 (saveAll에서 Shipment 갱신)
-  renderTapeColor();
+  renderTapeColor();   // applyBoxInputLock 포함 → 박스 입력 잠금/해제
+}
+
+// v3.2.50 [Phase 1-F]: 테이프 색상 선택 여부
+function boxInputsEnabled() {
+  return !!(state.shipment && state.shipment.fields && state.shipment.fields['테이프색상']);
+}
+// 색상 미선택 시 박스 입력(개수=박스번호, 치수=kg/cm) 차단 + 안내. 선택 시 활성화.
+function applyBoxInputLock() {
+  const enabled = boxInputsEnabled();
+  // 박스 치수 (§5 boxTable) — cbm은 항상 readonly(자동)이라 제외
+  document.querySelectorAll('#boxBody input[data-box]:not([data-field="cbm"]), #boxBody select[data-box]').forEach(el => { el.disabled = !enabled; });
+  // 박스번호 = 박스 개수 생성 (§3 제품행 + 그룹헤더) — 색상 전 생성 차단
+  document.querySelectorAll('input[data-field="박스번호"], .grp-box-input').forEach(el => {
+    el.disabled = !enabled;
+    if (!enabled) { el.dataset._title = el.title || ''; el.title = '테이프 색상을 먼저 선택하세요'; el.style.opacity = '0.5'; }
+    else { if (el.dataset._title != null) el.title = el.dataset._title; el.style.opacity = ''; }
+  });
+  const notice = document.getElementById('tapeColorNotice');
+  if (notice) notice.style.display = enabled ? 'none' : '';
 }
 
 // ===== v3.0.7 [Phase C.2]: BL/CO 파일 업로드 =====
@@ -5774,6 +5808,7 @@ function renderBoxes() {
   //   원인: state.boxes는 renderBoxes에서 Products.박스번호 기준으로 재구성되므로
   //         loadShipment 직후 한 번 부른 renderParcelInfoSection은 빈값으로 그려져 있음.
   if (typeof renderParcelInfoSection === 'function') renderParcelInfoSection();
+  if (typeof applyBoxInputLock === 'function') applyBoxInputLock();   // v3.2.50: 박스 치수 입력 잠금 재적용
 }
 
 function recalculateBoxTotals() {
@@ -7715,6 +7750,7 @@ function refreshGroupHeaders() {
     if (arrow) arrow.textContent = wasCollapsed ? '▶' : '▼';
     oldHdr.replaceWith(newHdr);
   });
+  if (typeof applyBoxInputLock === 'function') applyBoxInputLock();   // v3.2.50: grp-box-input 잠금 재적용
 }
 
 // ========== HS 추천 팝업 (영문명에 여러 후보가 있을 때) ==========
