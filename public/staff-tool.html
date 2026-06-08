@@ -9752,6 +9752,39 @@ async function downloadInvoiceExcel(opts) {
       console.log(`[H3] 패킹 사진 ${embedded}/${packImgJobs.length} 임베드`);
     }
 
+    // ── 시트 3: FREIGHT INVOICE (운임 신고용 — 통관 신고 전용, 강하고 청구 해상운임과 별개) ──
+    // ⑨ v3.2.47 RATE 계단: 기본 $10 / (CBM>5 또는 총kg≥500) $20 / (CBM≥10 또는 총kg≥1000) $30.
+    //   CBM·kg 중 '높은 단계' 적용. Total = CBM × RATE. (calcSeaFreightKRW=강하고 청구와 무관)
+    const ivCbm = Number(pTotCbm.toFixed(5));
+    const ivKg = Number(pTotWt.toFixed(1));
+    const ivRate = (ivCbm >= 10 || ivKg >= 1000) ? 30 : ((ivCbm > 5 || ivKg >= 500) ? 20 : 10);
+    const ivTotal = Number((ivCbm * ivRate).toFixed(2));
+    const ws3 = wb.addWorksheet('IV');
+    ws3.columns = [{ width: 28 }, { width: 14 }, { width: 16 }, { width: 16 }];
+    writeFormHeader(ws3, 'FREIGHT INVOICE', 4);
+    const ivHead = ws3.addRow(['Description', 'CBM', 'RATE(USD/CBM)', 'TOTAL(USD)']);
+    ivHead.font = { ...FONT, bold: true, size: 12 };
+    ivHead.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    ivHead.height = 26;
+    for (let c = 1; c <= 4; c++) { const cell = ivHead.getCell(c); cell.border = allBorder; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E2D5' } }; }
+    const ivRow = ws3.addRow(['OCEAN FREIGHT', ivCbm, ivRate, ivTotal]);
+    ivRow.font = { ...FONT, size: 10 };
+    ivRow.height = 18;
+    ivRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    ivRow.getCell(2).alignment = { vertical: 'middle', horizontal: 'center' }; ivRow.getCell(2).numFmt = '0.00000';
+    ivRow.getCell(3).alignment = { vertical: 'middle', horizontal: 'center' }; ivRow.getCell(3).numFmt = '"$"#,##0';
+    ivRow.getCell(4).alignment = { vertical: 'middle', horizontal: 'center' }; ivRow.getCell(4).numFmt = '"$"#,##0.00';
+    for (let c = 1; c <= 4; c++) ivRow.getCell(c).border = allBorder;
+    const ivTotRow = ws3.addRow(['TOTAL', '', '', ivTotal]);
+    ivTotRow.font = { ...FONT, bold: true, size: 11 }; ivTotRow.height = 22;
+    ivTotRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'right' };
+    ivTotRow.getCell(4).alignment = { vertical: 'middle', horizontal: 'center' }; ivTotRow.getCell(4).numFmt = '"$"#,##0.00';
+    for (let c = 1; c <= 4; c++) { const cell = ivTotRow.getCell(c); cell.border = { top: MEDIUM, left: THIN, bottom: MEDIUM, right: THIN }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8F4E9' } }; }
+    const ivNote = ws3.addRow(['※ 통관 신고용 운임 인보이스 — 강하고 청구 해상운임(§6)과 별개']);
+    ws3.mergeCells('A' + ivNote.number + ':D' + ivNote.number);
+    ivNote.getCell(1).font = { ...FONT, italic: true, size: 9, color: { argb: 'FF999999' } };
+    ivNote.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+
     // 다운로드
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
