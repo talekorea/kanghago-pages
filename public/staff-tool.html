@@ -1433,6 +1433,36 @@
     <div style="font-weight:600; color:#1b5e20; margin-bottom:6px;">💳 페이앱 결제 요청 (저장됨)</div>
     <div id="payappStatusBody"></div>
   </div>
+
+  <!-- [Feature N] 결제용 인보이스 (QINGDAO TALELOR HK → 고객 · USD · Proforma). 통관 신고가(§8)·물류비 청구서(KRW)와 완전 별개 -->
+  <div id="paymentInvoiceCard" style="margin-top:16px; padding:14px 16px; background:#eef4ff; border:1px solid #1B5E9A; border-radius:8px;">
+    <div style="font-weight:700; color:#1B2A3B; margin-bottom:6px;">💳 결제용 인보이스 <span style="font-size:11px; font-weight:400; color:#666;">(QINGDAO TALELOR HK → 고객 · USD · Proforma)</span></div>
+    <div style="font-size:11px; color:#666; margin-bottom:10px;">상품 매입가(1688 단가CNY) × 1.06 × 환율(CNY→USD). <strong>통관 신고가(§8)·물류비 청구서(KRW)와 별개</strong> — 부대비용 미포함.</div>
+    <div style="display:flex; gap:18px; flex-wrap:wrap; align-items:center;">
+      <div>
+        <label style="font-size:11px; color:#666; display:block; margin-bottom:2px;">결제수단</label>
+        <label style="font-size:12px; margin-right:10px;"><input type="radio" name="payInvMethod" value="bank" checked /> 무역송금(T/T)</label>
+        <label style="font-size:12px;"><input type="radio" name="payInvMethod" value="card" /> 카드(Airwallex)</label>
+      </div>
+      <label style="font-size:12px;"><input type="checkbox" id="payInvFeeSeparate" /> 6% 별도 라인(Service fee) 표시 <span style="color:#999;">(기본: 단가 임베드 · 합계 동일)</span></label>
+      <button class="secondary small" onclick="openPaymentInvoicePreview()" style="padding:8px 16px;">👁 미리보기</button>
+      <button class="primary small" onclick="downloadPaymentInvoicePdf()" style="padding:8px 18px; background:#1B5E9A; color:#fff;">📄 결제 인보이스 PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- [Feature N] 결제용 인보이스 미리보기 모달 -->
+<div id="paymentInvoicePreviewModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.7); z-index:9999; padding:20px; overflow-y:auto;">
+  <div style="max-width:840px; margin:30px auto; background:#f0f0f0; border-radius:10px; padding:16px; box-shadow:0 12px 40px rgba(0,0,0,0.4);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0; font-size:16px; color:#1B2A3B;">💳 결제용 인보이스 미리보기</h3>
+      <div>
+        <button class="primary small" onclick="downloadPaymentInvoicePdf()" style="padding:7px 14px; background:#1B5E9A; color:#fff;">📄 PDF 저장</button>
+        <button onclick="document.getElementById('paymentInvoicePreviewModal').style.display='none'" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888;">×</button>
+      </div>
+    </div>
+    <div id="paymentInvoiceDoc" style="width:780px; min-height:1000px; margin:0 auto; padding:40px; background:#fff; font-family:'Pretendard Variable','Pretendard','Apple SD Gothic Neo','맑은 고딕',sans-serif; color:#1B2A3B;"></div>
+  </div>
 </div>
 
 <!-- v3.1.0: 페이앱 결제 URL 모달 (생성 직후 표시) -->
@@ -11427,6 +11457,178 @@ function recalcShippingMatrix() {
 
 // ===== Phase F §12: 청구서 발행 (PDF — 영세율/10%/예치금 분리, 5원칙 데이터 저장) =====
 function formatKrw(n) { return '₩' + Math.round(parseFloat(n) || 0).toLocaleString(); }
+
+// ============================================================================
+// [Feature N] 결제용 인보이스 (QINGDAO TALELOR HK → 고객 · USD · Proforma)
+//   ★ 통관 신고가(§8 calcTariffForScenario)·물류비 청구서(buildInvoiceData)와 완전 분리.
+//   금액 = 상품 매입가(단가CNY) × 1.06 × 환율(CNY→USD). 부대비용 미포함.
+//   발행자 = QINGDAO TALELOR HK (Fintech/ 회사문서 기준).
+// ============================================================================
+const PAYMENT_INVOICE_ISSUER = {
+  name: 'QINGDAO TALELOR INTERNATIONAL TRADING CO., LIMITED',
+  region: 'Hong Kong',
+  addr: 'Unit 2508A, 25/F, Bank of America Tower, 12 Harcourt Road, Central, Hong Kong',
+  regNo: 'HK Company Reg. No. 78644361',
+  contact: 'James (Jihoon) Kang',
+  email: 'redox2580@gmail.com',
+};
+// ★ 무역송금 수취계좌 — HK 법인 계좌(Airwallex 셋업 중)는 레포 미보유. 발행 전 사장님 입력 필요.
+//   (비워두면 인보이스 송금 섹션에 "계좌 입력 필요" 경고 표시 — 잘못된 계좌 발송 방지)
+const PAYMENT_INVOICE_BANK = {
+  bankName: '',
+  swift: '',
+  accountNo: '',
+  beneficiary: 'QINGDAO TALELOR INTERNATIONAL TRADING CO., LIMITED',
+  bankAddr: '',
+};
+const PAYMENT_INVOICE_MARKUP = 1.06;   // 결정5: 매입가 × 1.06 × 환율
+
+function buildPaymentInvoiceData(opts) {
+  opts = opts || {};
+  const rate = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
+  const cf = (state.customer && state.customer.fields) || {};
+  const sf = (state.shipment && state.shipment.fields) || {};
+  const feeSeparate = !!opts.feeSeparate;
+  const payMethod = opts.payMethod || 'bank';
+  // 품목 합산 (품명+재질) — 매입가(합계CNY) 기준
+  const merge = new Map();
+  (state.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0).forEach(p => {
+    const f = p.fields || {};
+    const key = (f['Description'] || f['상품ID'] || '') + ' ' + (f['Material'] || '');
+    if (!merge.has(key)) merge.set(key, { desc: f['Description'] || f['상품ID'] || '', mat: f['Material'] || '', qty: 0, cny: 0 });
+    const m = merge.get(key);
+    m.qty += parseFloat(f['수량']) || 0;
+    m.cny += parseFloat(f['합계CNY']) || 0;
+  });
+  const items = [];
+  let subtotalBase = 0;   // 매입가 USD (×1.06 전)
+  for (const m of merge.values()) {
+    const amtBase = m.cny * rate;
+    subtotalBase += amtBase;
+    if (feeSeparate) {
+      items.push({ desc: m.desc, mat: m.mat, qty: m.qty, unit: m.qty > 0 ? amtBase / m.qty : 0, amount: amtBase });
+    } else {
+      const amt = amtBase * PAYMENT_INVOICE_MARKUP;   // 1.06 단가 임베드
+      items.push({ desc: m.desc, mat: m.mat, qty: m.qty, unit: m.qty > 0 ? amt / m.qty : 0, amount: amt });
+    }
+  }
+  const serviceFee = feeSeparate ? subtotalBase * (PAYMENT_INVOICE_MARKUP - 1) : 0;
+  const subtotal = feeSeparate ? subtotalBase : subtotalBase * PAYMENT_INVOICE_MARKUP;
+  const total = subtotal + serviceFee;   // 두 모드 동일 = subtotalBase × 1.06
+  const today = new Date().toISOString().slice(0, 10);
+  const mailbox = sf['사서함'] || 'AP';
+  const yymmdd = today.slice(2).replace(/-/g, '');
+  return {
+    invoiceNo: `${mailbox}-PI-${yymmdd}`, date: today, rate,
+    issuer: PAYMENT_INVOICE_ISSUER, bank: PAYMENT_INVOICE_BANK,
+    customer: {
+      company: sf['수취_회사'] || cf['회사명'] || '-',
+      name: sf['수취_수취인'] || cf['회원명'] || '-',
+      addr: sf['수취_주소'] || cf['주소'] || '-',
+      phone: sf['수취_전화'] || cf['연락처'] || '-',
+      email: cf['이메일'] || '-',
+    },
+    items, subtotal, serviceFee, total, payMethod, feeSeparate,
+  };
+}
+
+function renderPaymentInvoiceHTML(d) {
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const usd = (n) => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const rows = d.items.map((it, i) => `
+    <tr>
+      <td style="padding:7px 8px; border-bottom:1px solid #eee; text-align:center;">${i + 1}</td>
+      <td style="padding:7px 8px; border-bottom:1px solid #eee;">${esc(it.desc)}</td>
+      <td style="padding:7px 8px; border-bottom:1px solid #eee;">${esc(it.mat)}</td>
+      <td style="padding:7px 8px; border-bottom:1px solid #eee; text-align:right;">${(it.qty || 0).toLocaleString()}</td>
+      <td style="padding:7px 8px; border-bottom:1px solid #eee; text-align:right;">${usd(it.unit)}</td>
+      <td style="padding:7px 8px; border-bottom:1px solid #eee; text-align:right;">${usd(it.amount)}</td>
+    </tr>`).join('');
+  const feeRow = d.feeSeparate ? `<tr><td colspan="5" style="padding:6px 8px; text-align:right; color:#666;">Service fee (6%)</td><td style="padding:6px 8px; text-align:right;">${usd(d.serviceFee)}</td></tr>` : '';
+  const b = d.bank;
+  const bankReady = b.bankName && b.swift && b.accountNo;
+  const payBlock = d.payMethod === 'card'
+    ? `<div style="font-size:12px; line-height:1.7;"><strong>Payment — Card (Airwallex)</strong><br>카드 결제 링크를 별도 안내드립니다. (Airwallex 결제 페이지)<br><span style="color:#888;">※ 1단계: 담당자가 결제 링크를 수동 발송합니다.</span></div>`
+    : (bankReady
+      ? `<div style="font-size:12px; line-height:1.7;"><strong>Payment — Telegraphic Transfer (T/T, USD)</strong><br>Beneficiary: ${esc(b.beneficiary)}<br>Bank: ${esc(b.bankName)}<br>SWIFT/BIC: ${esc(b.swift)}<br>Account No.: ${esc(b.accountNo)}${b.bankAddr ? '<br>Bank Address: ' + esc(b.bankAddr) : ''}</div>`
+      : `<div style="font-size:12px; line-height:1.7; color:#c0392b;"><strong>⚠ 무역송금 수취계좌 미입력</strong><br>발행 전 PAYMENT_INVOICE_BANK(은행명·SWIFT·계좌번호)를 입력하세요. (현재 HK 법인 계좌 미설정)</div>`);
+  return `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #1B2A3B; padding-bottom:14px; margin-bottom:18px;">
+      <div><img src="${KANGHAGO_LOGO_BASE64}" alt="강하고" style="height:42px; width:auto;" /></div>
+      <div style="text-align:right;"><div style="font-size:26px; font-weight:800; letter-spacing:1px; color:#1B2A3B;">PROFORMA INVOICE</div>
+        <div style="font-size:12px; color:#666; margin-top:4px;">No. ${esc(d.invoiceNo)} &nbsp;·&nbsp; Date ${esc(d.date)}</div>
+        <div style="font-size:11px; color:#999;">Currency: USD &nbsp;·&nbsp; Rate CNY→USD ${d.rate}</div></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; gap:24px; margin-bottom:18px; font-size:12px; line-height:1.6;">
+      <div style="flex:1;"><div style="font-weight:700; color:#1B5E9A; margin-bottom:4px;">Beneficiary (발행자)</div>
+        ${esc(d.issuer.name)}<br>${esc(d.issuer.addr)}<br>${esc(d.issuer.regNo)}<br>${esc(d.issuer.contact)} · ${esc(d.issuer.email)}</div>
+      <div style="flex:1;"><div style="font-weight:700; color:#1B5E9A; margin-bottom:4px;">Bill to (고객)</div>
+        ${esc(d.customer.company)}<br>${esc(d.customer.name)}<br>${esc(d.customer.addr)}<br>${esc(d.customer.phone)} · ${esc(d.customer.email)}</div>
+    </div>
+    <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:6px;">
+      <thead><tr style="background:#1B2A3B; color:#fff;">
+        <th style="padding:8px; text-align:center; width:36px;">No</th><th style="padding:8px; text-align:left;">Description</th>
+        <th style="padding:8px; text-align:left; width:120px;">Material</th><th style="padding:8px; text-align:right; width:70px;">Qty</th>
+        <th style="padding:8px; text-align:right; width:90px;">Unit Price</th><th style="padding:8px; text-align:right; width:100px;">Amount</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        ${feeRow}
+        <tr><td colspan="5" style="padding:9px 8px; text-align:right; font-weight:800; border-top:2px solid #1B2A3B;">TOTAL (USD)</td>
+          <td style="padding:9px 8px; text-align:right; font-weight:800; border-top:2px solid #1B2A3B; color:#1B5E9A;">${usd(d.total)}</td></tr>
+      </tfoot>
+    </table>
+    <div style="margin-top:18px; padding:12px 14px; background:#f5f8ff; border:1px solid #c7dcf3; border-radius:6px;">${payBlock}</div>
+    <div style="margin-top:16px; font-size:10px; color:#999; line-height:1.5;">※ This is a Proforma Invoice for advance payment. Product procurement only (1688). Logistics/customs fees are billed separately.</div>`;
+}
+
+async function downloadPaymentInvoicePdf() {
+  if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
+  if (typeof html2canvas === 'undefined' || !window.jspdf) { alert('PDF 라이브러리 로드 실패 — 새로고침'); return; }
+  const opts = {
+    payMethod: (document.querySelector('input[name="payInvMethod"]:checked') || {}).value || 'bank',
+    feeSeparate: !!(document.getElementById('payInvFeeSeparate') || {}).checked,
+  };
+  const d = buildPaymentInvoiceData(opts);
+  const doc = document.getElementById('paymentInvoiceDoc');
+  doc.innerHTML = renderPaymentInvoiceHTML(d);
+  const modal = document.getElementById('paymentInvoicePreviewModal');
+  const wasHidden = modal.style.display === 'none' || modal.style.display === '';
+  if (wasHidden) { modal.style.display = 'block'; modal.style.visibility = 'hidden'; }
+  try {
+    if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (_) {} }
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const canvas = await html2canvas(doc, {
+      scale: 2, useCORS: true, backgroundColor: '#ffffff',
+      onclone: (cd) => { const m = cd.getElementById('paymentInvoicePreviewModal'); if (m) { m.style.display = 'block'; m.style.visibility = 'visible'; m.style.opacity = '1'; } const dd = cd.getElementById('paymentInvoiceDoc'); if (dd) { dd.style.visibility = 'visible'; dd.style.opacity = '1'; } },
+    });
+    if (wasHidden) { modal.style.display = 'none'; modal.style.visibility = ''; }
+    if (!canvas || canvas.width < 10) throw new Error('인보이스 캡쳐 실패 — [👁 미리보기] 후 다시 시도');
+    const imgData = canvas.toDataURL('image/png');
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+    const imgW = 190, imgH = (canvas.height * imgW) / canvas.width;
+    pdf.addImage(imgData, 'PNG', 10, 10, imgW, imgH);
+    pdf.save(`${d.invoiceNo}-${d.customer.company !== '-' ? d.customer.company : 'PI'}.pdf`);
+    if (typeof toastSuccess === 'function') toastSuccess('결제용 인보이스 PDF 발행 완료', { title: '💳 PI' });
+  } catch (e) {
+    if (wasHidden) { modal.style.display = 'none'; modal.style.visibility = ''; }
+    if (typeof toastError === 'function') toastError('PDF 생성 실패: ' + (e.message || e));
+    console.error('[Feature N] downloadPaymentInvoicePdf', e);
+  }
+}
+
+function openPaymentInvoicePreview() {
+  if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
+  const opts = {
+    payMethod: (document.querySelector('input[name="payInvMethod"]:checked') || {}).value || 'bank',
+    feeSeparate: !!(document.getElementById('payInvFeeSeparate') || {}).checked,
+  };
+  const doc = document.getElementById('paymentInvoiceDoc');
+  if (doc) doc.innerHTML = renderPaymentInvoiceHTML(buildPaymentInvoiceData(opts));
+  const modal = document.getElementById('paymentInvoicePreviewModal');
+  if (modal) modal.style.display = 'block';
+}
 
 function buildInvoiceData() {
   const f = state.shipment ? (state.shipment.fields || {}) : {};
