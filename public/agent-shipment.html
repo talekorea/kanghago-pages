@@ -115,6 +115,7 @@
           <th style="width:120px;">HS 코드</th>
           <th style="width:75px;">기본 (A)</th>
           <th style="width:80px;">한중 (FCN1)</th>
+          <th style="width:85px;">RCEP (FRCCN1)</th>
           <th style="width:80px;">아태 (E1)</th>
           <th style="width:175px;">적용FTA <span style="font-size:9px; color:#888;">(★ 최저)</span></th>
           <th style="width:115px;">저장</th>
@@ -270,15 +271,27 @@
   }
 
   // 작업2: 셋 중 가장 낮은 세율 자동 추천
-  function recommendFta(baseR, kcR, aptaR) {
-    const opts = [
-      { key: '없음', rate: baseR },
-      { key: '한중', rate: kcR },
-      { key: '아태', rate: aptaR },
-    ].filter(o => typeof o.rate === 'number');
-    if (!opts.length) return null;
-    opts.sort((a, b) => a.rate - b.rate);
-    return opts[0].key;
+  // ===== 최저세율 단일 선택 helper (세 화면 통일: 도구·staff-tool·agent-shipment) =====
+  // rates {A,CN,RC,E1} → 후보 기본/한중(FCN1)/RCEP(FRCCN1)/APTA(E1). null 제외, 최저 rate,
+  //   동률 우선순위 [한중 > RCEP > APTA > 기본]. 반환 {rate,code,fta,needRcepCO}|null.
+  function pickBestTariff(rates) {
+    rates = rates || {};
+    const num = v => (v == null || v === '') ? null : (isNaN(parseFloat(v)) ? null : parseFloat(v));
+    const cands = [
+      { fta: '한중', code: 'FCN1',   rate: num(rates.CN), pr: 1 },
+      { fta: 'RCEP', code: 'FRCCN1', rate: num(rates.RC), pr: 2 },
+      { fta: '아태', code: 'E1',     rate: num(rates.E1), pr: 3 },
+      { fta: '없음', code: 'A',      rate: num(rates.A),  pr: 4 },
+    ].filter(c => c.rate != null);
+    if (!cands.length) return null;
+    cands.sort((a, b) => (a.rate !== b.rate) ? a.rate - b.rate : a.pr - b.pr);
+    const b = cands[0];
+    return { rate: b.rate, code: b.code, fta: b.fta, needRcepCO: b.fta === 'RCEP' };
+  }
+  // 동률 규칙 통일: 기존 [없음 우선] → [한중 우선]으로 교정 (도구 pickBestTariff와 동일).
+  function recommendFta(baseR, kcR, rcepR, aptaR) {
+    const best = pickBestTariff({ A: baseR, CN: kcR, RC: rcepR, E1: aptaR });
+    return best ? best.fta : null;
   }
 
   // G4: 세율 입력 변경 → 추천 재계산 + 드롭다운 라벨/선택/색상 갱신
@@ -322,8 +335,10 @@
       const tariff = lookupTariff(hs.v);
       if (tariff) {
         const cn = getVal('input[data-field="FTA_한중"]');
+        const rc = getVal('input[data-field="FTA_RCEP중국"]');
         const e1 = getVal('input[data-field="아태세율"]');
         if (tariff.CN != null && cn.v === '') missing.push({ label: '한중세율(FTA_한중)', inp: cn.inp });
+        if (tariff.RC != null && rc.v === '') missing.push({ label: 'RCEP세율(FTA_RCEP중국)', inp: rc.inp });
         if (tariff.E1 != null && e1.v === '') missing.push({ label: '아태세율', inp: e1.inp });
       }
     }
@@ -357,9 +372,10 @@
     if (!KANGHAGO_TARIFF) await loadTariffJson();
     const t = lookupTariff(code);
     if (t) {
-      // ✓ 공식 매칭 — A/CN/E1 강제 채움 (관세사가 이후 수동 override 가능)
+      // ✓ 공식 매칭 — A/CN/RC/E1 강제 채움 (관세사가 이후 수동 override 가능)
       setRateForce(tr, 'input[data-field="기본세율"]', t.A);
       setRateForce(tr, 'input[data-field="FTA_한중"]', t.CN);
+      setRateForce(tr, 'input[data-field="FTA_RCEP중국"]', t.RC);
       setRateForce(tr, 'input[data-field="아태세율"]', t.E1);
       recomputeRowFta(tr);
     } else {
@@ -386,15 +402,16 @@
     const num = (sel) => { const v = parseFloat((tr.querySelector(sel) || {}).value); return isNaN(v) ? null : v; };
     const baseR = num('input[data-field="기본세율"]');
     const kcR = num('input[data-field="FTA_한중"]');
+    const rcepR = num('input[data-field="FTA_RCEP중국"]');
     const aptaR = num('input[data-field="아태세율"]');
-    const reco = recommendFta(baseR, kcR, aptaR) || '없음';
+    const reco = recommendFta(baseR, kcR, rcepR, aptaR) || '없음';
     const sel = tr.querySelector('select[data-field="적용FTA"]');
     if (!sel) return;
     const rl = (v) => (v == null ? '-' : v + '%');
     const userTouched = sel.dataset.userTouched === '1';
     sel.dataset.recommended = reco;
     // 옵션 라벨 ★추천 갱신
-    const labels = { '없음': ['일반', baseR], '한중': ['한중', kcR], '아태': ['아태', aptaR] };
+    const labels = { '없음': ['일반', baseR], '한중': ['한중', kcR], 'RCEP': ['RCEP', rcepR], '아태': ['아태', aptaR] };
     Array.from(sel.options).forEach(opt => {
       const [nm, rate] = labels[opt.value] || [opt.value, null];
       opt.textContent = `${nm} (${rl(rate)})${reco === opt.value ? ' ★추천' : ''}`;
@@ -406,6 +423,7 @@
     const td = sel.closest('td');
     const note = td && td.querySelector('[data-conote]');
     if (note) note.textContent = sel.value === '한중' ? '* 한중 FTA C/O 필요 (없으면 일반 세율 적용)'
+      : sel.value === 'RCEP' ? '* ⚠ RCEP CO 필요 — 원산지기준·서식 한중과 다름 (없으면 일반 세율)'
       : sel.value === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)' : '';
   }
 
@@ -496,7 +514,7 @@
           <div style="border:1px solid #ddd; border-radius:6px; padding:10px 12px; margin-bottom:8px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">${titleLine} ${badge}</div>
-              <button data-hs="${c.hs10 || ''}" data-name="${escapeAttr(c.nameEn || '')}" data-mat="${escapeAttr(c.material || '')}" data-a="${c.rates && c.rates.A != null ? c.rates.A : ''}" data-cn="${c.rates && c.rates.CN != null ? c.rates.CN : ''}" data-e1="${c.rates && c.rates.E1 != null ? c.rates.E1 : ''}" class="hs-suggest-pick" style="background:#0a7b40; color:#fff; border:none; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">선택</button>
+              <button data-hs="${c.hs10 || ''}" data-name="${escapeAttr(c.nameEn || '')}" data-mat="${escapeAttr(c.material || '')}" data-a="${c.rates && c.rates.A != null ? c.rates.A : ''}" data-cn="${c.rates && c.rates.CN != null ? c.rates.CN : ''}" data-rc="${c.rates && c.rates.RC != null ? c.rates.RC : ''}" data-e1="${c.rates && c.rates.E1 != null ? c.rates.E1 : ''}" class="hs-suggest-pick" style="background:#0a7b40; color:#fff; border:none; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">선택</button>
             </div>
             <div style="font-size:11px; color:#666; margin-bottom:4px;">${escapeAttr(c.reason)}</div>
             ${c.rates ? `<div style="font-size:11px; color:#444;">
@@ -536,6 +554,7 @@
             //   data-a/cn/e1: '' (빈 문자열) = 해당 협정 미적용 → 칸 비우기.
             setRateForce(tr, 'input[data-field="기본세율"]', b.dataset.a);
             setRateForce(tr, 'input[data-field="FTA_한중"]', b.dataset.cn);
+            setRateForce(tr, 'input[data-field="FTA_RCEP중국"]', b.dataset.rc);
             setRateForce(tr, 'input[data-field="아태세율"]', b.dataset.e1);
             recomputeRowFta(tr);
             updateGroupHsSummary(tr.dataset.group);
@@ -662,7 +681,7 @@
     const label = gk === '__기타' ? '기타/미분류' : gk;
     const hs = summarizeGroupHs(items.map(p => (p.fields || {})['HS코드'] || ''));
     return `<tr class="group-header" data-group-header="${gk}" style="cursor:pointer; background:var(--ivory);" onclick="toggleGroup('${gk}')">`
-      + `<td colspan="11" style="font-weight:700; padding:9px 12px; border-top:2px solid var(--gold);">`
+      + `<td colspan="12" style="font-weight:700; padding:9px 12px; border-top:2px solid var(--gold);">`
       +   `<span style="float:right; font-weight:400; display:inline-flex; gap:4px; align-items:center;" onclick="event.stopPropagation();">`
       +     `<input class="grp-hs-input" data-grp="${gk}" placeholder="HS 일괄 (0000.00-0000)" style="width:150px; font-size:12px; padding:2px 6px; border:1px solid #ccc; border-radius:4px;" onclick="event.stopPropagation();" onkeydown="if(event.key==='Enter'){event.preventDefault();event.stopPropagation();applyGroupHs('${gk}');}" />`
       +     `<button type="button" onclick="event.stopPropagation(); applyGroupHs('${gk}');" style="font-size:11px; padding:3px 9px; background:var(--gold); color:#fff; border:none; border-radius:4px; cursor:pointer;">HS 일괄</button>`
@@ -785,6 +804,7 @@
       rows.forEach(r => {
         setRateForce(r, 'input[data-field="기본세율"]', tariff.A);
         setRateForce(r, 'input[data-field="FTA_한중"]', tariff.CN);
+        setRateForce(r, 'input[data-field="FTA_RCEP중국"]', tariff.RC);
         setRateForce(r, 'input[data-field="아태세율"]', tariff.E1);
         recomputeRowFta(r);
         filled++;
@@ -857,18 +877,21 @@
       const confirmed = !!f['관세사확정'];
       const baseR = (typeof f['기본세율'] === 'number') ? f['기본세율'] : null;
       const kcR = (typeof f['FTA_한중'] === 'number') ? f['FTA_한중'] : null;
+      const rcepR = (typeof f['FTA_RCEP중국'] === 'number') ? f['FTA_RCEP중국'] : null;
       const aptaR = (typeof f['아태세율'] === 'number') ? f['아태세율'] : null;
-      const recommended = recommendFta(baseR, kcR, aptaR) || '없음';
-      // G4: 관세사가 명시적으로 한중/아태 선택한 경우만 유지. '없음'/'일반'/빈값은 추천 우선
+      const recommended = recommendFta(baseR, kcR, rcepR, aptaR) || '없음';
+      // G4: 관세사가 명시적으로 한중/RCEP/아태 선택한 경우만 유지. '없음'/'일반'/빈값은 추천 우선
       // (옛 데이터의 적용FTA='없음'이 추천을 막던 문제 해결)
       const saved = f['적용FTA'];
-      const effectiveFta = (saved === '한중' || saved === '아태') ? saved : recommended;
+      const effectiveFta = (saved === '한중' || saved === 'RCEP' || saved === '아태') ? saved : recommended;
       const isOverride = effectiveFta !== recommended;
       const rateLabel = (v) => (v == null ? '-' : v + '%');
       const recoReason = recommended === '한중' ? `한중 FTA가 ${rateLabel(kcR)}로 가장 저렴하여 추천됩니다`
+        : recommended === 'RCEP' ? `RCEP 중국(FRCCN1)이 ${rateLabel(rcepR)}로 가장 저렴하여 추천됩니다 (원산지기준·CO 서식 한중과 상이 — 확정 필요)`
         : recommended === '아태' ? `아태협정(E1)이 ${rateLabel(aptaR)}로 가장 저렴하여 추천됩니다`
         : `일반 세율(${rateLabel(baseR)})이 최저이거나 FTA와 동률이라 일반을 추천합니다`;
       const coNoteFor = (fta) => fta === '한중' ? '* 한중 FTA C/O 필요 (없으면 일반 세율 적용)'
+        : fta === 'RCEP' ? '* ⚠ RCEP CO 필요 — 원산지기준·서식 한중과 다름 (없으면 일반 세율)'
         : fta === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)' : '';
       // 작업1: 1688 상품 사진 + URL
       const imgUrl = (f['상품이미지'] && f['상품이미지'][0] && (f['상품이미지'][0].thumbnails?.large?.url || f['상품이미지'][0].url))
@@ -898,12 +921,14 @@
         </td>
         <td><input data-field="기본세율" type="number" step="0.1" value="${f['기본세율'] ?? ''}" placeholder="A" /></td>
         <td><input data-field="FTA_한중" type="number" step="0.1" value="${f['FTA_한중'] ?? ''}" placeholder="FCN1" /></td>
+        <td><input data-field="FTA_RCEP중국" type="number" step="0.1" value="${f['FTA_RCEP중국'] ?? ''}" placeholder="FRCCN1" /></td>
         <td><input data-field="아태세율" type="number" step="0.1" value="${f['아태세율'] ?? ''}" placeholder="E1" /></td>
         <td>
           <select data-field="적용FTA" data-recommended="${recommended}" onchange="onFtaChange(this)"
             class="fta-select ${isOverride ? 'fta-override' : 'fta-reco'}">
             <option value="없음"${effectiveFta === '없음' ? ' selected' : ''}>일반 (${rateLabel(baseR)})${recommended === '없음' ? ' ★추천' : ''}</option>
             <option value="한중"${effectiveFta === '한중' ? ' selected' : ''}>한중 (${rateLabel(kcR)})${recommended === '한중' ? ' ★추천' : ''}</option>
+            <option value="RCEP"${effectiveFta === 'RCEP' ? ' selected' : ''}>RCEP (${rateLabel(rcepR)})${recommended === 'RCEP' ? ' ★추천' : ''}</option>
             <option value="아태"${effectiveFta === '아태' ? ' selected' : ''}>아태 (${rateLabel(aptaR)})${recommended === '아태' ? ' ★추천' : ''}</option>
           </select>
           <span class="fta-info" title="${escapeAttr(recoReason)}">ℹ</span>
@@ -935,7 +960,7 @@
     tbody.addEventListener('input', (e) => {
       const inp = e.target;
       // G4: 세율 입력 변경 시 적용 FTA 추천 즉시 재계산
-      if (inp.matches('input[data-field="기본세율"], input[data-field="FTA_한중"], input[data-field="아태세율"]')) {
+      if (inp.matches('input[data-field="기본세율"], input[data-field="FTA_한중"], input[data-field="FTA_RCEP중국"], input[data-field="아태세율"]')) {
         recomputeRowFta(inp.closest('tr'));
         return;
       }
@@ -1002,6 +1027,7 @@
       const rates = [
         (typeof f['기본세율']==='number') ? `A ${f['기본세율']}%` : null,
         (typeof f['FTA_한중']==='number') ? `FCN1 ${f['FTA_한중']}%` : null,
+        (typeof f['FTA_RCEP중국']==='number') ? `FRCCN1 ${f['FTA_RCEP중국']}%` : null,
         (typeof f['아태세율']==='number') ? `E1 ${f['아태세율']}%` : null,
       ].filter(Boolean).join(' · ');
       html += `<div class="ag-item" data-id="${rec.id}" style="padding:9px 11px;cursor:pointer;border-bottom:1px solid #f4efe6;">
@@ -1030,6 +1056,7 @@
     setIf('input[data-field="Material"]', f['Material']);
     if (typeof f['기본세율'] === 'number') setIf('input[data-field="기본세율"]', f['기본세율']);
     if (typeof f['FTA_한중'] === 'number') setIf('input[data-field="FTA_한중"]', f['FTA_한중']);
+    if (typeof f['FTA_RCEP중국'] === 'number') setIf('input[data-field="FTA_RCEP중국"]', f['FTA_RCEP중국']);
     if (typeof f['아태세율'] === 'number') setIf('input[data-field="아태세율"]', f['아태세율']);
     const ftaSel = tr.querySelector('select[data-field="적용FTA"]');
     if (ftaSel && f['적용FTA']) ftaSel.value = f['적용FTA'];
@@ -1056,12 +1083,12 @@
       return;
     }
     // 통과 — 필수 칸 강조 리셋
-    tr.querySelectorAll('input[data-field="HS코드"],input[data-field="기본세율"],input[data-field="FTA_한중"],input[data-field="아태세율"]')
+    tr.querySelectorAll('input[data-field="HS코드"],input[data-field="기본세율"],input[data-field="FTA_한중"],input[data-field="FTA_RCEP중국"],input[data-field="아태세율"]')
       .forEach(i => { i.style.borderColor = ''; });
     const fields = {};
     // v3.2.29: 화이트리스트(ALLOWED_PRODUCT_FIELDS) 외 필드 차단 — 거부된 필드 발생 사전 차단.
     //   dataset.field 비어있거나 화이트리스트 외면 페이로드 미포함.
-    const AGENT_SAVEABLE = new Set(['Description', 'Material', 'HS코드', 'FTA_한중', '아태세율', '기본세율', '적용FTA']);
+    const AGENT_SAVEABLE = new Set(['Description', 'Material', 'HS코드', 'FTA_한중', 'FTA_RCEP중국', '아태세율', '기본세율', '적용FTA']);
     tr.querySelectorAll('input, select').forEach(inp => {
       const key = inp.dataset.field;
       if (!key || !AGENT_SAVEABLE.has(key)) return;   // 화이트리스트 외 차단
@@ -1082,7 +1109,7 @@
     const ftaSel = tr.querySelector('select[data-field="적용FTA"]');
     if (ftaSel) {
       const ftaVal = fields['적용FTA'];
-      const rateMap = { '없음': fields['기본세율'], '한중': fields['FTA_한중'], '아태': fields['아태세율'] };
+      const rateMap = { '없음': fields['기본세율'], '한중': fields['FTA_한중'], 'RCEP': fields['FTA_RCEP중국'], '아태': fields['아태세율'] };
       const appliedRate = rateMap[ftaVal];
       if (appliedRate != null && !isNaN(appliedRate)) fields['적용세율'] = appliedRate;
       fields['추천FTA'] = ftaSel.dataset.recommended || '';

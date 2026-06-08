@@ -1569,6 +1569,27 @@ function findTariffLeafCandidates(hsRaw, maxCount = 10) {
   return out;
 }
 
+// ===== 최저세율 단일 선택 helper (세 화면 통일: 도구·staff-tool·agent-shipment) =====
+// rates: {A, CN, RC, E1} (각 % 숫자 또는 null/빈값). 후보 = 기본(A)/한중(FCN1)/RCEP(FRCCN1)/APTA(E1).
+//   null/빈값 제외 → 최저 rate → 동률 우선순위 [한중 > RCEP > APTA > 기본] (FTA가 사후검증 부담 적음, 한중 최우선).
+//   반환 { rate, code, fta, needRcepCO } | null(후보 0개).  fta = 적용FTA 필드값('없음'|'한중'|'RCEP'|'아태').
+//   CO 절세 = max(0, 기본세율 − best.rate). best.fta==='RCEP'이면 needRcepCO=true (원산지기준·CO 서식 한중과 상이).
+function pickBestTariff(rates) {
+  rates = rates || {};
+  const num = v => (v == null || v === '') ? null : (isNaN(parseFloat(v)) ? null : parseFloat(v));
+  const cands = [
+    { fta: '한중', code: 'FCN1',   rate: num(rates.CN), pr: 1 },
+    { fta: 'RCEP', code: 'FRCCN1', rate: num(rates.RC), pr: 2 },
+    { fta: '아태', code: 'E1',     rate: num(rates.E1), pr: 3 },
+    { fta: '없음', code: 'A',      rate: num(rates.A),  pr: 4 },
+  ].filter(c => c.rate != null);
+  if (!cands.length) return null;
+  cands.sort((a, b) => (a.rate !== b.rate) ? a.rate - b.rate : a.pr - b.pr);
+  const best = cands[0];
+  return { rate: best.rate, code: best.code, fta: best.fta, needRcepCO: best.fta === 'RCEP' };
+}
+if (typeof window !== 'undefined') window.pickBestTariff = pickBestTariff;
+
 // v3.2.25: 관세표가 매칭되면 새 표 그대로 사용 (null도 null 그대로).
 //   옛 동작: t.E1=null이면 사전 폴백 → 사전엔 5% 같은 값이 있어 잘못된 세율 주입.
 //   사장님 정책 "없는 협정은 0/임의값으로 채우지 말 것" → 새 표가 진실. 사전은 영문명용.
@@ -1984,7 +2005,7 @@ const I18N = {
     'th.unit_cny': '단가CNY', 'th.qty': '수량',
     'th.total_cny': '합계CNY', 'th.final_usd': '최종 USD',
 
-    'fta.kc': '한중', 'fta.apta': '아태', 'fta.none': '없음',
+    'fta.kc': '한중', 'fta.rcep': 'RCEP', 'fta.apta': '아태', 'fta.none': '없음',
 
     'th.cost_type': '작업 종류',
     'th.item_name': '항목명',
@@ -2212,7 +2233,7 @@ const I18N = {
     'th.unit_cny': '单价CNY', 'th.qty': '数量',
     'th.total_cny': '合计CNY', 'th.final_usd': '最终 USD',
 
-    'fta.kc': '中韩', 'fta.apta': '亚太', 'fta.none': '不适用',
+    'fta.kc': '中韩', 'fta.rcep': 'RCEP', 'fta.apta': '亚太', 'fta.none': '不适用',
 
     'th.cost_type': '作业种类',
     'th.item_name': '项目名',
@@ -2440,7 +2461,7 @@ const I18N = {
     'th.unit_cny': 'Unit CNY', 'th.qty': 'Qty',
     'th.total_cny': 'Total CNY', 'th.final_usd': 'Final USD',
 
-    'fta.kc': 'KC', 'fta.apta': 'APTA', 'fta.none': 'None',
+    'fta.kc': 'KC', 'fta.rcep': 'RCEP', 'fta.apta': 'APTA', 'fta.none': 'None',
 
     'th.cost_type': 'Work Type',
     'th.item_name': 'Item Name',
@@ -2758,8 +2779,8 @@ const CO_FEE_OVER  = 50000;   // 700달러 초과
 const CO_THRESHOLD_USD = 700;
 const CO_FEE_KRW = 50000;     // (구버전 호환용 — 일부 잔여 참조 대비)
 // 작업5: 아태협정(APTA) 재추가 — 일반/한중FTA(FCN1)/아태협정(E1) 3옵션
-const FTA_OPTIONS = ['한중', '아태', '없음'];
-const FTA_LABEL = { '한중': 'fta.kc', '아태': 'fta.apta', '없음': 'fta.none' };
+const FTA_OPTIONS = ['한중', 'RCEP', '아태', '없음'];
+const FTA_LABEL = { '한중': 'fta.kc', 'RCEP': 'fta.rcep', '아태': 'fta.apta', '없음': 'fta.none' };
 
 // ========== 부대비용 계산 ==========
 // v3.0.6: 해상운임 — 선적요일 그룹(월수금 28/7, 화목일/일 30/7.5) × CBM(0.3기본+0.1단위 절상)
@@ -2922,6 +2943,22 @@ async function ensureSchema() {
         options: { choices: FTA_OPTIONS.map(o => ({ name: o })) }
       });
       log('  + Products.적용FTA', 'ok');
+    } else {
+      // v3.2.43: 기존 적용FTA(singleSelect)에 'RCEP' 선택지 누락 시 병합 추가.
+      //   기존 choices(id 포함)를 그대로 돌려보내야 보존됨 + 새 {name:'RCEP'} 추가.
+      const fld = prodTable.fields.find(f => f.name === '적용FTA');
+      const choices = (fld && fld.options && fld.options.choices) || [];
+      if (fld && !choices.some(c => c.name === 'RCEP')) {
+        try {
+          const r = await fetch('https://api.airtable.com/v0/meta/bases/' + BASE_ID + '/tables/' + TABLES.Products + '/fields/' + fld.id, {
+            method: 'PATCH',
+            headers: { 'Authorization': 'Bearer ' + airtablePat(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ options: { choices: choices.concat([{ name: 'RCEP' }]) } })
+          });
+          if (r.ok) log('  ~ Products.적용FTA: RCEP 선택지 추가', 'ok');
+          else log('  적용FTA RCEP 선택지 추가 실패(HTTP ' + r.status + ') — 수동 추가 필요', 'warn');
+        } catch (e) { log('  적용FTA RCEP 선택지 추가 실패: ' + e.message, 'warn'); }
+      }
     }
     if (!existing.has('박스번호')) {
       await addField(TABLES.Products, { name: '박스번호', type: 'singleLineText' });
@@ -4038,7 +4075,7 @@ function buildGroupHeader(gk, ordered) {
   // v3.2.17: 세율 칩 — 라벨+값 + lookupTariff 폴백 + 무효 HS 빨강 경고
   //   v3.2.14 P0 회귀 회복: "A—" 대신 "기본 8% · 한중 0% · 아태 5%" 형식
   //   우선순위: Products.fields → 새 관세표 (lookupTariff) → 빨강 ⚠
-  const fieldsR = { base: meta['기본세율'], kc: meta['FTA_한중'], apta: meta['아태세율'] };
+  const fieldsR = { base: meta['기본세율'], kc: meta['FTA_한중'], rcep: meta['FTA_RCEP중국'], apta: meta['아태세율'] };
   const tariffR = (typeof lookupTariff === 'function') ? lookupTariff(curHs) : null;
   const isInvalidHs = curHs && /\d/.test(curHs) && curHs.replace(/\D/g,'').length === 10 && tariffR === null;
   const pickR = (fk, tk) => {
@@ -4049,6 +4086,7 @@ function buildGroupHeader(gk, ordered) {
   };
   const curBaseR = pickR('base', 'A');
   const curKcR   = pickR('kc',   'CN');
+  const curRcepR = pickR('rcep', 'RC');
   const curAptaR = pickR('apta', 'E1');
   const curApplyR = meta['적용세율'];
   const isCustomsConfirmed = meta['관세사확정'] === true;
@@ -4064,6 +4102,7 @@ function buildGroupHeader(gk, ordered) {
     rateChips = ''
       + rateChip('기본', curBaseR, curFta === '없음')
       + rateChip('한중', curKcR,   curFta === '한중')
+      + rateChip('RCEP', curRcepR, curFta === 'RCEP')
       + rateChip('아태', curAptaR, curFta === '아태')
       + (isApply ? `<span style="font-size:11px; padding:3px 8px; border-radius:10px; background:#0a7b40; color:#fff; font-weight:700;" title="관세사 확정 적용세율">적용 ${curApplyR}%</span>` : '')
       + (isCustomsConfirmed ? `<span style="font-size:10px; color:#0a7b40; margin-left:4px;" title="관세사 확정 완료">✓ 확정</span>` : `<span style="font-size:10px; color:#b26a00; margin-left:4px;" title="관세사 확정 대기">⏳ 대기</span>`);
@@ -4496,14 +4535,11 @@ function renderProducts() {
       <td style="display:none;">
         <select data-field="적용FTA" style="width:78px;">
           ${(() => {
-            // 작업2: 셋 중 가장 낮은 세율 ★ 추천
-            const opts = [
-              { key: '없음', rate: parseFloat(rates.기본세율) },
-              { key: '한중', rate: parseFloat(rates.FTA_한중) },
-              { key: '아태', rate: parseFloat(rates.아태세율) },
-            ].filter(o => !isNaN(o.rate));
-            opts.sort((a, b) => a.rate - b.rate);
-            const reco = opts.length ? opts[0].key : null;
+            // 작업2 → v3.2.43: 4후보(기본/한중/RCEP/APTA) pickBestTariff 최저 ★ 추천 (동률 한중>RCEP>APTA>기본)
+            const best = pickBestTariff({
+              A: rates.기본세율, CN: rates.FTA_한중, RC: rates.FTA_RCEP중국, E1: rates.아태세율
+            });
+            const reco = best ? best.fta : null;
             return FTA_OPTIONS.map(o => {
               const star = (o === reco) ? '★ ' : '';
               return `<option value="${o}"${o===fta?' selected':''}>${star}${t(FTA_LABEL[o])}</option>`;
@@ -6033,9 +6069,9 @@ function showCustomerUrlModal(url, payload, copied) {
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 }
 
-// ========== v3.0.0: 가장 유리한 FTA 자동 선택 ==========
-// 각 제품의 기본세율 / FTA_한중 / FTA_RCEP중국 중 최저 세율로 적용FTA 설정.
-// 세율 동률 시 우선순위: 한중 > 아태(RCEP중국) > 없음(기본세율). (FTA가 사후 검증 부담 적음)
+// ========== v3.0.0 → v3.2.43: 가장 유리한 FTA 자동 선택 ==========
+// 각 제품의 기본(A)/한중(FCN1)/RCEP(FRCCN1)/APTA(E1) 중 최저 세율로 적용FTA 설정 (pickBestTariff 단일 helper).
+// 세율 동률 시 우선순위: 한중 > RCEP > APTA > 기본. (FTA가 사후 검증 부담 적고, 한중 CO가 가장 익숙)
 // 모든 제품에 일괄 적용 + 변경 카운트 표시. 사장님 수동 override 그대로 가능.
 function autoSelectBestFta() {
   if (!state.products || state.products.length === 0) {
@@ -6048,35 +6084,26 @@ function autoSelectBestFta() {
 
   state.products.forEach(p => {
     const f = p.fields;
-    // v3.2.16: HS코드로 새 관세표 우선 조회 (Products.기본세율/FTA_한중/아태세율은 폴백).
-    //   null 값 후보에서 제외, 최저 세율 선택.
+    // v3.2.43: HS코드로 새 관세표 우선 조회 (Products.fields 폴백) → pickBestTariff 단일 helper.
+    //   후보 기본(A)/한중(CN)/RCEP(RC)/APTA(E1), null 제외, 최저+동률 한중>RCEP>APTA>기본.
     const hs = f['HS코드'];
     const tariff = (typeof lookupTariff === 'function') ? lookupTariff(hs) : null;
-    const baseRate = (tariff && tariff.A  != null) ? tariff.A  : f['기본세율'];
-    const kcRate   = (tariff && tariff.CN != null) ? tariff.CN : f['FTA_한중'];
-    const aptaRate = (tariff && tariff.E1 != null) ? tariff.E1 : f['아태세율'];
+    const num = v => (v == null || v === '') ? null : (isNaN(parseFloat(v)) ? null : parseFloat(v));
+    const rates = {
+      A:  (tariff && tariff.A  != null) ? tariff.A  : num(f['기본세율']),
+      CN: (tariff && tariff.CN != null) ? tariff.CN : num(f['FTA_한중']),
+      RC: (tariff && tariff.RC != null) ? tariff.RC : num(f['FTA_RCEP중국']),
+      E1: (tariff && tariff.E1 != null) ? tariff.E1 : num(f['아태세율']),
+    };
+    const best = pickBestTariff(rates);
+    if (!best) return;
 
-    // 후보 수집 — null/빈값 제외
-    const candidates = [];
-    if (typeof baseRate === 'number') candidates.push({ fta: '없음', rate: baseRate, priority: 3 });
-    if (typeof kcRate   === 'number') candidates.push({ fta: '한중', rate: kcRate,   priority: 1 });
-    if (typeof aptaRate === 'number') candidates.push({ fta: '아태', rate: aptaRate, priority: 2 });
-
-    if (candidates.length === 0) return;
-
-    // 최저 세율 + 동률 시 우선순위 (한중 > 아태 > 일반)
-    candidates.sort((a, b) => {
-      if (a.rate !== b.rate) return a.rate - b.rate;
-      return a.priority - b.priority;
-    });
-    const best = candidates[0];
     const current = f['적용FTA'] || '없음';
-
     if (current !== best.fta) {
+      const curRate = current === '한중' ? rates.CN : current === 'RCEP' ? rates.RC : current === '아태' ? rates.E1 : rates.A;
       f['적용FTA'] = best.fta;
       state.modifiedProducts.add(p.id);
       changed++;
-      const curRate = current === '없음' ? baseRate : current === '한중' ? kcRate : aptaRate;
       reasons.push(`${f['Description'] || f['상품ID'] || p.id}: ${current}(${curRate != null ? curRate + '%' : '—'}) → ${best.fta}(${best.rate}%)`);
     }
   });
@@ -6094,7 +6121,7 @@ function autoSelectBestFta() {
 
   toastSuccess(`${changed}개 제품 자동 선택 완료`, {
     title: '🎯 가장 유리한 FTA 적용',
-    subtitle: `세율 최저 기준 + 동률 시 한중 > 기본`,
+    subtitle: `세율 최저 기준 + 동률 시 한중 > RCEP > 아태 > 기본`,
     duration: 5000,
   });
   console.log('[autoSelectBestFta] 변경 내역:\n' + reasons.join('\n'));
@@ -7708,7 +7735,7 @@ function renderInvoicePreview() {
 const VAT_RATE = 0.10;
 
 function calcTariffForScenario(scenario) {
-  // scenario: 'base' | 'kc' | 'apta' | 'current'
+  // scenario: 'base' | 'kc' | 'rcep' | 'apta' | 'current'
   const rateCnyUsd = parseFloat(document.getElementById('rateCnyUsd').value) || 0;
   const rateUsdKrw = parseFloat(document.getElementById('rateUsdKrw').value) || 0;
   if (!rateCnyUsd || !rateUsdKrw) return null;
@@ -7741,6 +7768,7 @@ function calcTariffForScenario(scenario) {
     };
     const baseRateVal = pickRate('기본세율', 'A',  '기본세율');
     const kcRate      = pickRate('FTA_한중', 'CN', 'FTA_한중');
+    const rcepRate    = pickRate('FTA_RCEP중국', 'RC', 'FTA_RCEP중국');
     const aptaRate    = pickRate('아태세율', 'E1', '아태세율');
     const baseRate = isNaN(baseRateVal) ? 0 : baseRateVal;
     const fta = u.적용FTA || '없음';
@@ -7748,9 +7776,11 @@ function calcTariffForScenario(scenario) {
     let appliedRate = baseRate;
     let appliedLabel = 'base';
     if (scenario === 'kc' && !isNaN(kcRate)) { appliedRate = kcRate; appliedLabel = 'kc'; }
+    else if (scenario === 'rcep' && !isNaN(rcepRate)) { appliedRate = rcepRate; appliedLabel = 'rcep'; }
     else if (scenario === 'apta' && !isNaN(aptaRate)) { appliedRate = aptaRate; appliedLabel = 'apta'; }
     else if (scenario === 'current') {
       if (fta === '한중' && !isNaN(kcRate)) { appliedRate = kcRate; appliedLabel = 'kc'; }
+      else if (fta === 'RCEP' && !isNaN(rcepRate)) { appliedRate = rcepRate; appliedLabel = 'rcep'; }
       else if (fta === '아태' && !isNaN(aptaRate)) { appliedRate = aptaRate; appliedLabel = 'apta'; }
       else { appliedRate = baseRate; appliedLabel = 'base'; }
     }
@@ -7785,9 +7815,10 @@ function renderTariffEstimate() {
   // v3.2.18: 3카드만 (기본/한중/아태). 적용세율 카드 제거 — 가장 유리한 FTA에 ⭐ 강조.
   //   적용 FTA 값은 §3 적용FTA에 그대로 남아 신고/관부가세 계산에 사용됨 (화면만 빼는 것).
   const scenarios = [
-    { key: 'base', label: '기본세율 (A)',    rateKey: '기본세율' },
-    { key: 'kc',   label: '한중 FTA (FCN1)', rateKey: 'FTA_한중' },
-    { key: 'apta', label: '아태협정 (E1)',   rateKey: '아태세율' },
+    { key: 'base', label: '기본세율 (A)',      rateKey: '기본세율' },
+    { key: 'kc',   label: '한중 FTA (FCN1)',   rateKey: 'FTA_한중' },
+    { key: 'rcep', label: 'RCEP 중국 (FRCCN1)', rateKey: 'FTA_RCEP중국' },
+    { key: 'apta', label: '아태협정 (E1)',     rateKey: '아태세율' },
   ];
 
   // v3.2.26: 카드 상태 분기 — '협정 없음' vs '미입력' 구분
@@ -7795,7 +7826,7 @@ function renderTariffEstimate() {
   //   dataHasRate:   fields에 입력된 값이 있는지
   //   noTariff (협정 자체 없음) = 정상 → 카드 정상 표시 (회색 — 사용 안 함)
   //   missing (공식표엔 있는데 fields 빈칸) = 관세사가 채워야 → 빨강
-  const tariffKeyMap = { '기본세율': 'A', 'FTA_한중': 'CN', '아태세율': 'E1' };
+  const tariffKeyMap = { '기본세율': 'A', 'FTA_한중': 'CN', 'FTA_RCEP중국': 'RC', '아태세율': 'E1' };
   const tariffHasRate = {}, dataHasRate = {};
   scenarios.forEach(sc => {
     const tk = tariffKeyMap[sc.rateKey];
@@ -7821,8 +7852,9 @@ function renderTariffEstimate() {
     const r = results[sc.key];
     if (!r) return;
     // v3.2.26: '협정 없음' (회색) vs '미입력' (빨강) vs 정상
-    const noTariff = (sc.key === 'kc' || sc.key === 'apta') && !tariffHasRate[sc.key];
-    const missingFta = (sc.key === 'kc' || sc.key === 'apta') && tariffHasRate[sc.key] && !dataHasRate[sc.key];
+    const isFtaCard = (sc.key === 'kc' || sc.key === 'rcep' || sc.key === 'apta');
+    const noTariff = isFtaCard && !tariffHasRate[sc.key];
+    const missingFta = isFtaCard && tariffHasRate[sc.key] && !dataHasRate[sc.key];
     const isBest = !noTariff && !missingFta && Math.abs(r.totalKrw - minTotal) < 1;
     const div = document.createElement('div');
     div.className = 'tariff-card' + (isBest ? ' best' : '') + (missingFta ? ' missing' : '') + (noTariff ? ' no-tariff' : '');
@@ -7863,7 +7895,7 @@ function renderTariffEstimate() {
           <span style="font-size:10px; color:var(--text-faint); margin-left:4px;">(수량 ${r.totalQty})</span>
         </td>
         <td style="font-size:11px; color:var(--text-dim);">${r.hs || '-'}</td>
-        <td><span class="badge" style="background:${r.fta==='한중'?'#1e4d8b':r.fta==='아태'?'#6b3fa0':'#ccc'}; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px;">${ftaLabel}</span></td>
+        <td><span class="badge" style="background:${r.fta==='한중'?'#1e4d8b':r.fta==='RCEP'?'#0a7b40':r.fta==='아태'?'#6b3fa0':'#ccc'}; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px;">${ftaLabel}</span></td>
         <td class="num">${r.appliedRate.toFixed(2)}%</td>
         <td class="num">₩${Math.round(r.invoiceLineKrw).toLocaleString()}</td>
         <td class="num" style="color:#a14a00;">₩${Math.round(r.dutyKrw).toLocaleString()}</td>
@@ -7871,6 +7903,22 @@ function renderTariffEstimate() {
       `;
       detailTbody.appendChild(tr);
     });
+
+    // v3.2.43: RCEP 적용 제품이 있으면 경고 — RCEP는 원산지기준·CO 서식이 한중과 달라 관세사 확정 필요
+    const hasRcep = current.rows.some(r => r.fta === 'RCEP');
+    let rcepWarn = document.getElementById('rcepCoWarn');
+    if (hasRcep) {
+      if (!rcepWarn) {
+        rcepWarn = document.createElement('div');
+        rcepWarn.id = 'rcepCoWarn';
+        rcepWarn.style.cssText = 'margin:8px 0; padding:8px 12px; background:#fff3e0; border:1px solid #e0a040; border-radius:6px; color:#a14a00; font-size:12px;';
+        cardContainer.parentNode.insertBefore(rcepWarn, cardContainer.nextSibling);
+      }
+      rcepWarn.innerHTML = '⚠ RCEP는 원산지기준·CO(원산지증명) 서식이 한중 FTA와 다릅니다 — 관세사 확정 필요.';
+      rcepWarn.style.display = '';
+    } else if (rcepWarn) {
+      rcepWarn.style.display = 'none';
+    }
 
     // v3.2.13: 청구금액 = 물류비만 (BL+해상+CO+택배+화물+쿠팡밀크런) → ×1.10
     // 관세/부가세(관부가세)는 "FTA 절세 안내" 패널로만 표시 (결제금액 미포함 — 관세사 직접 청구)
