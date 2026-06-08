@@ -894,7 +894,7 @@
           <th class="num" style="width:55px;display:none;"><span data-i18n="th.fta_kc">한중</span> <span class="small-dim">%</span></th>
           <th class="num" style="width:55px;display:none;"><span>아태</span> <span class="small-dim">% (E1)</span></th>
           <th class="num" style="width:55px;display:none"><span data-i18n="th.fta_apta">RCEP중국</span> <span class="small-dim">%</span></th>
-          <th style="width:80px;display:none;" data-i18n="th.applied_fta">적용FTA</th>
+          <th style="width:90px;" data-i18n="th.applied_fta">적용FTA</th>
           <!-- v3.2.17: 제품 행 박스번호 컬럼 — 평범 헤더 (그룹 헤더 박스#가 핵심 입력) -->
           <th style="width:100px;"><span data-i18n="th.box_no">박스번호</span></th>
           <th class="num" data-i18n="th.unit_cny">단가CNY</th>
@@ -4050,7 +4050,22 @@ function buildGroupedOrder(products) {
     return String(a).localeCompare(String(b));
   });
   const out = [];
-  keys.forEach(k => map.get(k).forEach(p => out.push(p)));
+  // v3.2.45 ④: 주문 내 제품을 원본 시퀀스(상품ID '_' 뒤 숫자) 오름차순으로 정렬 — 흩어짐 교정.
+  //   표시 순서만 정렬(state.products 불변, 계산은 합계CNY 기반이라 순서 무관).
+  const seqOf = (p) => {
+    const id = String((p.fields || {})['상품ID'] || '');
+    const suf = id.split('_').slice(1).join('_');
+    const n = parseInt(suf, 10);
+    return isNaN(n) ? null : n;
+  };
+  keys.forEach(k => {
+    const arr = map.get(k).slice().sort((a, b) => {
+      const sa = seqOf(a), sb = seqOf(b);
+      if (sa != null && sb != null && sa !== sb) return sa - sb;
+      return String((a.fields||{})['상품ID']||'').localeCompare(String((b.fields||{})['상품ID']||''), undefined, { numeric: true });
+    });
+    arr.forEach(p => out.push(p));
+  });
   return out;
 }
 function buildGroupHeader(gk, ordered) {
@@ -4505,6 +4520,21 @@ function renderProducts() {
     }
     // 데이터는 원본 그대로 hidden에 유지 — saveAll 호환
     const link1688hidden = link1688raw;
+    // v3.2.45 ①②: 제품별 세율 칩(기본·한중·RCEP·아태 동일 둥근 스타일, 값 없으면 '—') + HS 표시.
+    //   적용FTA에 해당하는 칩 하이라이트. 세율/HS는 관세사 확정값(읽기 전용) — 표시 전용.
+    const _tariffRow = (typeof lookupTariff === 'function') ? lookupTariff(hsValue) : null;
+    const _pr = (fk, tk) => {
+      const v = rates[fk];
+      if (v != null && v !== '') return parseFloat(v);
+      if (_tariffRow && _tariffRow[tk] != null) return _tariffRow[tk];
+      return null;
+    };
+    const _chip = (label, v, hi) => `<span style="display:inline-block; font-size:9px; padding:1px 5px; margin:2px 2px 0 0; border-radius:8px; background:${hi?'#fff3e0':'#f0f0f0'}; color:${hi?'#b26a00':'#555'}; font-weight:${hi?700:500};">${label} ${(v==null||isNaN(v))?'—':v+'%'}</span>`;
+    const _prodChips = _chip('기본', _pr('기본세율','A'), fta==='없음')
+      + _chip('한중', _pr('FTA_한중','CN'), fta==='한중')
+      + _chip('RCEP', _pr('FTA_RCEP중국','RC'), fta==='RCEP')
+      + _chip('아태', _pr('아태세율','E1'), fta==='아태');
+    const _hsDisp = hsValue ? `<div style="font-size:9px; color:#888; font-family:ui-monospace,monospace; margin-top:2px;" title="HS코드 (관세사 확정값)">HS ${escAttr(hsValue)}</div>` : '';
     tr.innerHTML = `
       <td>${imgLinked}
         ${linkBtn}
@@ -4522,6 +4552,8 @@ function renderProducts() {
           : (f['관세사메모'] && f['관세사메모'].includes('유사 매칭')
             ? '<div style="font-size:9px;color:#C9973A;margin-top:2px;text-align:center;" title="' + escAttr(f['관세사메모']) + '">⚠ 유사</div>'
             : '')}
+        ${_hsDisp}
+        <div style="margin-top:3px;">${_prodChips}</div>
       </td>
       <td class="desc-cell" style="display:none;">
         <input type="text" data-field="Description" value="${escAttr(f['Description'] || '')}" placeholder="${t('placeholder.eng_name')}" ${empAttr} title="${empTitle}" style="${empBg}" />
@@ -4546,8 +4578,8 @@ function renderProducts() {
       <td class="num" style="display:none"><!-- v3.0.3: RCEP중국 칸 숨김 (입력 요소는 유지 — HS 세율 동기화 코드 호환) -->
         <input type="hidden" data-rate="FTA_RCEP중국" value="${rates.FTA_RCEP중국 ?? ''}" />
       </td>
-      <td style="display:none;">
-        <select data-field="적용FTA" style="width:78px;">
+      <td style="text-align:center;">
+        <select data-field="적용FTA" style="width:82px;">
           ${(() => {
             // 작업2 → v3.2.43: 4후보(기본/한중/RCEP/APTA) pickBestTariff 최저 ★ 추천 (동률 한중>RCEP>APTA>기본)
             const best = pickBestTariff({
@@ -7750,9 +7782,9 @@ function renderInvoicePreview() {
 }
 
 // ========== 예상 관부가세 계산 ==========
-// v3.0.7 [Phase B.6]: 주문 단위 라인 계산 (회의 정책 — 인보이스 라인 = 주문 1개당 1라인).
+// v3.0.7 [Phase B.6] → v3.2.45: 제품단위 라인 계산. 주문 신고총액을 제품 합계CNY 비율로 배분 →
+//   제품별 HS·세율·적용FTA 적용. 동일 HS 주문은 합계가 주문단위와 동일(무변동), 혼합 HS만 라인 분리.
 //   신고가 = (원가 + 현지배송비 + 작업비) × CNY→USD × USD→KRW (Phase A buildOrderUnits 그대로).
-//   세율은 주문 대표 제품의 입력값(state.hsRatesByCode 또는 fields)에서 읽음.
 const VAT_RATE = 0.10;
 
 function calcTariffForScenario(scenario) {
@@ -7767,57 +7799,63 @@ function calcTariffForScenario(scenario) {
   const rows = [];
 
   units.forEach(u => {
-    // 신고 라인 USD → KRW (구매수수료는 미합산 — 회의 정책)
-    const invoiceLineUsd = (u.신고단가CNY || 0) * rateCnyUsd * (u.totalQty || 0);
-    const invoiceLineKrw = invoiceLineUsd * rateUsdKrw;
+    // v3.2.45: 제품단위 관세 — 주문 신고총액(KRW)을 제품 합계CNY 비율로 배분 후 제품별 세율 적용.
+    //   ★ 동일 HS/FTA면 Σ(배분×세율)=주문단위 결과와 동일(무변동). 혼합 HS만 라인별 분리.
+    //   배분 키 = 합계CNY(단가×수량) 비율 — buildOrderUnits의 작업비 분배와 동일 규칙(과세표준 = 가치비례).
+    const unitInvoiceUsd = (u.신고단가CNY || 0) * rateCnyUsd * (u.totalQty || 0);
+    const unitInvoiceKrw = unitInvoiceUsd * rateUsdKrw;   // 이 주문의 신고총액(KRW)
+    const items = (u.items && u.items.length) ? u.items : [{ fields: {} }];
+    const sumHap = items.reduce((s, p) => s + (parseFloat((p.fields || {})['합계CNY']) || 0), 0);
 
-    // 주문 세율: v3.2.16 — 새 관세표(11,326 HS) 우선 → Products.fields 폴백 → hsRatesByCode 폴백
-    //   관세사가 override(fields에 별도 값) 한 경우 그 값 보존.
-    const sample = u.items[0] || { fields:{} };
-    const sf = sample.fields || {};
-    const hs = u.HS코드 || sf['HS코드'] || '';
-    const cached = (hs && state.hsRatesByCode) ? (state.hsRatesByCode[hs] || {}) : {};
-    const tariff = (typeof lookupTariff === 'function') ? lookupTariff(hs) : null;
-    // 우선순위: Products.fields (관세사 override) → 새 관세표 → hsRatesByCode → 0
-    const pickRate = (fieldKey, tariffKey, cacheKey) => {
-      const v = sf[fieldKey];
-      if (v != null && v !== '') return parseFloat(v);
-      if (tariff && tariff[tariffKey] != null) return tariff[tariffKey];
-      const c = cached[cacheKey];
-      if (c != null && c !== '') return parseFloat(c);
-      return NaN;
-    };
-    const baseRateVal = pickRate('기본세율', 'A',  '기본세율');
-    const kcRate      = pickRate('FTA_한중', 'CN', 'FTA_한중');
-    const rcepRate    = pickRate('FTA_RCEP중국', 'RC', 'FTA_RCEP중국');
-    const aptaRate    = pickRate('아태세율', 'E1', '아태세율');
-    const baseRate = isNaN(baseRateVal) ? 0 : baseRateVal;
-    const fta = u.적용FTA || '없음';
+    items.forEach((p, pi) => {
+      const pf = p.fields || {};
+      // 제품 신고가 배분 (합계CNY 비율, 합이 0이면 균등). Σ share = 1 → 동일세율 시 주문단위와 동일.
+      const share = sumHap > 0 ? ((parseFloat(pf['합계CNY']) || 0) / sumHap) : (1 / items.length);
+      const invoiceLineKrw = unitInvoiceKrw * share;
 
-    let appliedRate = baseRate;
-    let appliedLabel = 'base';
-    if (scenario === 'kc' && !isNaN(kcRate)) { appliedRate = kcRate; appliedLabel = 'kc'; }
-    else if (scenario === 'rcep' && !isNaN(rcepRate)) { appliedRate = rcepRate; appliedLabel = 'rcep'; }
-    else if (scenario === 'apta' && !isNaN(aptaRate)) { appliedRate = aptaRate; appliedLabel = 'apta'; }
-    else if (scenario === 'current') {
-      if (fta === '한중' && !isNaN(kcRate)) { appliedRate = kcRate; appliedLabel = 'kc'; }
-      else if (fta === 'RCEP' && !isNaN(rcepRate)) { appliedRate = rcepRate; appliedLabel = 'rcep'; }
-      else if (fta === '아태' && !isNaN(aptaRate)) { appliedRate = aptaRate; appliedLabel = 'apta'; }
-      else { appliedRate = baseRate; appliedLabel = 'base'; }
-    }
+      // 제품별 HS·세율: Products.fields(관세사 override) → 새 관세표 → hsRatesByCode 폴백. 주문 HS는 최후 폴백.
+      const hs = pf['HS코드'] || u.HS코드 || '';
+      const cached = (hs && state.hsRatesByCode) ? (state.hsRatesByCode[hs] || {}) : {};
+      const tariff = (typeof lookupTariff === 'function') ? lookupTariff(hs) : null;
+      const pickRate = (fieldKey, tariffKey, cacheKey) => {
+        const v = pf[fieldKey];
+        if (v != null && v !== '') return parseFloat(v);
+        if (tariff && tariff[tariffKey] != null) return tariff[tariffKey];
+        const c = cached[cacheKey];
+        if (c != null && c !== '') return parseFloat(c);
+        return NaN;
+      };
+      const baseRateVal = pickRate('기본세율', 'A',  '기본세율');
+      const kcRate      = pickRate('FTA_한중', 'CN', 'FTA_한중');
+      const rcepRate    = pickRate('FTA_RCEP중국', 'RC', 'FTA_RCEP중국');
+      const aptaRate    = pickRate('아태세율', 'E1', '아태세율');
+      const baseRate = isNaN(baseRateVal) ? 0 : baseRateVal;
+      const fta = pf['적용FTA'] || u.적용FTA || '없음';
 
-    const dutyKrw = invoiceLineKrw * (appliedRate / 100);
-    totalInvoiceKrw += invoiceLineKrw;
-    totalDutyKrw += dutyKrw;
+      let appliedRate = baseRate;
+      let appliedLabel = 'base';
+      if (scenario === 'kc' && !isNaN(kcRate)) { appliedRate = kcRate; appliedLabel = 'kc'; }
+      else if (scenario === 'rcep' && !isNaN(rcepRate)) { appliedRate = rcepRate; appliedLabel = 'rcep'; }
+      else if (scenario === 'apta' && !isNaN(aptaRate)) { appliedRate = aptaRate; appliedLabel = 'apta'; }
+      else if (scenario === 'current') {
+        if (fta === '한중' && !isNaN(kcRate)) { appliedRate = kcRate; appliedLabel = 'kc'; }
+        else if (fta === 'RCEP' && !isNaN(rcepRate)) { appliedRate = rcepRate; appliedLabel = 'rcep'; }
+        else if (fta === '아태' && !isNaN(aptaRate)) { appliedRate = aptaRate; appliedLabel = 'apta'; }
+        else { appliedRate = baseRate; appliedLabel = 'base'; }
+      }
 
-    rows.push({
-      orderKey: u.orderKey,
-      description: u.Description,
-      hs,
-      totalQty: u.totalQty,
-      invoiceLineKrw, appliedRate, appliedLabel, dutyKrw, fta,
-      // 호환용: 일부 표시 코드가 p 객체를 기대할 수 있어 sample 노출
-      p: sample
+      const dutyKrw = invoiceLineKrw * (appliedRate / 100);
+      totalInvoiceKrw += invoiceLineKrw;
+      totalDutyKrw += dutyKrw;
+
+      rows.push({
+        orderKey: u.orderKey,
+        description: pf['Description'] || u.Description,
+        hs,
+        totalQty: parseInt(pf['수량'], 10) || (items.length === 1 ? u.totalQty : 0),
+        invoiceLineKrw, appliedRate, appliedLabel, dutyKrw, fta,
+        p
+      });
     });
   });
 
