@@ -2885,7 +2885,7 @@ async function ensureSchema() {
   log('스키마 점검 중...', 'dim');
 
   const meta = await fetch('https://api.airtable.com/v0/meta/bases/' + BASE_ID + '/tables', {
-    headers: { 'Authorization': 'Bearer ' + state.pat }
+    headers: { 'Authorization': 'Bearer ' + airtablePat() }
   }).then(r => r.json());
 
   const tables = meta.tables || [];
@@ -2980,7 +2980,7 @@ async function ensureSchema() {
     log('  Customers 테이블 생성 중...', 'dim');
     const res = await fetch('https://api.airtable.com/v0/meta/bases/' + BASE_ID + '/tables', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + state.pat, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': 'Bearer ' + airtablePat(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Customers',
         description: '사서함별 고객 정보 (배송/통관용)',
@@ -3068,7 +3068,7 @@ async function ensureSchema() {
     log('  ProductHistory 테이블 생성 중...', 'dim');
     const res = await fetch('https://api.airtable.com/v0/meta/bases/' + BASE_ID + '/tables', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + state.pat, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': 'Bearer ' + airtablePat(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'ProductHistory',
         description: 'v2.9 관세사 확정 제품 이력 (학습 데이터)',
@@ -3301,7 +3301,7 @@ async function ensureSchema() {
 async function addField(tableId, fieldDef) {
   const res = await fetch('https://api.airtable.com/v0/meta/bases/' + BASE_ID + '/tables/' + tableId + '/fields', {
     method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + state.pat, 'Content-Type': 'application/json' },
+    headers: { 'Authorization': 'Bearer ' + airtablePat(), 'Content-Type': 'application/json' },
     body: JSON.stringify(fieldDef)
   });
   if (!res.ok) {
@@ -3327,11 +3327,21 @@ function log(msg, type='') {
 function clearLog() { document.getElementById('log').innerHTML = ''; }
 
 // ========== API ==========
-async function api(method, path, body) {
-  const pat = (document.getElementById('pat').value || state.pat).trim();
+// v3.2.42 fix: PAT 헤더 공통 헬퍼.
+//   직접 fetch(meta/Customers 등)가 state.pat만 보던 탓에, 입력필드에 PAT가 있어도
+//   state 동기화 전이거나 sessionStorage가 비면 빈 토큰('Bearer ')을 보내
+//   Airtable이 AUTHENTICATION_REQUIRED를 반환하던 버그 차단.
+//   → 입력필드 우선 + 빈값이면 즉시 throw(헛 요청 방지) + state·sessionStorage 동기화.
+function airtablePat() {
+  const pat = ((document.getElementById('pat') || {}).value || state.pat || '').trim();
   if (!pat) throw new Error('PAT 필요');
   state.pat = pat;
-  sessionStorage.setItem('kanghago_airtable_pat', pat);
+  try { sessionStorage.setItem('kanghago_airtable_pat', pat); } catch (e) {}
+  return pat;
+}
+
+async function api(method, path, body) {
+  const pat = airtablePat();
 
   const res = await fetch(`https://api.airtable.com/v0/${BASE_ID}${path}`, {
     method,
@@ -4419,14 +4429,17 @@ function renderProducts() {
                      || /alicdn\.com|cbu01\.alicdn/i.test(link1688raw);
     // 상품페이지 링크만 a href로. 이미지URL이면 빈 링크 → 안내 표시.
     const link1688 = (link1688raw && !isImageLink) ? link1688raw : '';
+    // 사진 클릭 = 확대(라이트박스). 확대는 원본 url 우선(없으면 썸네일). 구매링크는 아래 '제품 확인' 버튼 전용.
+    const zoomUrl = imgs[0]
+      ? (imgs[0].url || imgs[0].thumbnails?.full?.url || thumbUrl)
+      : (f['이미지URL'] || '');
     const imgInner = hasImage
-      ? `<img class="thumb" src="${thumbUrl}" onerror="this.onerror=null; this.style.display='none';" />`
+      ? `<img class="thumb" src="${thumbUrl}" style="cursor:zoom-in" data-zoom="${escAttr(zoomUrl)}" onclick="openImgZoom(this.dataset.zoom)" onerror="this.onerror=null; this.style.display='none';" />`
       : (canFetch
         ? `<button class="img-fetch-btn" data-img-fetch="${escAttr(originalUrl)}" data-product-id="${p.id}" style="font-size:10px; padding:4px 6px; border:1px solid var(--gold); background:#fff; cursor:pointer; border-radius:4px;">${t('img.fetch')}</button>`
-        : (f['이미지URL'] ? `<img class="thumb" src="${escAttr(f['이미지URL'])}" onerror="this.onerror=null;this.style.display='none';" />` : '<span style="color:#bbb;">—</span>'));
-    const imgLinked = link1688
-      ? `<a href="${escAttr(link1688)}" target="_blank" rel="noopener" title="1688 상품 페이지 ↗" style="cursor:pointer; display:inline-block;" data-1688-link>${imgInner}</a>`
-      : imgInner;
+        : (f['이미지URL'] ? `<img class="thumb" src="${escAttr(f['이미지URL'])}" style="cursor:zoom-in" data-zoom="${escAttr(f['이미지URL'])}" onclick="openImgZoom(this.dataset.zoom)" onerror="this.onerror=null;this.style.display='none';" />` : '<span style="color:#bbb;">—</span>'));
+    // 이미지 클릭 = 확대 전용 → 링크 래핑 제거(구매링크는 '제품 확인' 버튼).
+    const imgLinked = imgInner;
     // 2단계: 제품링크 URL 텍스트 노출 제거 → "제품 확인" 버튼. 데이터는 hidden input으로 보존.
     let linkBtn;
     if (link1688) {
@@ -4832,7 +4845,7 @@ function renderProducts() {
       if (imgUrl) {
         // 표시 갱신
         const td = btn.parentElement;
-        td.innerHTML = `<img class="thumb" src="${imgUrl}" onerror="this.onerror=null; this.style.display='none'; this.parentElement.innerHTML='${t('img.failed')}';" />`;
+        td.innerHTML = `<img class="thumb" src="${imgUrl}" style="cursor:zoom-in" data-zoom="${escAttr(imgUrl)}" onclick="openImgZoom(this.dataset.zoom)" onerror="this.onerror=null; this.style.display='none'; this.parentElement.innerHTML='${t('img.failed')}';" />`;
         // Airtable에 저장하려면 productId의 상품이미지 필드를 업데이트해야 함
         const prod = state.products.find(p => p.id === productId);
         if (prod) {
@@ -6796,7 +6809,7 @@ async function loadCustomer(shipmentName) {
     const res = await fetch(
       'https://api.airtable.com/v0/' + BASE_ID + '/' + TABLES.Customers +
       '?filterByFormula=' + encodeURIComponent(`{사서함번호}='${shipmentName}'`) + '&maxRecords=1',
-      { headers: { 'Authorization': 'Bearer ' + state.pat } }
+      { headers: { 'Authorization': 'Bearer ' + airtablePat() } }
     );
     const data = await res.json();
     state.customer = (data.records && data.records[0]) || null;
@@ -7404,7 +7417,7 @@ async function bulkRegisterCustomers() {
     try {
       const res = await fetch('https://api.airtable.com/v0/' + BASE_ID + '/' + TABLES.Customers, {
         method: 'PATCH',
-        headers: { 'Authorization': 'Bearer ' + state.pat, 'Content-Type': 'application/json' },
+        headers: { 'Authorization': 'Bearer ' + airtablePat(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           performUpsert: { fieldsToMergeOn: ['사서함번호'] },
           typecast: true,
@@ -10169,7 +10182,7 @@ function renderCustomsProducts() {
     // 이미지
     const imgs = f['상품이미지'] || [];
     const imgHtml = imgs.length > 0
-      ? `<img src="${imgs[0].url}" alt="" style="width:120px; height:120px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onclick="window.open('${imgs[0].url}', '_blank')">`
+      ? `<img src="${escAttr(imgs[0].url)}" alt="" style="width:120px; height:120px; object-fit:cover; border-radius:6px; border:1px solid #ddd; cursor:zoom-in;" data-zoom="${escAttr(imgs[0].url)}" onclick="openImgZoom(this.dataset.zoom)">`
       : `<div style="width:120px; height:120px; background:#f4efe6; border-radius:6px; display:flex; align-items:center; justify-content:center; color:#888; font-size:11px; text-align:center; border:1px solid #ddd;">📷<br>사진 없음<br>(알리피드에서 추가)</div>`;
 
     const productLink = f['제품링크'] || '';
@@ -12303,7 +12316,7 @@ async function pushExcelToAirtable(rawRows) {
       // 강제 발견 — meta API 호출
       try {
         const meta = await fetch('https://api.airtable.com/v0/meta/bases/' + BASE_ID + '/tables', {
-          headers: { 'Authorization': 'Bearer ' + state.pat }
+          headers: { 'Authorization': 'Bearer ' + airtablePat() }
         }).then(r => r.json());
         const custT = (meta.tables || []).find(t => t.name === 'Customers');
         if (custT) TABLES.Customers = custT.id;
@@ -13136,6 +13149,33 @@ async function markPaid(shipmentId, payer) {
 if (typeof escAttr !== 'function') {
   window.escAttr = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+
+// ===== 공용 이미지 라이트박스 (세 화면 통일: 도구·staff-tool·agent-shipment) =====
+// 사진 클릭 = 확대만. 외부 의존 없음(순수 DOM/CSS) → file:// 도구에서도 동작. 함수명 openImgZoom(url) 통일.
+function openImgZoom(url) {
+  if (!url) return;
+  let ov = document.getElementById('imgZoomOverlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'imgZoomOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.85);cursor:zoom-out;';
+    ov.innerHTML = '<img id="imgZoomImg" alt="" style="max-width:92vw;max-height:92vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.6);" />'
+      + '<span style="position:fixed;top:16px;right:24px;color:#fff;font-size:34px;line-height:1;cursor:pointer;font-family:sans-serif;" title="닫기 (ESC)">&times;</span>';
+    ov.addEventListener('click', closeImgZoom);
+    document.body.appendChild(ov);
+  }
+  document.getElementById('imgZoomImg').src = url;
+  ov.style.display = 'flex';
+  document.body.style.overflow = 'hidden';   // 스크롤 잠금
+}
+function closeImgZoom() {
+  const ov = document.getElementById('imgZoomOverlay');
+  if (ov) ov.style.display = 'none';
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeImgZoom(); });
+window.openImgZoom = openImgZoom;
+window.closeImgZoom = closeImgZoom;
 
 // H5: 1688 URL/사진 URL 입력 — modified 표시 + 이미지 URL이면 썸네일 미리보기
 function onProductLinkInput(inp) {

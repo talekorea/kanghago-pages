@@ -874,9 +874,10 @@
       const imgUrl = (f['상품이미지'] && f['상품이미지'][0] && (f['상품이미지'][0].thumbnails?.large?.url || f['상품이미지'][0].url))
         || f['이미지URL'] || '';
       const link1688 = f['제품링크'] || f['1688URL'] || '';
-      // 디자인: 이미지 크게(식별 가능) + 클릭 시 1688/타오바오 원본 새 탭(noopener). 링크 없으면 클릭 없음.
+      // 디자인: 이미지 크게(식별 가능) + 클릭 = 확대(라이트박스). 구매링크는 아래 '제품 확인' 버튼 전용.
+      const zoomUrl = (f['상품이미지'] && f['상품이미지'][0] && (f['상품이미지'][0].thumbnails?.full?.url || f['상품이미지'][0].url)) || imgUrl;
       const imgCell = imgUrl
-        ? `<img src="${escapeAttr(imgUrl)}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;${link1688 ? 'cursor:pointer;' : ''}"${link1688 ? ` onclick="window.open('${escapeAttr(link1688)}','_blank','noopener')" title="1688/타오바오 상품 페이지"` : ''} onerror="this.style.display='none';this.insertAdjacentText('afterend','—');" />`
+        ? `<img src="${escapeAttr(imgUrl)}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:zoom-in;" data-zoom="${escapeAttr(zoomUrl)}" onclick="openImgZoom(this.dataset.zoom)" title="클릭 = 사진 확대" onerror="this.style.display='none';this.insertAdjacentText('afterend','—');" />`
         : '<span style="color:#bbb;font-size:11px;">—</span>';
       // 2단계: 1688 URL/짧은 링크 → "제품 확인" 버튼 (새 탭, rel=noopener). 링크 없으면 회색 표시.
       const linkCell = link1688
@@ -1162,6 +1163,33 @@
 
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function escapeAttr(s) { return escapeHtml(s); }
+
+  // ===== 공용 이미지 라이트박스 (세 화면 통일: 도구·staff-tool·agent-shipment) =====
+  // 사진 클릭 = 확대만. 외부 의존 없음(순수 DOM/CSS). 함수명 openImgZoom(url) 통일.
+  function openImgZoom(url) {
+    if (!url) return;
+    let ov = document.getElementById('imgZoomOverlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'imgZoomOverlay';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.85);cursor:zoom-out;';
+      ov.innerHTML = '<img id="imgZoomImg" alt="" style="max-width:92vw;max-height:92vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.6);" />'
+        + '<span style="position:fixed;top:16px;right:24px;color:#fff;font-size:34px;line-height:1;cursor:pointer;font-family:sans-serif;" title="닫기 (ESC)">&times;</span>';
+      ov.addEventListener('click', closeImgZoom);
+      document.body.appendChild(ov);
+    }
+    document.getElementById('imgZoomImg').src = url;
+    ov.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+  function closeImgZoom() {
+    const ov = document.getElementById('imgZoomOverlay');
+    if (ov) ov.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeImgZoom(); });
+  window.openImgZoom = openImgZoom;
+  window.closeImgZoom = closeImgZoom;
 
   init();
 </script>
