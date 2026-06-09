@@ -1208,6 +1208,7 @@
       </label>
     </div>
     <span id="shipMethodSaveStatus" style="font-size:11px; color:#888; display:block; margin-top:6px;"></span>
+    <div id="custRequestedShip" style="margin-top:8px; font-size:12px; color:#1B5E9A; background:#eef4fb; border:1px solid #cfe0f3; padding:7px 11px; border-radius:6px;">📋 고객 요청 배송방법: <strong>—</strong> · 요청사항: <strong>—</strong></div>
   </div>
 
   <!-- BL 번호 입력 -->
@@ -3849,6 +3850,7 @@ async function loadShipment() {
   state.modifiedCostIds = new Set();
   state.newCostRows = [];
   state.deletedCostIds = new Set();
+  if (typeof resetShipUiFields === 'function') resetShipUiFields();   // [사서함 전환] §4/5/6 이전 잔존 제거 후 새 주문 기준 재로드
   document.getElementById('savedBanner').style.display = 'none';
 
   try {
@@ -13496,6 +13498,7 @@ function applyShipMethodVisibility() {
   renderParcelInfoSection();
   // v3.2.38: §10 라디오 UI 동기화
   if (typeof syncShipMethodRadio === 'function') syncShipMethodRadio();
+  if (typeof renderCustRequestedShip === 'function') renderCustRequestedShip();   // §4 고객 요청 배송방법/요청사항 안내
 }
 
 // v3.2.14 #68: §11-A 동적 렌더 — 택배 사서함은 박스 수만큼 송장 input, 화물은 정보 요약
@@ -13672,6 +13675,32 @@ function dispatchFormHtml() {
                   style="width:100%; padding:7px 9px; border:1px solid #ccc; border-radius:5px; font-size:13px; box-sizing:border-box; resize:vertical;">${v('memo')}</textarea>
       </div>
     </div>`;
+}
+
+// [사서함 전환] §4 배송방식·§5 도착지/거리/계산결과/합계·§6 도착지 — 이전 사서함 잔존 제거(새 주문 기준 재로드 전).
+function resetShipUiFields() {
+  ['shipDestAddress', 'shipDestKm', 'destAddrInput'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+  var di=document.getElementById('shippingDistanceInfo'); if(di) di.innerHTML='';
+  var dh=document.getElementById('shipDestHand'); if(dh) dh.checked=false;
+  var mb=document.getElementById('shippingMatrixBody'); if(mb) mb.innerHTML='';
+  var mt=document.getElementById('shippingMatrixTotal'); if(mt) mt.textContent='';
+  var mn=document.getElementById('shippingMatrixNote'); if(mn) mn.textContent='';
+  document.querySelectorAll('input[name="shipMethodSelect"]').forEach(function(r){ r.checked=false; });  // syncShipMethodRadio가 새 값으로 재설정
+  var cr=document.getElementById('custRequestedShip'); if(cr) cr.innerHTML='📋 고객 요청 배송방법: <strong>—</strong> · 요청사항: <strong>—</strong>';
+  state._shippingLatest = null;   // 이전 운임 계산결과 잔존 제거 (recalculate가 새로 채움)
+}
+
+// [§4 안내] 고객 요청 배송방법·요청사항 (Orders, 읽기전용 안내 — radio 선택과 별개)
+function renderCustRequestedShip() {
+  var el=document.getElementById('custRequestedShip');
+  if (!el) return;
+  var method='', req='';
+  (state.orders||[]).forEach(function(o){
+    var f=o.fields||{};
+    if (!method && (f['배송방법']||'').trim()) method=f['배송방법'].trim();
+    if (!req && (f['배송요청사항']||'').trim()) req=f['배송요청사항'].trim();
+  });
+  el.innerHTML = '📋 고객 요청 배송방법: <strong>' + escAttr(method||'—') + '</strong> · 요청사항: <strong>' + escAttr(req||'—') + '</strong> <span style="color:#888; font-weight:400;">(안내 — staff가 보고 선택)</span>';
 }
 
 // [§6 도착지 B] 수동 입력 → Shipments.수취_주소 저장(1초 debounce) + 운임 도착지 동기. 추출기 자동(A) 채워도 이 값이 우선(override).
