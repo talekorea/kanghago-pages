@@ -1193,21 +1193,21 @@
   <!-- v3.2.38: 배송방식 3택1 (택배·화물·밀크런) — 사서함 단위 단일 -->
   <div id="shipMethodSelectorBox" style="background:#fff7e0; padding:12px 16px; border-radius:8px; margin-bottom:14px; border:1px solid #f0c860;">
     <h2 style="margin:0 0 10px; font-size:16px; color:#1B2A3B; border:0; padding:0;">🚚 4. 배송방식 선택 <span style="font-size:12px; color:#666; font-weight:400;">(택배·화물·밀크런 3택1 — 선택 시 나머지 운임 0)</span></h2>
-    <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
-      <label style="display:inline-flex; gap:6px; align-items:center; font-size:13px; cursor:pointer;">
+    <div style="display:flex; gap:10px; align-items:stretch; width:100%;">
+      <label style="flex:1 1 0; display:flex; gap:7px; align-items:center; justify-content:center; white-space:nowrap; font-size:13px; cursor:pointer; padding:11px 10px; background:#fff; border:1px solid #e8d8b8; border-radius:8px;">
         <input type="radio" name="shipMethodSelect" value="택배" id="shipMethodParcel" onchange="onShipMethodChange()" />
         <strong>📦 택배</strong> <span style="font-size:11px; color:#888;">(매트릭스)</span>
       </label>
-      <label style="display:inline-flex; gap:6px; align-items:center; font-size:13px; cursor:pointer;">
+      <label style="flex:1 1 0; display:flex; gap:7px; align-items:center; justify-content:center; white-space:nowrap; font-size:13px; cursor:pointer; padding:11px 10px; background:#fff; border:1px solid #e8d8b8; border-radius:8px;">
         <input type="radio" name="shipMethodSelect" value="화물" id="shipMethodCargo" onchange="onShipMethodChange()" />
         <strong>🚚 화물</strong> <span style="font-size:11px; color:#888;">(차종+거리)</span>
       </label>
-      <label style="display:inline-flex; gap:6px; align-items:center; font-size:13px; cursor:pointer;">
+      <label style="flex:1 1 0; display:flex; gap:7px; align-items:center; justify-content:center; white-space:nowrap; font-size:13px; cursor:pointer; padding:11px 10px; background:#fff; border:1px solid #e8d8b8; border-radius:8px;">
         <input type="radio" name="shipMethodSelect" value="밀크런" id="shipMethodMilkrun" onchange="onShipMethodChange()" />
         <strong>🥛 밀크런</strong> <span style="font-size:11px; color:#888;">(⌈CBM/1.5⌉×30,000)</span>
       </label>
-      <span id="shipMethodSaveStatus" style="font-size:11px; color:#888;"></span>
     </div>
+    <span id="shipMethodSaveStatus" style="font-size:11px; color:#888; display:block; margin-top:6px;"></span>
   </div>
 
   <!-- BL 번호 입력 -->
@@ -13654,8 +13654,9 @@ function dispatchFormHtml() {
     <div style="margin-top:14px; padding:14px 16px; background:#fff; border:1px solid #f0c860; border-radius:8px;">
       <div style="font-size:13px; font-weight:700; color:var(--navy); margin-bottom:10px;">🚛 배차/발송 정보 <span style="font-size:11px; color:#888; font-weight:400;">(고객 전달용 · 입력값은 현재 세션 보존 — 문서·전달 기능은 다음 단계)</span></div>
       <div style="margin-bottom:12px; padding:9px 13px; background:#f4f8ff; border:1px solid #c4d5ea; border-radius:6px;">
-        <span style="font-size:11px; color:#666; font-weight:600;">📍 도착지 주소 (고객 요청)</span>
-        <div style="font-size:13px; font-weight:600; color:var(--navy); margin-top:3px;">${_destAddr ? escAttr(_destAddr) : '<span style="color:#c0392b; font-weight:600;">미입력 — §5 운임 계산기 도착지 또는 고객/주문 주소 확인</span>'}</div>
+        <label style="font-size:11px; color:#666; font-weight:600; display:block; margin-bottom:4px;">📍 도착지 주소 (고객 요청) <span style="font-size:10px; color:#888; font-weight:400;">— 입력 시 Shipments.수취_주소 저장 · 비면 주문/고객 주소 자동</span></label>
+        <input type="text" id="destAddrInput" value="${escAttr(_destAddr)}" placeholder="예: 서울 종로구 창경궁로 109 ... (입력 시 자동값보다 우선)" oninput="onDestAddrInput(this)" style="width:100%; padding:8px 10px; border:1px solid #c4d5ea; border-radius:5px; font-size:13px; box-sizing:border-box; color:var(--navy); font-weight:600;" />
+        <span id="destAddrSaveStatus" style="font-size:10px; color:#888;"></span>
       </div>
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px 14px;">
         ${fld('운송사명', 'carrier', '예: 대한통운 화물')}
@@ -13671,6 +13672,27 @@ function dispatchFormHtml() {
                   style="width:100%; padding:7px 9px; border:1px solid #ccc; border-radius:5px; font-size:13px; box-sizing:border-box; resize:vertical;">${v('memo')}</textarea>
       </div>
     </div>`;
+}
+
+// [§6 도착지 B] 수동 입력 → Shipments.수취_주소 저장(1초 debounce) + 운임 도착지 동기. 추출기 자동(A) 채워도 이 값이 우선(override).
+let _destAddrSaveTimer = null;
+function onDestAddrInput(inp) {
+  if (!state.shipment) return;
+  const v = (inp.value || '').trim();
+  state.shipment.fields['수취_주소'] = v;
+  const ship = document.getElementById('shipDestAddress');   // 운임 계산기 도착지 동기 (getRequestedDestAddr 일관)
+  if (ship) ship.value = v;
+  const st = document.getElementById('destAddrSaveStatus');
+  if (st) st.textContent = '⏳ 저장 대기...';
+  clearTimeout(_destAddrSaveTimer);
+  _destAddrSaveTimer = setTimeout(async () => {
+    try {
+      await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: { '수취_주소': v }, typecast: true });
+      if (st) { st.textContent = '✓ 저장됨'; setTimeout(() => { const e = document.getElementById('destAddrSaveStatus'); if (e) e.textContent = ''; }, 1500); }
+    } catch (e) {
+      if (st) st.textContent = '✗ 저장 실패: ' + (e.message || '').substring(0, 50);
+    }
+  }, 1000);
 }
 
 // [§6 도착지] 고객 요청 도착지 주소 단일 해석: 운임입력 > Shipments.수취_주소 > Orders[].수취인주소 > Customers.주소
