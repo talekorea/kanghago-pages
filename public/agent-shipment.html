@@ -117,6 +117,7 @@
           <th style="width:120px;">Material/재질</th>
           <th style="width:120px;">HS 코드</th>
           <th style="width:75px;" title="관세율구분 A (기본세율)">기본</th>
+          <th style="width:75px;" title="관세율구분 C (WTO 양허세율) — C/O 불요">WTO</th>
           <th style="width:80px;" title="관세율구분 FCN1 (한중 FTA)">한중</th>
           <th style="width:85px;" title="관세율구분 FRCCN1 (RCEP 중국)">RCEP</th>
           <th style="width:80px;" title="관세율구분 E1 (APTA)">아태</th>
@@ -304,25 +305,25 @@
 
   // 작업2: 셋 중 가장 낮은 세율 자동 추천
   // ===== 최저세율 단일 선택 helper (세 화면 통일: 도구·staff-tool·agent-shipment) =====
-  // rates {A,CN,RC,E1} → 후보 기본/한중(FCN1)/RCEP(FRCCN1)/APTA(E1). null 제외, 최저 rate,
-  //   동률 우선순위 [한중 > RCEP > APTA > 기본]. 반환 {rate,code,fta,needRcepCO}|null.
+  // rates {A,C,CN,RC,E1} → 후보 기본/WTO(C)/한중(FCN1)/RCEP(FRCCN1)/APTA(E1). null 제외, 최저 rate.
+  //   [동률 tie-break] CO 불요(WTO·기본) 우선 → CO 필요(한중>RCEP>아태). 세율 다르면 최저 우선. 본체 도구와 동일 로직.
   function pickBestTariff(rates) {
     rates = rates || {};
     const num = v => (v == null || v === '') ? null : (isNaN(parseFloat(v)) ? null : parseFloat(v));
     const cands = [
-      { fta: '한중', code: 'FCN1',   rate: num(rates.CN), pr: 1 },
-      { fta: 'RCEP', code: 'FRCCN1', rate: num(rates.RC), pr: 2 },
-      { fta: '아태', code: 'E1',     rate: num(rates.E1), pr: 3 },
-      { fta: '없음', code: 'A',      rate: num(rates.A),  pr: 4 },
+      { fta: 'WTO',  code: 'C',      rate: num(rates.C),  pr: 1 },
+      { fta: '없음', code: 'A',      rate: num(rates.A),  pr: 2 },
+      { fta: '한중', code: 'FCN1',   rate: num(rates.CN), pr: 3 },
+      { fta: 'RCEP', code: 'FRCCN1', rate: num(rates.RC), pr: 4 },
+      { fta: '아태', code: 'E1',     rate: num(rates.E1), pr: 5 },
     ].filter(c => c.rate != null);
     if (!cands.length) return null;
     cands.sort((a, b) => (a.rate !== b.rate) ? a.rate - b.rate : a.pr - b.pr);
     const b = cands[0];
     return { rate: b.rate, code: b.code, fta: b.fta, needRcepCO: b.fta === 'RCEP' };
   }
-  // 동률 규칙 통일: 기존 [없음 우선] → [한중 우선]으로 교정 (도구 pickBestTariff와 동일).
-  function recommendFta(baseR, kcR, rcepR, aptaR) {
-    const best = pickBestTariff({ A: baseR, CN: kcR, RC: rcepR, E1: aptaR });
+  function recommendFta(baseR, kcR, rcepR, aptaR, wtoR) {
+    const best = pickBestTariff({ A: baseR, C: wtoR, CN: kcR, RC: rcepR, E1: aptaR });
     return best ? best.fta : null;
   }
 
@@ -406,6 +407,7 @@
     if (t) {
       // ✓ 공식 매칭 — A/CN/RC/E1 강제 채움 (관세사가 이후 수동 override 가능)
       setRateForce(tr, 'input[data-field="기본세율"]', t.A);
+      setRateForce(tr, 'input[data-field="WTO세율"]', t.C);
       setRateForce(tr, 'input[data-field="FTA_한중"]', t.CN);
       setRateForce(tr, 'input[data-field="FTA_RCEP중국"]', t.RC);
       setRateForce(tr, 'input[data-field="아태세율"]', t.E1);
@@ -436,14 +438,15 @@
     const kcR = num('input[data-field="FTA_한중"]');
     const rcepR = num('input[data-field="FTA_RCEP중국"]');
     const aptaR = num('input[data-field="아태세율"]');
-    const reco = recommendFta(baseR, kcR, rcepR, aptaR) || '없음';
+    const wtoR = num('input[data-field="WTO세율"]');
+    const reco = recommendFta(baseR, kcR, rcepR, aptaR, wtoR) || '없음';
     const sel = tr.querySelector('select[data-field="적용FTA"]');
     if (!sel) return;
     const rl = (v) => (v == null ? '-' : v + '%');
     const userTouched = sel.dataset.userTouched === '1';
     sel.dataset.recommended = reco;
     // 옵션 라벨 ★추천 갱신
-    const labels = { '없음': ['일반', baseR], '한중': ['한중', kcR], 'RCEP': ['RCEP', rcepR], '아태': ['아태', aptaR] };
+    const labels = { '없음': ['일반', baseR], 'WTO': ['WTO', wtoR], '한중': ['한중', kcR], 'RCEP': ['RCEP', rcepR], '아태': ['아태', aptaR] };
     Array.from(sel.options).forEach(opt => {
       const [nm, rate] = labels[opt.value] || [opt.value, null];
       opt.textContent = `${nm} (${rl(rate)})${reco === opt.value ? ' ★추천' : ''}`;
@@ -456,7 +459,9 @@
     const note = td && td.querySelector('[data-conote]');
     if (note) note.textContent = sel.value === '한중' ? '* 한중 FTA C/O 필요 (없으면 일반 세율 적용)'
       : sel.value === 'RCEP' ? '* ⚠ RCEP CO 필요 — 원산지기준·서식 한중과 다름 (없으면 일반 세율)'
-      : sel.value === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)' : '';
+      : sel.value === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)'
+      : sel.value === 'WTO' ? '* WTO 양허 — C/O 불요 (자동 적용)'
+      : '* 일반 세율 — C/O 불요';
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -547,7 +552,7 @@
           <div style="border:1px solid #ddd; border-radius:6px; padding:10px 12px; margin-bottom:8px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">${titleLine} ${badge}</div>
-              <button data-hs="${c.hs10 || ''}" data-name="${escapeAttr(c.nameEn || '')}" data-mat="${escapeAttr(c.material || '')}" data-a="${c.rates && c.rates.A != null ? c.rates.A : ''}" data-cn="${c.rates && c.rates.CN != null ? c.rates.CN : ''}" data-rc="${c.rates && c.rates.RC != null ? c.rates.RC : ''}" data-e1="${c.rates && c.rates.E1 != null ? c.rates.E1 : ''}" class="hs-suggest-pick" style="background:#0a7b40; color:#fff; border:none; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">선택</button>
+              <button data-hs="${c.hs10 || ''}" data-name="${escapeAttr(c.nameEn || '')}" data-mat="${escapeAttr(c.material || '')}" data-a="${c.rates && c.rates.A != null ? c.rates.A : ''}" data-c="${c.rates && c.rates.C != null ? c.rates.C : ''}" data-cn="${c.rates && c.rates.CN != null ? c.rates.CN : ''}" data-rc="${c.rates && c.rates.RC != null ? c.rates.RC : ''}" data-e1="${c.rates && c.rates.E1 != null ? c.rates.E1 : ''}" class="hs-suggest-pick" style="background:#0a7b40; color:#fff; border:none; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">선택</button>
             </div>
             <div style="font-size:11px; color:#666; margin-bottom:4px;">${escapeAttr(c.reason)}</div>
             ${c.rates ? `<div style="font-size:11px; color:#444;">
@@ -587,6 +592,7 @@
             // v3.2.25: 각 협정 개별 처리 — 값 있으면 채우고, 없으면 빈/—로 비움 (0 폴백 금지).
             //   data-a/cn/e1: '' (빈 문자열) = 해당 협정 미적용 → 칸 비우기.
             setRateForce(tr, 'input[data-field="기본세율"]', b.dataset.a);
+            setRateForce(tr, 'input[data-field="WTO세율"]', b.dataset.c);
             setRateForce(tr, 'input[data-field="FTA_한중"]', b.dataset.cn);
             setRateForce(tr, 'input[data-field="FTA_RCEP중국"]', b.dataset.rc);
             setRateForce(tr, 'input[data-field="아태세율"]', b.dataset.e1);
@@ -678,7 +684,10 @@
     const note = td && td.querySelector('[data-conote]');
     if (note) {
       note.textContent = sel.value === '한중' ? '* 한중 FTA C/O 필요 (없으면 일반 세율 적용)'
-        : sel.value === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)' : '';
+        : sel.value === 'RCEP' ? '* ⚠ RCEP CO 필요 — 원산지기준·서식 한중과 다름 (없으면 일반 세율)'
+        : sel.value === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)'
+        : sel.value === 'WTO' ? '* WTO 양허 — C/O 불요 (자동 적용)'
+        : '* 일반 세율 — C/O 불요';
     }
   };
 
@@ -715,7 +724,7 @@
     const label = gk === '__기타' ? '기타/미분류' : gk;
     const hs = summarizeGroupHs(items.map(p => (p.fields || {})['HS코드'] || ''));
     return `<tr class="group-header" data-group-header="${gk}" style="cursor:pointer; background:var(--ivory);" onclick="toggleGroup('${gk}')">`
-      + `<td colspan="12" style="font-weight:700; padding:9px 12px; border-top:2px solid var(--gold);">`
+      + `<td colspan="13" style="font-weight:700; padding:9px 12px; border-top:2px solid var(--gold);">`
       +   `<span style="float:right; font-weight:400; display:inline-flex; gap:4px; align-items:center;" onclick="event.stopPropagation();">`
       +     `<input class="grp-hs-input" data-grp="${gk}" placeholder="HS 일괄 (0000.00-0000)" style="width:150px; font-size:12px; padding:2px 6px; border:1px solid #ccc; border-radius:4px;" onclick="event.stopPropagation();" onkeydown="if(event.key==='Enter'){event.preventDefault();event.stopPropagation();applyGroupHs('${gk}');}" />`
       +     `<button type="button" onclick="event.stopPropagation(); applyGroupHs('${gk}');" style="font-size:11px; padding:3px 9px; background:var(--gold); color:#fff; border:none; border-radius:4px; cursor:pointer;">HS 일괄</button>`
@@ -837,6 +846,7 @@
       let filled = 0;
       rows.forEach(r => {
         setRateForce(r, 'input[data-field="기본세율"]', tariff.A);
+        setRateForce(r, 'input[data-field="WTO세율"]', tariff.C);
         setRateForce(r, 'input[data-field="FTA_한중"]', tariff.CN);
         setRateForce(r, 'input[data-field="FTA_RCEP중국"]', tariff.RC);
         setRateForce(r, 'input[data-field="아태세율"]', tariff.E1);
@@ -913,7 +923,8 @@
       const kcR = (typeof f['FTA_한중'] === 'number') ? f['FTA_한중'] : null;
       const rcepR = (typeof f['FTA_RCEP중국'] === 'number') ? f['FTA_RCEP중국'] : null;
       const aptaR = (typeof f['아태세율'] === 'number') ? f['아태세율'] : null;
-      const recommended = recommendFta(baseR, kcR, rcepR, aptaR) || '없음';
+      const wtoRtariff = (typeof lookupTariff === 'function' ? ((lookupTariff(f['HS코드']) || {}).C) : null);   // WTO 양허(C) 공식표 — 저장 안 함
+      const recommended = recommendFta(baseR, kcR, rcepR, aptaR, wtoRtariff) || '없음';
       // G4: 관세사가 명시적으로 한중/RCEP/아태 선택한 경우만 유지. '없음'/'일반'/빈값은 추천 우선
       // (옛 데이터의 적용FTA='없음'이 추천을 막던 문제 해결)
       const saved = f['적용FTA'];
@@ -923,10 +934,13 @@
       const recoReason = recommended === '한중' ? `한중 FTA가 ${rateLabel(kcR)}로 가장 저렴하여 추천됩니다`
         : recommended === 'RCEP' ? `RCEP가 ${rateLabel(rcepR)}로 가장 저렴하여 추천됩니다 (원산지기준·CO 서식 한중과 상이 — 확정 필요)`
         : recommended === '아태' ? `아태협정(E1)이 ${rateLabel(aptaR)}로 가장 저렴하여 추천됩니다`
+        : recommended === 'WTO' ? `WTO 양허(${rateLabel(wtoRtariff)})가 최저 — C/O 불요 자동 적용`
         : `일반 세율(${rateLabel(baseR)})이 최저이거나 FTA와 동률이라 일반을 추천합니다`;
       const coNoteFor = (fta) => fta === '한중' ? '* 한중 FTA C/O 필요 (없으면 일반 세율 적용)'
         : fta === 'RCEP' ? '* ⚠ RCEP CO 필요 — 원산지기준·서식 한중과 다름 (없으면 일반 세율)'
-        : fta === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)' : '';
+        : fta === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)'
+        : fta === 'WTO' ? '* WTO 양허 — C/O 불요 (자동 적용)'
+        : '* 일반 세율 — C/O 불요';
       // 작업1: 1688 상품 사진 + URL
       const imgUrl = (f['상품이미지'] && f['상품이미지'][0] && (f['상품이미지'][0].thumbnails?.large?.url || f['상품이미지'][0].url))
         || f['이미지URL'] || '';
@@ -954,6 +968,7 @@
           </div>
         </td>
         <td><input data-field="기본세율" type="number" step="0.1" value="${f['기본세율'] ?? ''}" placeholder="—" title="기본세율(A)" /></td>
+        <td><input data-field="WTO세율" type="number" step="0.1" value="${wtoRtariff ?? ''}" placeholder="—" readonly title="WTO 양허(C) — 공식표 자동, C/O 불요" style="background:#f4f1ea; cursor:default;" /></td>
         <td><input data-field="FTA_한중" type="number" step="0.1" value="${f['FTA_한중'] ?? ''}" placeholder="—" title="한중 FTA(FCN1)" /></td>
         <td><input data-field="FTA_RCEP중국" type="number" step="0.1" value="${f['FTA_RCEP중국'] ?? ''}" placeholder="—" title="RCEP 중국(FRCCN1)" /></td>
         <td><input data-field="아태세율" type="number" step="0.1" value="${f['아태세율'] ?? ''}" placeholder="—" title="APTA(E1)" /></td>
@@ -961,6 +976,7 @@
           <select data-field="적용FTA" data-recommended="${recommended}" onchange="onFtaChange(this)"
             class="fta-select ${isOverride ? 'fta-override' : 'fta-reco'}">
             <option value="없음"${effectiveFta === '없음' ? ' selected' : ''}>일반 (${rateLabel(baseR)})${recommended === '없음' ? ' ★추천' : ''}</option>
+            <option value="WTO"${effectiveFta === 'WTO' ? ' selected' : ''}>WTO (${rateLabel(wtoRtariff)})${recommended === 'WTO' ? ' ★추천' : ''}</option>
             <option value="한중"${effectiveFta === '한중' ? ' selected' : ''}>한중 (${rateLabel(kcR)})${recommended === '한중' ? ' ★추천' : ''}</option>
             <option value="RCEP"${effectiveFta === 'RCEP' ? ' selected' : ''}>RCEP (${rateLabel(rcepR)})${recommended === 'RCEP' ? ' ★추천' : ''}</option>
             <option value="아태"${effectiveFta === '아태' ? ' selected' : ''}>아태 (${rateLabel(aptaR)})${recommended === '아태' ? ' ★추천' : ''}</option>

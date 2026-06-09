@@ -796,17 +796,18 @@
     <div style="background:#fff; border:1px solid #e8d8b8; border-radius:6px; padding:14px 16px;">
       <div style="font-size:11px; color:#0a7b40; font-weight:600; margin-bottom:10px; letter-spacing:0.5px;">✏️ 사서함 적용환율 (여기에 입력)</div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-        <div style="font-size:12px; color:#1B2A3B;">USD 과세환율 ⭐</div>
-        <input id="rateUsdKrw" type="number" step="0.01" placeholder="1380" oninput="recalculate()" onchange="onRateManualChange('rateUsdKrw','USD')" style="width:120px; padding:5px 8px; border:1px solid #d4c5a8; border-radius:4px; font-size:13px; font-family:'Consolas',monospace; text-align:right;" />
+        <div style="font-size:12px; color:#1B2A3B;">USD 1 = KRW ⭐</div>
+        <input id="rateUsdKrw" type="number" step="0.01" readonly title="관세청 고시환율 — 자동 조회(수동 수정 불가, 세액 보호)" style="width:120px; padding:5px 8px; border:1px solid #e0e0e0; border-radius:4px; font-size:13px; font-family:'Consolas',monospace; text-align:right; background:#f4f1ea; color:#1B2A3B; cursor:default;" />
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-        <div style="font-size:12px; color:#1B2A3B;">CNY 과세환율</div>
-        <input id="rateCnyKrw" type="number" step="0.01" placeholder="220" oninput="recalculate()" onchange="onRateManualChange('rateCnyKrw','CNY')" style="width:120px; padding:5px 8px; border:1px solid #d4c5a8; border-radius:4px; font-size:13px; font-family:'Consolas',monospace; text-align:right;" />
+        <div style="font-size:12px; color:#1B2A3B;">CNY 1 = KRW</div>
+        <input id="rateCnyKrw" type="number" step="0.01" readonly title="관세청 고시환율 — 자동 조회(수동 수정 불가)" style="width:120px; padding:5px 8px; border:1px solid #e0e0e0; border-radius:4px; font-size:13px; font-family:'Consolas',monospace; text-align:right; background:#f4f1ea; color:#1B2A3B; cursor:default;" />
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div style="font-size:12px; color:#1B2A3B;">CNY → USD ⭐</div>
-        <input id="rateCnyUsd" type="number" step="0.0001" placeholder="0.1385" oninput="recalculate()" style="width:120px; padding:5px 8px; border:1px solid #d4c5a8; border-radius:4px; font-size:13px; font-family:'Consolas',monospace; text-align:right;" />
+        <div style="font-size:12px; color:#1B2A3B;">USD 1 = CNY ⭐</div>
+        <input id="rateUsdCnyDisp" type="text" readonly title="USD→CNY 표기 (실제 계산은 CNY→USD 값 사용 — 표기만 역수)" style="width:120px; padding:5px 8px; border:1px solid #e0e0e0; border-radius:4px; font-size:13px; font-family:'Consolas',monospace; text-align:right; background:#f4f1ea; color:#1B2A3B; cursor:default;" />
       </div>
+      <input id="rateCnyUsd" type="hidden" />
     </div>
   </div>
 
@@ -1640,18 +1641,21 @@ function findTariffLeafCandidates(hsRaw, maxCount = 10) {
 }
 
 // ===== 최저세율 단일 선택 helper (세 화면 통일: 도구·staff-tool·agent-shipment) =====
-// rates: {A, CN, RC, E1} (각 % 숫자 또는 null/빈값). 후보 = 기본(A)/한중(FCN1)/RCEP(FRCCN1)/APTA(E1).
-//   null/빈값 제외 → 최저 rate → 동률 우선순위 [한중 > RCEP > APTA > 기본] (FTA가 사후검증 부담 적음, 한중 최우선).
-//   반환 { rate, code, fta, needRcepCO } | null(후보 0개).  fta = 적용FTA 필드값('없음'|'한중'|'RCEP'|'아태').
-//   CO 절세 = max(0, 기본세율 − best.rate). best.fta==='RCEP'이면 needRcepCO=true (원산지기준·CO 서식 한중과 상이).
+// rates: {A, C, CN, RC, E1} (각 % 숫자 또는 null/빈값). 후보 = 기본(A)/WTO(C)/한중(FCN1)/RCEP(FRCCN1)/APTA(E1).
+//   null/빈값 제외 → 최저 rate → [동률 tie-break] CO 불요(WTO·기본) 우선 → CO 필요(한중>RCEP>아태).
+//     세율이 다르면 최저가 항상 우선(pr 무관). 동률일 때만 CO 없는 쪽 선택 → 불필요한 CO 발급 회피.
+//   반환 { rate, code, fta, needRcepCO } | null(후보 0개).  fta = 적용FTA 필드값('없음'|'WTO'|'한중'|'RCEP'|'아태').
+//   CO 절세 = (기본 − best). best.fta==='RCEP'이면 needRcepCO=true (원산지기준·CO 서식 한중과 상이). WTO·기본 = CO 불요.
 function pickBestTariff(rates) {
   rates = rates || {};
   const num = v => (v == null || v === '') ? null : (isNaN(parseFloat(v)) ? null : parseFloat(v));
   const cands = [
-    { fta: '한중', code: 'FCN1',   rate: num(rates.CN), pr: 1 },
-    { fta: 'RCEP', code: 'FRCCN1', rate: num(rates.RC), pr: 2 },
-    { fta: '아태', code: 'E1',     rate: num(rates.E1), pr: 3 },
-    { fta: '없음', code: 'A',      rate: num(rates.A),  pr: 4 },
+    // pr 작을수록 동률 우선. CO 불요(WTO 1·기본 2) > CO 필요(한중 3 > RCEP 4 > 아태 5).
+    { fta: 'WTO',  code: 'C',      rate: num(rates.C),  pr: 1 },
+    { fta: '없음', code: 'A',      rate: num(rates.A),  pr: 2 },
+    { fta: '한중', code: 'FCN1',   rate: num(rates.CN), pr: 3 },
+    { fta: 'RCEP', code: 'FRCCN1', rate: num(rates.RC), pr: 4 },
+    { fta: '아태', code: 'E1',     rate: num(rates.E1), pr: 5 },
   ].filter(c => c.rate != null);
   if (!cands.length) return null;
   cands.sort((a, b) => (a.rate !== b.rate) ? a.rate - b.rate : a.pr - b.pr);
@@ -2077,7 +2081,7 @@ const I18N = {
     'th.unit_cny': '단가CNY', 'th.qty': '수량',
     'th.total_cny': '합계CNY', 'th.final_usd': '최종 USD',
 
-    'fta.kc': '한중', 'fta.rcep': 'RCEP', 'fta.apta': '아태', 'fta.none': '없음',
+    'fta.kc': '한중', 'fta.rcep': 'RCEP', 'fta.apta': '아태', 'fta.wto': 'WTO', 'fta.none': '없음',
 
     'th.cost_type': '작업 종류',
     'th.item_name': '항목명',
@@ -2305,7 +2309,7 @@ const I18N = {
     'th.unit_cny': '单价CNY', 'th.qty': '数量',
     'th.total_cny': '合计CNY', 'th.final_usd': '最终 USD',
 
-    'fta.kc': '中韩', 'fta.rcep': 'RCEP', 'fta.apta': '亚太', 'fta.none': '不适用',
+    'fta.kc': '中韩', 'fta.rcep': 'RCEP', 'fta.apta': '亚太', 'fta.wto': 'WTO', 'fta.none': '不适用',
 
     'th.cost_type': '作业种类',
     'th.item_name': '项目名',
@@ -2533,7 +2537,7 @@ const I18N = {
     'th.unit_cny': 'Unit CNY', 'th.qty': 'Qty',
     'th.total_cny': 'Total CNY', 'th.final_usd': 'Final USD',
 
-    'fta.kc': 'KC', 'fta.rcep': 'RCEP', 'fta.apta': 'APTA', 'fta.none': 'None',
+    'fta.kc': 'KC', 'fta.rcep': 'RCEP', 'fta.apta': 'APTA', 'fta.wto': 'WTO', 'fta.none': 'None',
 
     'th.cost_type': 'Work Type',
     'th.item_name': 'Item Name',
@@ -2851,8 +2855,8 @@ const CO_FEE_OVER  = 50000;   // 700달러 초과
 const CO_THRESHOLD_USD = 700;
 const CO_FEE_KRW = 50000;     // (구버전 호환용 — 일부 잔여 참조 대비)
 // 작업5: 아태협정(APTA) 재추가 — 일반/한중FTA(FCN1)/아태협정(E1) 3옵션
-const FTA_OPTIONS = ['한중', 'RCEP', '아태', '없음'];
-const FTA_LABEL = { '한중': 'fta.kc', 'RCEP': 'fta.rcep', '아태': 'fta.apta', '없음': 'fta.none' };
+const FTA_OPTIONS = ['한중', 'RCEP', '아태', 'WTO', '없음'];
+const FTA_LABEL = { '한중': 'fta.kc', 'RCEP': 'fta.rcep', '아태': 'fta.apta', 'WTO': 'fta.wto', '없음': 'fta.none' };
 
 // ========== 부대비용 계산 ==========
 // v3.0.6: 해상운임 — 선적요일 그룹(월수금 28/7, 화목일/일 30/7.5) × CBM(0.3기본+0.1단위 절상)
@@ -3032,16 +3036,17 @@ async function ensureSchema() {
       //   기존 choices(id 포함)를 그대로 돌려보내야 보존됨 + 새 {name:'RCEP'} 추가.
       const fld = prodTable.fields.find(f => f.name === '적용FTA');
       const choices = (fld && fld.options && fld.options.choices) || [];
-      if (fld && !choices.some(c => c.name === 'RCEP')) {
+      const _missingFta = FTA_OPTIONS.filter(o => !choices.some(c => c.name === o));
+      if (fld && _missingFta.length) {
         try {
           const r = await fetch('https://api.airtable.com/v0/meta/bases/' + BASE_ID + '/tables/' + TABLES.Products + '/fields/' + fld.id, {
             method: 'PATCH',
             headers: { 'Authorization': 'Bearer ' + airtablePat(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ options: { choices: choices.concat([{ name: 'RCEP' }]) } })
+            body: JSON.stringify({ options: { choices: choices.concat(_missingFta.map(o => ({ name: o }))) } })
           });
-          if (r.ok) log('  ~ Products.적용FTA: RCEP 선택지 추가', 'ok');
-          else log('  적용FTA RCEP 선택지 추가 실패(HTTP ' + r.status + ') — 수동 추가 필요', 'warn');
-        } catch (e) { log('  적용FTA RCEP 선택지 추가 실패: ' + e.message, 'warn'); }
+          if (r.ok) log('  ~ Products.적용FTA: 선택지 추가 ' + _missingFta.join(','), 'ok');
+          else log('  적용FTA 선택지 추가 실패(HTTP ' + r.status + ') — 수동 추가 필요', 'warn');
+        } catch (e) { log('  적용FTA 선택지 추가 실패: ' + e.message, 'warn'); }
       }
     }
     if (!existing.has('박스번호')) {
@@ -4252,7 +4257,7 @@ function buildGroupHeader(gk, ordered) {
   // v3.2.17: 세율 칩 — 라벨+값 + lookupTariff 폴백 + 무효 HS 빨강 경고
   //   v3.2.14 P0 회귀 회복: "A—" 대신 "기본 8% · 한중 0% · 아태 5%" 형식
   //   우선순위: Products.fields → 새 관세표 (lookupTariff) → 빨강 ⚠
-  const fieldsR = { base: meta['기본세율'], kc: meta['FTA_한중'], rcep: meta['FTA_RCEP중국'], apta: meta['아태세율'] };
+  const fieldsR = { base: meta['기본세율'], wto: meta['WTO세율'], kc: meta['FTA_한중'], rcep: meta['FTA_RCEP중국'], apta: meta['아태세율'] };
   const tariffR = (typeof lookupTariff === 'function') ? lookupTariff(curHs) : null;
   const isInvalidHs = curHs && /\d/.test(curHs) && curHs.replace(/\D/g,'').length === 10 && tariffR === null;
   const pickR = (fk, tk) => {
@@ -4262,6 +4267,7 @@ function buildGroupHeader(gk, ordered) {
     return null;
   };
   const curBaseR = pickR('base', 'A');
+  const curWtoR  = pickR('wto',  'C');
   const curKcR   = pickR('kc',   'CN');
   const curRcepR = pickR('rcep', 'RC');
   const curAptaR = pickR('apta', 'E1');
@@ -4278,6 +4284,7 @@ function buildGroupHeader(gk, ordered) {
   } else {
     rateChips = ''
       + rateChip('기본', curBaseR, curFta === '없음')
+      + rateChip('WTO', curWtoR, curFta === 'WTO')
       + rateChip('한중', curKcR,   curFta === '한중')
       + rateChip('RCEP', curRcepR, curFta === 'RCEP')
       + rateChip('아태', curAptaR, curFta === '아태')
@@ -4677,8 +4684,9 @@ function renderProducts() {
       if (_tariffRow && _tariffRow[tk] != null) return _tariffRow[tk];
       return null;
     };
-    const _chip = (label, v, hi) => `<span style="display:inline-block; white-space:nowrap; font-size:8px; padding:1px 4px; margin:0 2px 0 0; border-radius:8px; background:${hi?'#fff3e0':'#f0f0f0'}; color:${hi?'#b26a00':'#555'}; font-weight:${hi?700:500};">${label} ${(v==null||isNaN(v))?'—':v+'%'}</span>`;
+    const _chip = (label, v, hi) => `<span style="display:inline-block; white-space:nowrap; font-size:11px; padding:2px 7px; margin:0 3px 3px 0; border-radius:9px; background:${hi?'#fff3e0':'#f0f0f0'}; color:${hi?'#b26a00':'#555'}; font-weight:${hi?700:600};">${label} ${(v==null||isNaN(v))?'—':v+'%'}</span>`;
     const _prodChips = _chip('기본', _pr('기본세율','A'), fta==='없음')
+      + _chip('WTO', _pr('WTO세율','C'), fta==='WTO')
       + _chip('한중', _pr('FTA_한중','CN'), fta==='한중')
       + _chip('RCEP', _pr('FTA_RCEP중국','RC'), fta==='RCEP')
       + _chip('아태', _pr('아태세율','E1'), fta==='아태');
@@ -4700,7 +4708,6 @@ function renderProducts() {
           : (f['관세사메모'] && f['관세사메모'].includes('유사 매칭')
             ? '<div style="font-size:9px;color:#C9973A;margin-top:2px;text-align:center;" title="' + escAttr(f['관세사메모']) + '">⚠ 유사</div>'
             : '')}
-        <div style="margin-top:3px; white-space:nowrap; overflow-x:auto;">${_prodChips}</div>
       </td>
       <td class="desc-cell" style="display:none;">
         <input type="text" data-field="Description" value="${escAttr(f['Description'] || '')}" placeholder="${t('placeholder.eng_name')}" ${empAttr} title="${empTitle}" style="${empBg}" />
@@ -4732,7 +4739,8 @@ function renderProducts() {
           ${(() => {
             // 작업2 → v3.2.43: 4후보(기본/한중/RCEP/APTA) pickBestTariff 최저 ★ 추천 (동률 한중>RCEP>APTA>기본)
             const best = pickBestTariff({
-              A: rates.기본세율, CN: rates.FTA_한중, RC: rates.FTA_RCEP중국, E1: rates.아태세율
+              A: rates.기본세율, CN: rates.FTA_한중, RC: rates.FTA_RCEP중국, E1: rates.아태세율,
+              C: (_tariffRow && _tariffRow.C != null) ? _tariffRow.C : (rates.WTO세율 != null ? rates.WTO세율 : null)
             });
             const reco = best ? best.fta : null;
             return FTA_OPTIONS.map(o => {
@@ -4756,6 +4764,21 @@ function renderProducts() {
       <td class="num"><input type="text" class="usd" readonly value="$0" style="font-weight:600; background:#fcf6e8;" /></td>
     `;
     tbody.appendChild(tr);
+
+    // [§3 칩 한 줄] 제품 데이터 행 바로 아래 '풀폭 가로 한 줄' 세율 칩 (그룹 토글 동기 — data-group 동일, 기본 접힘).
+    //   배치/스타일만 — 값·자동선택·계산 0 변경. 폭 부족 시에만 자연 wrap.
+    const _chipTr = document.createElement('tr');
+    _chipTr.className = 'prod-chip-row';
+    _chipTr.dataset.group = _gk;
+    _chipTr.style.display = 'none';
+    const _coBadge = (fta === 'WTO' || fta === '없음')
+      ? '<span style="font-size:10px; color:#0a7b40; font-weight:700; margin-left:10px; white-space:nowrap;">🟢 CO 불요</span>'
+      : '<span style="font-size:10px; color:#b26a00; font-weight:700; margin-left:10px; white-space:nowrap;">🟡 CO 필요</span>';
+    _chipTr.innerHTML = `<td colspan="15" style="padding:3px 12px 7px 42px; border-top:none; background:#fcfaf5;">`
+      + `<div style="display:flex; flex-wrap:wrap; align-items:center; gap:1px;">`
+      +   `<span style="font-size:10px; color:#999; margin-right:6px; flex:0 0 auto;">세율</span>${_prodChips}${_coBadge}`
+      + `</div></td>`;
+    tbody.appendChild(_chipTr);
 
     // P0-B: 0수량 제품 삭제 — 인보이스/패킹/CO에서 제외
     const delProductBtn = tr.querySelector('.del-product-btn');
@@ -4964,7 +4987,7 @@ function renderProducts() {
           if (_tf) {
             hsInp.style.borderColor = '#0a7b40';
             if (f['관세사확정'] !== true && typeof pickBestTariff === 'function') {
-              const best = pickBestTariff({ A: _tf.A, CN: _tf.CN, RC: _tf.RC, E1: _tf.E1 });
+              const best = pickBestTariff({ A: _tf.A, C: _tf.C, CN: _tf.CN, RC: _tf.RC, E1: _tf.E1 });
               if (best) f['적용FTA'] = best.fta;   // 제품별 최저세율 자동(동률 한중) → §8·§9·인보이스 반영
             }
           } else {
@@ -5348,6 +5371,7 @@ function recalculate() {
   if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();  // C1: 편집 시 진행판 실시간 갱신
   if (typeof renderFinalConfirm === 'function') renderFinalConfirm();    // C2: 최종 확인 실시간 갱신
   if (typeof autoFillSeaFreight === 'function') autoFillSeaFreight();    // F §12: 박스 CBM 변경 시 해상운임 자동
+  if (typeof updateRateRecip === 'function') updateRateRecip();          // [표기] USD→CNY 역수 표시 동기 (실제값 불변)
   const rateCnyUsd = parseFloat(document.getElementById('rateCnyUsd').value) || 0;
   const rateUsdKrw = parseFloat(document.getElementById('rateUsdKrw').value) || 0;
   const rateCnyKrw = parseFloat(document.getElementById('rateCnyKrw').value) || 0;
@@ -6431,6 +6455,7 @@ function autoSelectBestFta() {
     const num = v => (v == null || v === '') ? null : (isNaN(parseFloat(v)) ? null : parseFloat(v));
     const rates = {
       A:  (tariff && tariff.A  != null) ? tariff.A  : num(f['기본세율']),
+      C:  (tariff && tariff.C  != null) ? tariff.C  : num(f['WTO세율']),
       CN: (tariff && tariff.CN != null) ? tariff.CN : num(f['FTA_한중']),
       RC: (tariff && tariff.RC != null) ? tariff.RC : num(f['FTA_RCEP중국']),
       E1: (tariff && tariff.E1 != null) ? tariff.E1 : num(f['아태세율']),
@@ -6807,10 +6832,11 @@ function calcTotalOverhead() {
 
 // FTA 그룹 요약 (유지 — 제품 표 적용FTA 통계용)
 function getFtaGroups() {
-  const groups = { '한중': { cny: 0, count: 0 }, '아태': { cny: 0, count: 0 }, '없음': { cny: 0, count: 0 } };
+  const groups = { '한중': { cny: 0, count: 0 }, 'RCEP': { cny: 0, count: 0 }, '아태': { cny: 0, count: 0 }, 'WTO': { cny: 0, count: 0 }, '없음': { cny: 0, count: 0 } };
   state.products.forEach(p => {
     const f = p.fields;
     const fta = f['적용FTA'] || '없음';
+    if (!groups[fta]) groups[fta] = { cny: 0, count: 0 };
     groups[fta].cny += parseFloat(f['합계CNY']) || 0;
     groups[fta].count++;
   });
@@ -6840,7 +6866,15 @@ function calcFtaSavingKrw() {
   const base = calcTariffForScenario('base');     // 일반 세율
   const current = calcTariffForScenario('current'); // 적용 FTA
   if (!base || !current) return 0;
-  const saving = (base.totalDutyKrw || 0) - (current.totalDutyKrw || 0);
+  // [WTO] CO 절세 = CO 필요 FTA(한중/RCEP/아태) 적용 행만 합산. WTO·없음·기본은 CO 불요 → 제외.
+  //   (없음 행은 base=applied라 0 → 기존 결과 무변동. WTO 행만 신규로 CO 대상에서 빠짐.)
+  let saving = 0;
+  current.rows.forEach((r, i) => {
+    if (r.fta === '한중' || r.fta === 'RCEP' || r.fta === '아태') {
+      const b = base.rows[i];
+      if (b) saving += ((b.dutyKrw || 0) - (r.dutyKrw || 0));
+    }
+  });
   return Math.max(0, Math.round(saving));
 }
 
@@ -8061,7 +8095,7 @@ function renderInvoicePreview() {
   if (rateBody) {
     const r = getOfficialRates();
     rateBody.innerHTML = `
-      • 적용환율: USD 1 = KRW ${rateUsdKrw.toFixed(2)} / CNY 1 = USD ${rateCnyUsd.toFixed(4)}<br>
+      • 적용환율: USD 1 = KRW ${rateUsdKrw.toFixed(2)} / USD 1 = CNY ${rateCnyUsd > 0 ? (1/rateCnyUsd).toFixed(2) : '-'}<br>
       • 환율유형: 관세청 고시환율 <span style="color:#C9973A; font-size:10px;">${_officialRatesCache ? '(실시간 · UNI-PASS API)' : '(Mock — 인증키 발급 후 실시간)'}</span><br>
       • 적용기간: ${r.weekStart} ~ ${r.weekEnd} (제${r.weekNo}주차)<br>
       • 법적근거: 관세법 제18조 (과세환율)<br>
@@ -8087,7 +8121,7 @@ function renderInvoicePreview() {
 const VAT_RATE = 0.10;
 
 function calcTariffForScenario(scenario) {
-  // scenario: 'base' | 'kc' | 'rcep' | 'apta' | 'current'
+  // scenario: 'base' | 'wto' | 'kc' | 'rcep' | 'apta' | 'current'
   const rateCnyUsd = parseFloat(document.getElementById('rateCnyUsd').value) || 0;
   const rateUsdKrw = parseFloat(document.getElementById('rateUsdKrw').value) || 0;
   if (!rateCnyUsd || !rateUsdKrw) return null;
@@ -8128,6 +8162,7 @@ function calcTariffForScenario(scenario) {
       const kcRate      = pickRate('FTA_한중', 'CN', 'FTA_한중');
       const rcepRate    = pickRate('FTA_RCEP중국', 'RC', 'FTA_RCEP중국');
       const aptaRate    = pickRate('아태세율', 'E1', '아태세율');
+      const wtoRate     = pickRate('WTO세율', 'C', 'WTO세율');   // [WTO] 양허세율(CO 불요)
       const baseRate = isNaN(baseRateVal) ? 0 : baseRateVal;
       const fta = pf['적용FTA'] || u.적용FTA || '없음';
 
@@ -8136,10 +8171,12 @@ function calcTariffForScenario(scenario) {
       if (scenario === 'kc' && !isNaN(kcRate)) { appliedRate = kcRate; appliedLabel = 'kc'; }
       else if (scenario === 'rcep' && !isNaN(rcepRate)) { appliedRate = rcepRate; appliedLabel = 'rcep'; }
       else if (scenario === 'apta' && !isNaN(aptaRate)) { appliedRate = aptaRate; appliedLabel = 'apta'; }
+      else if (scenario === 'wto' && !isNaN(wtoRate)) { appliedRate = wtoRate; appliedLabel = 'wto'; }
       else if (scenario === 'current') {
         if (fta === '한중' && !isNaN(kcRate)) { appliedRate = kcRate; appliedLabel = 'kc'; }
         else if (fta === 'RCEP' && !isNaN(rcepRate)) { appliedRate = rcepRate; appliedLabel = 'rcep'; }
         else if (fta === '아태' && !isNaN(aptaRate)) { appliedRate = aptaRate; appliedLabel = 'apta'; }
+        else if (fta === 'WTO' && !isNaN(wtoRate)) { appliedRate = wtoRate; appliedLabel = 'wto'; }
         else { appliedRate = baseRate; appliedLabel = 'base'; }
       }
 
@@ -8174,6 +8211,7 @@ function renderTariffEstimate() {
   //   적용 FTA 값은 §3 적용FTA에 그대로 남아 신고/관부가세 계산에 사용됨 (화면만 빼는 것).
   const scenarios = [
     { key: 'base', label: '기본세율', rateKey: '기본세율' },
+    { key: 'wto',  label: 'WTO 양허', rateKey: 'WTO세율' },
     { key: 'kc',   label: '한중 FTA', rateKey: 'FTA_한중' },
     { key: 'rcep', label: 'RCEP',     rateKey: 'FTA_RCEP중국' },
     { key: 'apta', label: '아태협정', rateKey: '아태세율' },
@@ -8184,7 +8222,7 @@ function renderTariffEstimate() {
   //   dataHasRate:   fields에 입력된 값이 있는지
   //   noTariff (협정 자체 없음) = 정상 → 카드 정상 표시 (회색 — 사용 안 함)
   //   missing (공식표엔 있는데 fields 빈칸) = 관세사가 채워야 → 빨강
-  const tariffKeyMap = { '기본세율': 'A', 'FTA_한중': 'CN', 'FTA_RCEP중국': 'RC', '아태세율': 'E1' };
+  const tariffKeyMap = { '기본세율': 'A', 'WTO세율': 'C', 'FTA_한중': 'CN', 'FTA_RCEP중국': 'RC', '아태세율': 'E1' };
   const tariffHasRate = {}, dataHasRate = {};
   scenarios.forEach(sc => {
     const tk = tariffKeyMap[sc.rateKey];
@@ -8211,24 +8249,29 @@ function renderTariffEstimate() {
     if (!r) return;
     // v3.2.26: '협정 없음' (회색) vs '미입력' (빨강) vs 정상
     const isFtaCard = (sc.key === 'kc' || sc.key === 'rcep' || sc.key === 'apta');
-    const noTariff = isFtaCard && !tariffHasRate[sc.key];
+    const isWtoCard = (sc.key === 'wto');
+    const noTariff = (isFtaCard || isWtoCard) && !tariffHasRate[sc.key];   // WTO도 C 없으면 회색
     const missingFta = isFtaCard && tariffHasRate[sc.key] && !dataHasRate[sc.key];
     const isBest = !noTariff && !missingFta && Math.abs(r.totalKrw - minTotal) < 1;
+    // [WTO] ★CO 구분: WTO·기본 = CO 불요 / 한중·RCEP·아태 = CO 필요 (최종 판단은 관세사)
+    const coNote = (sc.key === 'base' || sc.key === 'wto')
+      ? '<span style="font-size:9px; color:#0a7b40; font-weight:600;">🟢 CO 불요</span>'
+      : '<span style="font-size:9px; color:#b26a00; font-weight:600;">🟡 CO 필요</span>';
     const div = document.createElement('div');
     div.className = 'tariff-card' + (isBest ? ' best' : '') + (missingFta ? ' missing' : '') + (noTariff ? ' no-tariff' : '');
     if (noTariff) {
       div.innerHTML = `
-        <div class="title">${sc.label}</div>
+        <div class="title">${sc.label} ${coNote}</div>
         <div class="row" style="color:#888; font-size:11px; padding:14px 4px; text-align:center; background:#f5f5f5;">— 해당 협정 미적용<br/><span style="color:#aaa; font-size:10px;">공식 관세표에 이 협정 세율 없음 (정상)</span></div>
       `;
     } else if (missingFta) {
       div.innerHTML = `
-        <div class="title">${sc.label}</div>
+        <div class="title">${sc.label} ${coNote}</div>
         <div class="row" style="color:#c0392b; font-size:11px; padding:14px 4px; text-align:center;">⚠ 해당 FTA 세율 미입력<br/><span style="color:#999; font-size:10px;">관세사 페이지에서 입력 필요</span></div>
       `;
     } else {
       div.innerHTML = `
-        <div class="title">${sc.label}${isBest ? ' ⭐' : ''}</div>
+        <div class="title">${sc.label}${isBest ? ' ⭐' : ''} ${coNote}</div>
         <div class="row"><span>${t('tariff.duty')}</span><span>₩${Math.round(r.totalDutyKrw).toLocaleString()}</span></div>
         <div class="row"><span>${t('tariff.vat')}</span><span>₩${Math.round(r.totalVatKrw).toLocaleString()}</span></div>
         <div class="row total"><span>${t('tariff.total')}</span><span>₩${Math.round(r.totalKrw).toLocaleString()}</span></div>
@@ -8372,6 +8415,7 @@ const MOCK_OFFICIAL_RATES = {
 
 // 작업2: UNI-PASS 실 환율 캐시 (성공 시 Mock 대신 사용)
 let _officialRatesCache = null;
+let _rateFetchFailed = false;   // [읽기전용] 직전 관세청 조회 실패 여부 (실패 시 Mock 오기입 대신 '재시도' 표시)
 // [환율 수정] 과세환율 기준일(입항일=수입신고일 주차) 상태 + 예상(잠정) 플래그
 let _rateBasisDate = '';
 let _rateEstimate = false;
@@ -8389,7 +8433,7 @@ async function fetchOfficialRatesFromAPI(force, dateStr) {
         // 24시간 + 유효 환율(USD>0)인 캐시만 재사용 — 옛 잘못된 0 데이터 무시
         if (obj && obj._fetchedAt && Date.now() - obj._fetchedAt < 86400000
             && obj.rates && obj.rates.USD > 0) {
-          _officialRatesCache = obj;
+          _officialRatesCache = obj; _rateFetchFailed = false;
           return obj;
         }
       }
@@ -8402,17 +8446,27 @@ async function fetchOfficialRatesFromAPI(force, dateStr) {
     const data = await r.json();
     if (!r.ok || data.error || !(data.rates && data.rates.USD > 0)) {
       // Mock 폴백 — 인증키 미설정 / 파싱 실패 / USD 0
-      console.info('UNI-PASS:', data.error || ('USD=' + (data.rates && data.rates.USD)) || ('HTTP ' + r.status), '→ Mock 환율 사용');
+      console.info('UNI-PASS:', data.error || ('USD=' + (data.rates && data.rates.USD)) || ('HTTP ' + r.status), '→ 조회 실패');
+      _rateFetchFailed = true;
       return null;
     }
     data._fetchedAt = Date.now();
     sessionStorage.setItem(cacheKey, JSON.stringify(data));
-    _officialRatesCache = data;
+    _officialRatesCache = data; _rateFetchFailed = false;
     return data;
   } catch (e) {
     console.warn('UNI-PASS API 호출 실패:', e.message);
+    _rateFetchFailed = true;
     return null;
   }
+}
+
+// [표기] USD 1 = CNY 표시 = 1/rateCnyUsd (실제 계산은 rateCnyUsd 그대로 — 표기만 역수)
+function updateRateRecip() {
+  const disp = document.getElementById('rateUsdCnyDisp');
+  if (!disp) return;
+  const cu = parseFloat((document.getElementById('rateCnyUsd') || {}).value);
+  disp.value = (cu && cu > 0) ? (1 / cu).toFixed(2) : '-';
 }
 
 function getOfficialRates() {
@@ -8462,6 +8516,7 @@ function renderOfficialRates() {
   const badge = document.getElementById('mockBadge');
   if (badge) {
     if (_officialRatesCache) { badge.textContent = '✅ 관세청 실시간'; badge.style.background = '#0a7b40'; }
+    else if (_rateFetchFailed) { badge.textContent = '⚠ 조회 실패 — [고시환율로 갱신] 재시도'; badge.style.background = '#c0392b'; }
     else { badge.textContent = '🔧 Mock (인증키/응답 대기)'; badge.style.background = '#C9973A'; }
   }
   updateRateBasisLabel();
@@ -8494,8 +8549,8 @@ async function refreshOfficialRates(forceOverwrite, dateStrArg) {
   const setRate = (id, val, decimals) => {
     const inp = document.getElementById(id);
     if (!inp) return;
-    // 덮어쓰기: LIVE 데이터 + force일 때만(엉뚱한 주차 Mock이 저장/입력값 훼손 방지). 빈 칸은 항상 채움.
-    if ((forceOverwrite && haveLive) || !inp.value) inp.value = (+val).toFixed(decimals);
+    // [읽기전용·세액보호] LIVE 데이터일 때만 기입. 실패 시 Mock/엉뚱주차 값 오기입 X → '조회 실패' 표시.
+    if (haveLive && (forceOverwrite || !inp.value)) inp.value = (+val).toFixed(decimals);
   };
   setRate('rateUsdKrw', usdKrw, 2);
   setRate('rateCnyKrw', cnyKrw, 2);
@@ -11392,6 +11447,8 @@ function onShipKmInput() {
 function onShipAddressInput() {
   const infoEl = document.getElementById('shippingDistanceInfo');
   if (infoEl) infoEl.innerHTML = '주소 변경됨 — [🗺 카카오 길찾기] 클릭으로 거리 갱신';
+  // [§6 도착지] 운임 계산기 도착지 입력 → 배차/발송 도착지 표시 즉시 반영 (한 군데 입력 → 배차 연동)
+  if (typeof renderParcelInfoSection === 'function') renderParcelInfoSection();
 }
 
 async function lookupShipDistance() {
@@ -13300,141 +13357,7 @@ async function pushExcelToAirtable(rawRows) {
   return stats;
 }
 
-// ===== v3.2.0 (2026-05-30): 트리거 1 — 박스→포워딩 부킹용 PDF =====
-// 박스 정보(수·사이즈·중량·CBM) + 사서함/포워딩사 정보로 PDF 1장 생성.
-// 1단계: 직원이 다운로드 후 위챗으로 중국 포워딩사에 첨부. 2단계: 위챗 API 자동 발송.
-async function downloadForwardingBookingPdf() {
-  if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
-  const f = state.shipment.fields || {};
-  const cf = (state.customer && state.customer.fields) || {};
-  const boxNums = Object.keys(state.boxes || {}).sort((a,b) => parseInt(a) - parseInt(b));
-  if (!boxNums.length) {
-    toastWarn && toastWarn('박스 정보를 먼저 입력해주세요');
-    return;
-  }
-  if (typeof window.jspdf === 'undefined') {
-    alert('PDF 라이브러리 로드 실패 — 인터넷 연결 확인');
-    return;
-  }
-
-  const mailbox = f['사서함'] || '';
-  const forwarder = (f['포워딩사'] || '미선택').trim();
-  const today = new Date();
-  const yymmdd = String(today.getFullYear()).slice(2) + String(today.getMonth()+1).padStart(2,'0') + String(today.getDate()).padStart(2,'0');
-
-  // 박스 합계 + 행 데이터
-  let totalKg = 0, totalCbm = 0;
-  const rows = boxNums.map(bn => {
-    const b = state.boxes[bn];
-    const kg = parseFloat(b.kg) || 0;
-    const cbm = parseFloat(b.cbm) || 0;
-    totalKg += kg;
-    totalCbm += cbm;
-    // v3.2.15: 배송방식 = Shipment 단위 (단일). 박스별 shipType 폴백.
-    const shipType = ((state.shipment && state.shipment.fields && state.shipment.fields['배송방식']) || b.shipType || '화물').trim();
-    return { num: bn, kg, w: b.w || 0, h: b.h || 0, d: b.d || 0, cbm, shipType };
-  });
-
-  // HTML로 PDF 만들기 (html2canvas → jsPDF)
-  const docEl = document.createElement('div');
-  docEl.style.cssText = 'width:780px; padding:30px; background:#fff; font-family:Pretendard, "맑은 고딕", sans-serif; color:#1B2A3B; position:fixed; top:-9999px; left:0;';
-  docEl.innerHTML = `
-    <div style="border-bottom:3px solid #1B2A3B; padding-bottom:14px; margin-bottom:18px; display:flex; justify-content:space-between; align-items:flex-start; gap:18px;">
-      <div style="display:flex; align-items:center; gap:14px;">
-        <!-- v3.2.1 (2026-05-30): 강하고 로고 추가 (사장님 디자인 파일) -->
-        <img src="${KANGHAGO_LOGO_BASE64}" alt="강하고" style="height:48px; width:auto;" />
-        <div>
-          <h1 style="margin:0; font-size:24px; color:#1B2A3B;">📋 포워딩 부킹 요청서</h1>
-          <div style="font-size:11px; color:#666; margin-top:4px;">FORWARDING BOOKING REQUEST</div>
-        </div>
-      </div>
-      <div style="text-align:right; font-size:11px;">
-        <div><strong>사서함</strong> ${mailbox}</div>
-        <div><strong>발행일</strong> ${today.toISOString().slice(0,10)}</div>
-        <div><strong>포워딩사</strong> <span style="background:#fff7e6; padding:2px 8px; border-radius:4px; border:1px solid #C9973A;">${forwarder}</span></div>
-      </div>
-    </div>
-
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px; font-size:12px;">
-      <div style="padding:10px 12px; background:#FAF6EE; border-radius:4px;">
-        <div style="font-weight:700; color:#1B2A3B; margin-bottom:4px;">발송처 (Shipper)</div>
-        <div>QINGDAO TALELOR INTERNATIONAL TRADING CO.,LTD</div>
-        <div style="color:#666;">CHENGYANG DISTRICT, QINGDAO, CHINA</div>
-        <div style="color:#666;">ATTN: 19033580313</div>
-      </div>
-      <div style="padding:10px 12px; background:#FAF6EE; border-radius:4px;">
-        <div style="font-weight:700; color:#1B2A3B; margin-bottom:4px;">고객 정보</div>
-        <!-- v3.2.1 (2026-05-30): "AP1819 정준교(엑피트)" 형식 — 사서함명·이름·회사명 한 줄 -->
-        <div style="font-size:14px; font-weight:600;">${mailbox} ${(cf['회원명'] || f['수취_수취인'] || '-')}${(cf['회사명'] && cf['회사명'] !== '-') ? '(' + cf['회사명'] + ')' : ''}</div>
-        <div style="color:#666; margin-top:4px;">${(cf['주소'] || f['수취_주소'] || '-')}</div>
-        ${(cf['연락처'] || f['수취_전화']) ? `<div style="color:#666;">Tel: ${cf['연락처'] || f['수취_전화']}</div>` : ''}
-      </div>
-    </div>
-
-    <h2 style="font-size:14px; margin:18px 0 10px; color:#1B2A3B;">박스 정보 (${rows.length}개)</h2>
-    <table style="width:100%; border-collapse:collapse; font-size:12px;">
-      <thead>
-        <tr style="background:#1B2A3B; color:#fff;">
-          <th style="padding:8px; text-align:left;">박스 #</th>
-          <th style="padding:8px; text-align:left;">배송방식</th>
-          <th style="padding:8px; text-align:right;">가로(cm)</th>
-          <th style="padding:8px; text-align:right;">세로(cm)</th>
-          <th style="padding:8px; text-align:right;">높이(cm)</th>
-          <th style="padding:8px; text-align:right;">CBM</th>
-          <th style="padding:8px; text-align:right;">중량(KG)</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map(r => `
-          <tr style="border-bottom:1px solid #eee;">
-            <td style="padding:7px 8px; font-weight:600;">${mailbox}-${r.num}</td>
-            <td style="padding:7px 8px;">${r.shipType}</td>
-            <td style="padding:7px 8px; text-align:right;">${r.w}</td>
-            <td style="padding:7px 8px; text-align:right;">${r.h}</td>
-            <td style="padding:7px 8px; text-align:right;">${r.d}</td>
-            <td style="padding:7px 8px; text-align:right; font-family:monospace;">${r.cbm.toFixed(4)}</td>
-            <td style="padding:7px 8px; text-align:right; font-family:monospace;">${r.kg.toFixed(1)}</td>
-          </tr>`).join('')}
-        <tr style="background:#fff7e6; font-weight:700; border-top:2px solid #C9973A;">
-          <td colspan="5" style="padding:9px 8px; text-align:right;">합계</td>
-          <td style="padding:9px 8px; text-align:right; font-family:monospace; color:#C9973A;">${totalCbm.toFixed(4)} CBM</td>
-          <td style="padding:9px 8px; text-align:right; font-family:monospace; color:#C9973A;">${totalKg.toFixed(1)} KG</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div style="margin-top:24px; padding:14px; background:#FAF6EE; border-radius:4px; font-size:11px;">
-      <div style="font-weight:700; color:#1B2A3B; margin-bottom:4px;">📞 문의</div>
-      <div>1661-5776 / master@talekorea.com</div>
-      <!-- v3.2.1: 회사명 강하고로 변경 (테일코리아 → 강하고) -->
-      <div>강하고 (Kanghago) — 한·중 1688 무역대행</div>
-    </div>
-    <div style="margin-top:18px; text-align:right; font-size:10px; color:#888;">
-      ${mailbox} · ${forwarder} · ${yymmdd}
-    </div>
-  `;
-  document.body.appendChild(docEl);
-
-  try {
-    if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch(_){} }
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const canvas = await html2canvas(docEl, { scale: 2, useCORS: true, backgroundColor: '#fff' });
-    const imgData = canvas.toDataURL('image/png');
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
-    const imgW = 190, imgH = (canvas.height * imgW) / canvas.width;
-    pdf.addImage(imgData, 'PNG', 10, 10, imgW, imgH);
-    const fname = `Booking_${forwarder}_${mailbox}_${yymmdd}.pdf`;
-    pdf.save(fname);
-    toastSuccess && toastSuccess('포워딩 부킹용 PDF 다운로드 완료 — ' + fname, { title: '📋 트리거 1', subtitle: '위챗으로 ' + forwarder + '에 전송' });
-  } catch (e) {
-    console.error('[v3.2.0 forwarding pdf]', e);
-    toastError && toastError('PDF 생성 실패: ' + (e.message || e));
-  } finally {
-    docEl.remove();
-  }
-}
-
+// [L-v4c→WTO작업] 포워딩 부킹용 PDF(트리거1) — UI 제거에 따라 미사용 함수 삭제 (부킹 요약 기능과 무관)
 // ===== v3.2.0 (2026-05-30): 포워딩 선택 (ZTK/BTK) → 인보이스 번호 prefix 자동 변경 =====
 // 사장님 결정: [포워딩코드]-YYMMDD-순번 형식 (예: ZTK-260415-9). 양식 변경 부위 = 8) No.& date의 prefix만.
 // 라디오 변경 → Shipments.포워딩사 1초 debounce 자동 저장 + 인보이스 번호 미리보기 갱신.
@@ -13567,10 +13490,10 @@ function applyShipMethodVisibility() {
     sc11.classList.remove('hidden');
     sc11a.classList.remove('hidden');
   }
-  // v3.2.14 #68: 박스별 송장번호/화물 정보 동적 렌더
-  renderParcelInfoSection();
-  // v3.2.36: 도착지 주소 자동 — 배송방식 무관 항상 시도 (택배·화물·미선택 모두)
+  // [§6 도착지] autofill 먼저(입력칸에 도착지 채움) → 그 다음 배차폼 렌더가 채워진 값을 읽음 (타이밍 fix)
   if (typeof autofillShipDestinationFromOrders === 'function') autofillShipDestinationFromOrders();
+  // v3.2.14 #68: 박스별 송장번호/화물 정보 동적 렌더 (getRequestedDestAddr: 입력 > 수취_주소 > 수취인주소 > 주소)
+  renderParcelInfoSection();
   // v3.2.38: §10 라디오 UI 동기화
   if (typeof syncShipMethodRadio === 'function') syncShipMethodRadio();
 }
@@ -13683,8 +13606,8 @@ function renderParcelInfoSection() {
           <div style="font-size:14px; font-weight:600; color:var(--navy);">인천 신항</div>
         </div>
         <div style="padding:12px; background:#fff; border-radius:6px;">
-          <div style="font-size:11px; color:#888;">도착지</div>
-          <div style="font-size:13px; color:var(--navy);">${escAttr(f['수취_주소'] || '미입력')}</div>
+          <div style="font-size:11px; color:#888;">도착지 (고객 요청)</div>
+          <div style="font-size:13px; color:var(--navy);">${escAttr((typeof getRequestedDestAddr === 'function' && getRequestedDestAddr()) || f['수취_주소'] || '미입력')}</div>
         </div>
         ${ship.freight ? `<div style="padding:12px; background:#fff; border-radius:6px;">
           <div style="font-size:11px; color:#888;">화물 견적 (§11)</div>
@@ -13726,9 +13649,14 @@ function dispatchFormHtml() {
       <input type="${type || 'text'}" value="${v(key)}" placeholder="${ph || ''}" oninput="onDispatchInput('${key}', this)"
              style="width:100%; padding:7px 9px; border:1px solid #ccc; border-radius:5px; font-size:13px; box-sizing:border-box;" />
     </div>`;
+  const _destAddr = (typeof getRequestedDestAddr === 'function') ? getRequestedDestAddr() : '';
   return `
     <div style="margin-top:14px; padding:14px 16px; background:#fff; border:1px solid #f0c860; border-radius:8px;">
       <div style="font-size:13px; font-weight:700; color:var(--navy); margin-bottom:10px;">🚛 배차/발송 정보 <span style="font-size:11px; color:#888; font-weight:400;">(고객 전달용 · 입력값은 현재 세션 보존 — 문서·전달 기능은 다음 단계)</span></div>
+      <div style="margin-bottom:12px; padding:9px 13px; background:#f4f8ff; border:1px solid #c4d5ea; border-radius:6px;">
+        <span style="font-size:11px; color:#666; font-weight:600;">📍 도착지 주소 (고객 요청)</span>
+        <div style="font-size:13px; font-weight:600; color:var(--navy); margin-top:3px;">${_destAddr ? escAttr(_destAddr) : '<span style="color:#c0392b; font-weight:600;">미입력 — §5 운임 계산기 도착지 또는 고객/주문 주소 확인</span>'}</div>
+      </div>
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px 14px;">
         ${fld('운송사명', 'carrier', '예: 대한통운 화물')}
         ${fld('기사 성함', 'driverName', '홍길동')}
@@ -13743,6 +13671,23 @@ function dispatchFormHtml() {
                   style="width:100%; padding:7px 9px; border:1px solid #ccc; border-radius:5px; font-size:13px; box-sizing:border-box; resize:vertical;">${v('memo')}</textarea>
       </div>
     </div>`;
+}
+
+// [§6 도착지] 고객 요청 도착지 주소 단일 해석: 운임입력 > Shipments.수취_주소 > Orders[].수취인주소 > Customers.주소
+function getRequestedDestAddr() {
+  const inpV = (document.getElementById('shipDestAddress') || {}).value;
+  if (inpV && inpV.trim()) return inpV.trim();
+  const f = (state.shipment && state.shipment.fields) || {};
+  if ((f['수취_주소'] || '').trim()) return f['수취_주소'].trim();
+  if (state.orders && state.orders.length) {
+    for (const o of state.orders) {
+      const a = ((o.fields || {})['수취인주소'] || '').trim();
+      if (a) return a;
+    }
+  }
+  const cf = (state.customer && state.customer.fields) || {};
+  if ((cf['주소'] || '').trim()) return cf['주소'].trim();
+  return '';
 }
 
 // Orders(들)에서 수취인주소 추출 → §11 도착지 input 채움 + 자동 길찾기
