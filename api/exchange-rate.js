@@ -12,8 +12,8 @@ const { handleCors } = require('./_lib');
 
 const ENDPOINT = 'http://apis.data.go.kr/1220000/retrieveTrifFxrtInfo/getRetrieveTrifFxrtInfo';
 
-let _cache = null;
-let _cacheAt = 0;
+// [환율 수정] 주차(aplyBgnDt)별 캐시 — ?date= 별로 분리(입항일 주차 조회가 이번주 캐시로 오염되는 버그 방지)
+const _cache = {};
 const CACHE_TTL = 60 * 60 * 1000;  // 1시간
 
 // 통화부호 → ISO 매핑 (공공데이터포털 currSgn은 USD/CNY 표준이지만 방어적으로 매핑)
@@ -110,8 +110,10 @@ module.exports = async (req, res) => {
 
   try {
     const debug = !!req.query.debug;
-    if (_cache && Date.now() - _cacheAt < CACHE_TTL && !req.query.force && !debug) {
-      return res.json({ ...(_cache), cached: true });
+    // [환율 수정] 요청 주차 키 = ?date 있으면 그 주, 없으면 이번주 (캐시 분리)
+    const reqWeekKey = req.query.date ? weekStartOf(req.query.date) : weekStartOf(new Date());
+    if (_cache[reqWeekKey] && Date.now() - _cache[reqWeekKey].at < CACHE_TTL && !req.query.force && !debug) {
+      return res.json({ ...(_cache[reqWeekKey].result), cached: true });
     }
 
     const key = process.env.DATAGO_SERVICE_KEY || process.env.UNIPASS_API_KEY;
@@ -170,8 +172,7 @@ module.exports = async (req, res) => {
         JPY: parsed.rates.JPY || 0,  // 100엔당
       },
     };
-    _cache = result;
-    _cacheAt = Date.now();
+    _cache[reqWeekKey] = { result, at: Date.now() };
     res.json({ ...result, cached: false });
   } catch (e) {
     console.error('exchange-rate error:', e);

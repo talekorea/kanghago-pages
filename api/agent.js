@@ -614,6 +614,44 @@ module.exports = async (req, res) => {
         }
         return res.json({ shipment: ship, products, orders });
       }
+
+      // [부킹 요약] 읽기 전용 — 선적일(Orders.실제출고요청일)별 사서함 박스 무게/CBM 합산.
+      //   도구 fetchBookingSummary와 동일 집계. 쓰기 없음. PAT는 서버(env)만 — 관세사 브라우저 노출 0.
+      if (op === 'booking_summary') {
+        const daysParam = (req.query.days || '').trim();
+        const days = daysParam ? daysParam.split(',').map(s => s.trim()).filter(Boolean) : [];
+        if (!days.length) return res.status(400).json({ error: 'days 누락' });
+        const orderFormula = `OR(${days.map(d => `IS_SAME({실제출고요청일},'${d}','day')`).join(',')})`;
+        const orders = await atListAll(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(orderFormula)}&fields[]=Shipment&fields[]=실제출고요청일&fields[]=주문번호`);
+        if (!orders.length) return res.json({ rows: [], days });
+        const shipDateMap = {};
+        orders.forEach(o => { const ships = (o.fields || {}).Shipment || []; const d = (o.fields || {})['실제출고요청일']; ships.forEach(sid => { if (!d) return; if (!shipDateMap[sid] || d < shipDateMap[sid]) shipDateMap[sid] = d; }); });
+        const shipIds = Object.keys(shipDateMap);
+        if (!shipIds.length) return res.json({ rows: [], days });
+        const chunk = (a, n) => { const o = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
+        let ships = [];
+        for (const c of chunk(shipIds, 50)) {
+          const f = `OR(${c.map(id => `RECORD_ID()='${id}'`).join(',')})`;
+          ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=상태&fields[]=출고요청일`));
+        }
+        let custMap = {};
+        try {
+          const custs = await atListAll(`/${TABLES.Customers}?fields[]=사서함번호&fields[]=회원명&fields[]=회사명`);
+          custs.forEach(c => { const k = (c.fields || {})['사서함번호']; if (k) custMap[k] = { member: c.fields['회원명'] || '', company: c.fields['회사명'] || '' }; });
+        } catch (e) { /* Customers 없으면 이름 생략 */ }
+        const rows = [];
+        for (const s of ships) {
+          const sf = s.fields || {}; const mailbox = sf['사서함'] || ''; const shipDate = shipDateMap[s.id] || ''; const status = sf['상태'] || '';
+          let boxes = [];
+          try { boxes = await atListAll(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=박스순번&fields[]=무게KG&fields[]=부피CBM`); } catch (e) {}
+          let kgSum = 0, cbmSum = 0, missing = false;
+          boxes.forEach(b => { const kg = parseFloat((b.fields || {})['무게KG']) || 0; const cbm = parseFloat((b.fields || {})['부피CBM']) || 0; kgSum += kg; cbmSum += cbm; if (kg <= 0 || cbm <= 0) missing = true; });
+          const cust = custMap[mailbox] || { member: '', company: '' };
+          rows.push({ mailbox, shipDate, status, member: cust.member, company: cust.company, boxCount: boxes.length, kgSum, cbmSum, missingMeasure: missing, isReady: boxes.length > 0 && !missing });
+        }
+        rows.sort((a, b) => (a.shipDate || '').localeCompare(b.shipDate || '') || a.mailbox.localeCompare(b.mailbox));
+        return res.json({ rows, days });
+      }
       return res.status(400).json({ error: 'Unknown op' });
     }
 

@@ -291,13 +291,14 @@
 .phase-header .phase-trigger.t3 { background: rgba(43, 130, 230, 0.25); color: #8ec5ff; }
 .phase-header .phase-trigger.t4 { background: rgba(207, 34, 46, 0.25);  color: #ff9b9b; }
 
-/* [Phase L] 데스크톱 2단 레이아웃 (좌=입력 / 우=계산·결과). 모바일(≤900px) 1단. */
-/*   JS applyTwoColumnLayout()가 섹션을 #layoutLeft/#layoutRight로 재배치(섹션 내부·ID·핸들러 불변). */
-#layoutWrap { display: flex; gap: 20px; align-items: flex-start; }
-#layoutWrap > .layout-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
-.two-col-active .phase-header { display: none !important; }
+/* [Phase L-v2] 상단 짝 2줄(동일 폭·높이) + 이하 풀폭 단일 컬럼. */
+/*   grid 1fr 1fr = 테두리/내용 무관 정확히 동일 폭, align stretch = 동일 높이. */
+.pair-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: stretch; }
+.pair-row > .section { min-width: 0; margin: 0; box-sizing: border-box; }
+#workflowCardsSection { display: none !important; }   /* 병렬 작업 배너 제거(시각) — DOM·핸들러는 보존 */
+.phase-header { display: none !important; }            /* [v3] 그룹 다크 배너 제거 — 평평한 단일 번호 흐름. 트리거 배지는 섹션 헤더로 이동 */
 @media (max-width: 900px) {
-  #layoutWrap { flex-direction: column; gap: 0; }
+  .pair-row { grid-template-columns: 1fr; gap: 0; }
 }
 </style>
 </head>
@@ -775,6 +776,7 @@
 
   <div style="font-size:12px; color:#555; line-height:1.7; margin-bottom:16px; padding:10px 14px; background:#f8f5ee; border-radius:6px; border-left:3px solid #C9973A;">
     <div>적용기간 <strong style="color:#1B2A3B;"><span id="rateWeekRange">-</span></strong> &nbsp;(<span id="rateWeekNo">-</span>주차)</div>
+    <div id="rateBasisNote" style="margin-top:4px;">기준일 -</div>
     <div>법적근거 관세법 제18조 &nbsp;·&nbsp; 출처 <span id="rateSource">관세청 UNI-PASS</span> &nbsp;·&nbsp; 갱신 <span id="rateFetchedAt">-</span></div>
   </div>
 
@@ -971,11 +973,7 @@
   </div>
 </div>
 
-<!-- v3.2.0: ═══ 2. 박스 & 포워딩 ═══ (★ 트리거 1 — 박스 정보 입력 → 포워딩 부킹용 PDF) -->
-<div class="phase-header hidden" data-phase-group>
-  <span class="phase-num">2</span><span class="phase-name">박스 & 포워딩 — 수·사이즈·중량·CBM</span>
-  <span class="phase-trigger t1">★ 트리거 1 → 위챗</span>
-</div>
+<!-- [L-v4c] 박스&포워딩 배너 삭제 -->
 
 <!-- 5. 박스 관리 (v3.2.0 의도: §4 박스 — 트리거 1) -->
 <div class="section hidden" id="boxSection">
@@ -992,7 +990,7 @@
   </div>
   <!-- v3.2.50: 색상 미선택 안내 (선택 시 자동 숨김) -->
   <div id="tapeColorNotice" style="display:none; margin:0 0 14px; padding:12px 16px; background:#ffebe9; border:1px solid #e0a040; border-radius:8px; color:#a14a00; font-size:13px; font-weight:600;">
-    ⚠ 테이프 색상을 먼저 선택하세요 — 색상 선택 전에는 박스 번호·치수·무게를 입력할 수 없습니다.
+    ⚠ 테이프 색상을 먼저 선택하세요 — 색상 선택 전에는 <strong>상품 정보·박스 정보</strong>를 입력할 수 없습니다.
   </div>
   <div class="warn-banner" data-i18n="tip.box" data-i18n-html>
     💡 상품 표의 <strong>박스번호</strong>에 <code>1</code>, <code>1-3</code>, <code>1,2,5</code> 형식으로 입력하면 박스가 자동 생성됩니다.
@@ -1038,19 +1036,7 @@
     </button>
   </div>
 
-  <!-- v3.2.0 (2026-05-30): ★ 트리거 1 — 박스 정보 입력 → 포워딩 부킹용 PDF → 위챗 발송 (1단계 수동) -->
-  <div style="margin-top:12px; padding:14px; background:linear-gradient(135deg,#2BB673 0%,#3aca87 100%); color:#fff; border-radius:8px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-    <div style="font-size:13px;">
-      <strong>📋 포워딩 부킹용 PDF (★ 트리거 1)</strong>
-      <div style="font-size:11px; opacity:0.9; margin-top:4px;">
-        박스 수·CBM·중량 + 포워딩사(ZTK/BTK) 정보 → 중국 포워딩사에 위챗 전송 (1단계 수동)<br>
-        <em style="opacity:0.8;">포워딩사는 §10에서 선택. PDF 다운로드 후 직원이 위챗 첨부로 전송.</em>
-      </div>
-    </div>
-    <button class="primary" onclick="downloadForwardingBookingPdf()" id="btnForwardingPdf" style="background:#fff; color:#0a7b40; padding:12px 18px; font-size:14px; font-weight:700; border:none; border-radius:6px; cursor:pointer;">
-      📋 부킹용 PDF
-    </button>
-  </div>
+  <!-- [L-v4c] 포워딩 부킹용 PDF UI 삭제. (downloadForwardingBookingPdf 함수 보존 — 부킹 로직 0 변경, 현재 미참조) -->
 
   <!-- v3.2.14 #67: "🔗 고객에게 전송 (v3.0.3)" 패널·버튼 삭제. 고객 발송은 invoice-view 기반으로 별도 재설계 예정.
        JS 함수 (shareToCustomer / promptConsultConfig / buildCustomerMessage / showShortUrlModal) 는 호출처 0이 되었으므로
@@ -1089,7 +1075,7 @@
 <!-- v3.2.14 #68: 11-A 택배/화물 배송정보 — §6 부대비용 다음으로 이동.
      택배 사서함: 박스 수만큼 송장번호 input. 화물 사서함: 화물 운임 정보 표시. -->
 <div class="section hidden" id="parcelInfoSection" style="background:#fef9f0; border:2px solid #C9973A;">
-  <h2>📦 11-A. 배송 정보 <span class="small-dim" id="parcelInfoSubtitle">(배송방식별 자동)</span></h2>
+  <h2>📦 6. 배차/발송 정보 <span class="small-dim" id="parcelInfoSubtitle">(배송방식별 자동)</span></h2>
   <div id="parcelInfoBody" style="margin-top:8px;"></div>
 </div>
 
@@ -1179,7 +1165,7 @@
 <!-- v2.9.8: 10. BL 번호 + 고객 응답 정보 -->
 <!-- Bug2·3·4 수정: id가 §2.5 customerSection과 중복 → 고유 id로 분리 (hidden 미해제 버그) -->
 <div class="section hidden" id="shippingResponseSection">
-  <h2>10. 선적 정보 (BL·포워딩·CO)</h2>
+  <h2>7. 선적 정보 (포워딩 · BL · CO)<span style="font-size:11px; margin-left:8px; padding:2px 8px; border-radius:10px; background:#dceeff; color:#1B2A3B; font-weight:600; vertical-align:middle;">★ 트리거3 관세사</span></h2>
 
   <!-- v3.2.0 (2026-05-30): 포워딩 선택 (ZTK/BTK) — 인보이스 번호 prefix 자동 변경 -->
   <div style="background:#e8f7ef; padding:12px 16px; border-radius:8px; margin-bottom:14px; border:1px solid #2BB673;">
@@ -1204,10 +1190,8 @@
   </div>
 
   <!-- v3.2.38: 배송방식 3택1 (택배·화물·밀크런) — 사서함 단위 단일 -->
-  <div style="background:#fff7e0; padding:12px 16px; border-radius:8px; margin-bottom:14px; border:1px solid #f0c860;">
-    <div style="font-weight:600; margin-bottom:8px; color:#1B2A3B; display:flex; align-items:center; gap:8px;">
-      🚚 배송방식 <span style="font-size:11px; color:#666; font-weight:400;">→ 하나 선택 시 나머지 운임 0 (3택1)</span>
-    </div>
+  <div id="shipMethodSelectorBox" style="background:#fff7e0; padding:12px 16px; border-radius:8px; margin-bottom:14px; border:1px solid #f0c860;">
+    <h2 style="margin:0 0 10px; font-size:16px; color:#1B2A3B; border:0; padding:0;">🚚 4. 배송방식 선택 <span style="font-size:12px; color:#666; font-weight:400;">(택배·화물·밀크런 3택1 — 선택 시 나머지 운임 0)</span></h2>
     <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
       <label style="display:inline-flex; gap:6px; align-items:center; font-size:13px; cursor:pointer;">
         <input type="radio" name="shipMethodSelect" value="택배" id="shipMethodParcel" onchange="onShipMethodChange()" />
@@ -1313,7 +1297,7 @@
 <!-- Phase F §11: 운임 계산기 (F1 화물 + F2 해상 + F3 택배 통합, 박스별 자동) -->
 <!-- v3.1.1: 배송방식=화물(용달/단독)일 때만 표시. 택배면 위 11-A 표시. -->
 <div class="section hidden" id="shippingCalcSection">
-  <h2>🚛 11. 운임 계산기 <span class="small-dim">(배송방식=화물·CBM·무게 기준 자동 매트릭스)</span></h2>
+  <h2>🚛 5. 운임 계산기 <span class="small-dim">(선택한 배송방식 기준 — 도착지·거리 입력 → 화물/밀크런 요금 산출)</span></h2>
   <div style="font-size:12px; color:#666; margin-bottom:10px; padding:7px 11px; background:var(--ivory); border-radius:6px; display:inline-block;">
     🏭 출발지: <strong style="color:var(--navy);">인천 신항</strong> <span style="font-size:11px; color:#888;">(인천광역시 연수구, 37.3825 / 126.6356 — 고정)</span>
   </div>
@@ -1368,7 +1352,7 @@
 
 <!-- Phase F §12: 청구서 발행 (PDF — 영세율/10%/예치금 분리) -->
 <div class="section hidden" id="invoiceIssueSection">
-  <h2>📄 12. 청구서 발행 <span class="small-dim">(고객 발송용 · 영세율/10% 분리 · 5원칙 데이터 저장)</span></h2>
+  <h2>📄 9. 청구서 발행 <span class="small-dim">(고객 발송용 · 영세율/10% 분리 · 5원칙 데이터 저장)</span><span style="font-size:11px; margin-left:8px; padding:2px 8px; border-radius:10px; background:#fff3d6; color:#1B2A3B; font-weight:600; vertical-align:middle;">★ 트리거2 카톡/이메일</span></h2>
   <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
     <div>
       <label style="font-size:11px; color:#666; display:block;">
@@ -1490,6 +1474,17 @@
   </div>
 </div>
 
+<!-- [Phase L-v3] 배송요금 카드 placeholder (택배/화물/밀크런 — 요금 산출은 2단계). reparent로 운임 다음 배치 -->
+<!-- [L-v4c] 배송요금 3카드 섹션 삭제 (운임 계산기가 선택 배송방식 운임만 표시) -->
+
+<!-- [Phase L-v3] 통관 진행사항 placeholder (UNIPASS 연동 3단계) -->
+<div class="section hidden" id="customsProgressSection">
+  <h2>🛃 통관 진행사항 <span class="small-dim">(UNIPASS 연동 — 3단계 · BL 입력 전 대기)</span></h2>
+  <div style="border:1px dashed #ccc; border-radius:10px; padding:24px; text-align:center; color:#999; background:#fafafa;">
+    🛃 통관 진행 상태 표시 — <strong>준비 중</strong> (3단계 UNIPASS API 연동에서 구현)
+  </div>
+</div>
+
 <!-- v3.2.0: ═══ 8. 배차/발송 ═══ (★ 트리거 4 — 입금 확인 → 유니패스 보세창고 → 배차/발송 정보 → 직원·기사) -->
 <div class="phase-header hidden" data-phase-group>
   <span class="phase-num">8</span><span class="phase-name">배차/발송 — 입금 매칭 → 보세창고(유니패스) → 배차 정보</span>
@@ -1498,7 +1493,7 @@
 
 <!-- Phase F4: 입금 매칭 (수동) — 오픈뱅킹 API 발급 후 자동 매칭 -->
 <div class="section hidden" id="paymentMatchSection">
-  <h2>💰 13. 입금 매칭 (수동) <span class="small-dim">(오픈뱅킹 API 발급 후 자동)</span></h2>
+  <h2>💰 입금 매칭 (수동) <span class="small-dim">(오픈뱅킹 API 발급 후 자동)</span></h2>
   <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px;">
     <div>
       <label style="font-size:11px; color:#666; display:block;">입금자명</label>
@@ -1515,7 +1510,7 @@
 
 <!-- v3.2.0 Phase 7 (2026-05-30): §15 유니패스 API + 배차/발송 정보 (★ 트리거 4) -->
 <div class="section hidden" id="unipassBondedSection" style="background:#f0f7ff; border:2px solid #1B5E9A;">
-  <h2>🚛 15. 배차/발송 정보 <span class="small-dim">(유니패스 보세창고 → 기사님 배차)</span></h2>
+  <h2>🚛 배차 / 발송 정보 <span class="small-dim">(유니패스 보세창고 → 기사님 배차)</span><span style="font-size:11px; margin-left:8px; padding:2px 8px; border-radius:10px; background:#ffe3e3; color:#1B2A3B; font-weight:600; vertical-align:middle;">★ 트리거4 직원·기사</span></h2>
   <div class="warn-banner" style="background:#fff8e1;">
     💡 BL번호 또는 화물관리번호로 유니패스 보세구역 반출신고 정보 조회 → <strong>"보세운송 반입"</strong> 행의 장치장 = 기사님 출발지 (★ 트리거 4)
   </div>
@@ -1580,7 +1575,7 @@
 
 <!-- Phase C-C2: 최종 확인 — 5단계 발행 영역 -->
 <div class="section hidden" id="finalConfirmSection" style="border:2px solid #1B2A3B;">
-  <h2>🏁 5단계 최종 확인 — 발행</h2>
+  <h2>🏁 최종 확인 · 관세사 다운로드</h2>
   <div id="finalConfirmBody"></div>
 </div>
 
@@ -2051,16 +2046,16 @@ const I18N = {
 
     'lang.ko': '한국어', 'lang.zh': '中文', 'lang.en': 'English',
 
-    'section.shipment': '1. 사서함 불러오기',
+    'section.shipment': '사서함 불러오기',
     'section.rates': '2. 환율 입력 / 자동 조회',
-    'section.products': '3. 상품 정보 입력',
-    'section.cost': '4. 강하고 작업비',
+    'section.products': '1. 상품 정보 입력',
+    'section.cost': '2. 강하고 작업비',
     'section.cost.sub': '(중국 작업 — 제품별 할당 가능)',
-    'section.box': '5. 박스 관리',
+    'section.box': '3. 박스 관리',
     'section.box.sub': '(상품의 박스번호 입력 → 박스 자동 생성)',
-    'section.overhead': '6. 부대비용',
+    'section.overhead': '8. 부대비용',
     'section.overhead.sub': '(한국 통관/배송 — 전체 적용)',
-    'section.preview': '7. 인보이스 미리보기',
+    'section.preview': '인보이스 미리보기',
     'section.preview.sub': '(자동 분배 계산)',
     'section.summary': '8. 환산 요약',
 
@@ -2181,9 +2176,9 @@ const I18N = {
     'msg.modified': '변경:',
     'msg.modified_suffix': '건 (저장 안 됨)',
 
-    'section.tariff': '8. 예상 관부가세',
+    'section.tariff': '예상 관부가세',
     'section.tariff.sub': '(시나리오 비교 — 어떤 FTA가 유리한지)',
-    'section.summary': '9. 총 청구 요약 (예상)',
+    'section.summary': '청구 요약',
     'tip.tariff': '💡 <strong>관세</strong> = 인보이스 신고가 KRW × 세율(%). <strong>부가세</strong> = (인보이스 + 관세) × 10%. 가장 적은 시나리오에 ⭐ 표시.',
     'tariff.scenario.base': '기본세율',
     'tariff.scenario.kc': '한중 FTA 적용',
@@ -2214,7 +2209,7 @@ const I18N = {
     'ship.parcel': '택배',
     'oh.co.issue': '발급',
 
-    'section.customer': '2.5 고객 정보',
+    'section.customer': '고객 정보',
     'section.customer.sub': '(배송/통관용 — 사서함별 자동 저장)',
     'tip.customer': '💡 사서함별로 한 번만 입력하면 자동 저장되어 다음 사용 시 불러옵니다. 인보이스/배송 라벨/원산지증명서에 활용.',
     'cust.name': '회원명',
@@ -3547,50 +3542,70 @@ function toastError(msg, opts)   { return toast(msg, Object.assign({ type: 'erro
 function toastInfo(msg, opts)    { return toast(msg, Object.assign({ type: 'info'    }, opts || {})); }
 
 // ========== 초기 로드 ==========
-// [Phase L] 데스크톱 2단 레이아웃 — 섹션을 좌(입력)/우(결과) 컬럼으로 재배치.
-//   ★ 순수 레이아웃: 섹션 노드를 통째로 reparent(자식·ID·이벤트리스너 보존). 섹션 내부/핸들러/로직 0 변경.
-//   모든 normalMode 직속 자식을 top/left/right/bottom 버킷으로 분류해 1회 재구성(노드 유실 없음).
-//   실패해도 try/catch로 원래 레이아웃 유지(업무 로직 무영향).
-function applyTwoColumnLayout() {
+// [Phase L-v2] 상단 짝 2줄(동일 폭·높이) + 이하 풀폭. 순수 레이아웃 — 섹션 노드 reparent(자식·ID·리스너 보존).
+//   줄1: [적용환율(ratesSection) | 예상 관부가세(tariffSection §8)]
+//   줄2: [고객 정보(customerSection) | 청구 요약(summarySection §9)]
+//   §8·§9를 원위치에서 상단으로 노드 이동. 그 외 모든 섹션은 풀폭 단일 컬럼(원래대로). 실패 시 try/catch로 원복.
+function applyTopPairedLayout() {
   try {
     const nm = document.getElementById('normalMode');
-    if (!nm || nm.dataset.twoCol === '1') return;
-    const LEFT = ['ratesSection', 'customerSection', 'productsSection', 'costSection', 'boxSection',
-                  'shippingResponseSection', 'overheadSection', 'shippingCalcSection', 'parcelInfoSection'];
-    const RIGHT = ['tariffSection', 'invoicePreviewSection', 'summarySection', 'invoiceIssueSection'];
-    const isManaged = (el) => LEFT.includes(el.id) || RIGHT.includes(el.id);
-    const kids = Array.from(nm.children);
-    const lastManagedIdx = kids.reduce((acc, el, i) => isManaged(el) ? i : acc, -1);
-    if (lastManagedIdx < 0) return;   // 관리 대상 없음 — 미적용
-    const left = document.createElement('div'); left.className = 'layout-col'; left.id = 'layoutLeft';
-    const right = document.createElement('div'); right.className = 'layout-col'; right.id = 'layoutRight';
-    const wrap = document.createElement('div'); wrap.id = 'layoutWrap'; wrap.appendChild(left); wrap.appendChild(right);
-    const top = document.createDocumentFragment();
-    const bottom = document.createDocumentFragment();
-    // 비관리 자식: 마지막 관리 섹션 이전이면 top, 이후면 bottom (모달·로그·gate 등 그대로 보존)
-    kids.forEach((el, i) => {
-      if (isManaged(el)) return;
-      (i < lastManagedIdx ? top : bottom).appendChild(el);
-    });
-    // 관리 섹션: 지정 순서대로 좌/우 컬럼에 배치 (노드 이동 — 자식·리스너 보존)
-    LEFT.forEach(id => { const el = document.getElementById(id); if (el && el.parentNode === nm) left.appendChild(el); });
-    RIGHT.forEach(id => { const el = document.getElementById(id); if (el && el.parentNode === nm) right.appendChild(el); });
-    // 원자적 재구성: top → 2단 wrap → bottom
-    nm.appendChild(top);
-    nm.appendChild(wrap);
-    nm.appendChild(bottom);
-    nm.dataset.twoCol = '1';
-    document.body.classList.add('two-col-active');
+    if (!nm || nm.dataset.pairLayout === '1') return;
+    const rates = document.getElementById('ratesSection');
+    const tariff = document.getElementById('tariffSection');
+    const cust = document.getElementById('customerSection');
+    const summary = document.getElementById('summarySection');
+    if (!rates || !tariff || !cust || !summary) return;
+    if (rates.parentNode !== nm) return;   // 예상 구조 아니면 미적용(안전)
+    const mkRow = (a, b) => { const r = document.createElement('div'); r.className = 'pair-row'; r.appendChild(a); r.appendChild(b); return r; };
+    const marker = document.createComment('pair-anchor');
+    nm.insertBefore(marker, rates);           // ratesSection 원위치 표시
+    const row1 = mkRow(rates, tariff);        // ratesSection·tariffSection을 row1로 이동
+    const row2 = mkRow(cust, summary);        // customerSection·summarySection을 row2로 이동
+    nm.insertBefore(row1, marker);
+    nm.insertBefore(row2, marker);
+    marker.remove();
+    // [Phase L-v4] 통관 진행사항 → 최상단(짝 2줄보다 위) 풀폭 상태 패널. 무번호.
+    const customs = document.getElementById('customsProgressSection');
+    if (customs) nm.insertBefore(customs, row1);
+    // [Phase L-v4] 본문(풀폭) 재배치 — 배송 블록: 운임 → 배송요금 3카드 → 배송방식 selector(선적서 추출) → 배송정보 → 선적(포워딩·BL·CO).
+    //   shipMethodSelectorBox = shippingResponseSection 내부 div 추출 이동(배송방식 selector 1개로 dedupe).
+    const BODY = ['productsSection','costSection','boxSection',
+                  'shipMethodSelectorBox','shippingCalcSection','parcelInfoSection',
+                  'shippingResponseSection','overheadSection','invoicePreviewSection','invoiceIssueSection'];
+    let ref = row2;
+    BODY.forEach(id => { const el = document.getElementById(id); if (el) { ref.after(el); ref = el; } });
+    // [L-v4 보정] 테이프 색상 게이트 → 본문 맨 앞(상품 위). 무번호. (노드 이동 — 자식·ID·리스너 보존)
+    const tapeBox = document.getElementById('tapeColorBox');
+    const tapeNotice = document.getElementById('tapeColorNotice');
+    const prodSec = document.getElementById('productsSection');
+    if (tapeBox && prodSec) { prodSec.before(tapeBox); if (tapeNotice) tapeBox.after(tapeNotice); }
+    // [L-v4d] 유니패스 배차/발송(★트리거4) → §6(parcelInfo) 운임 밑으로 통합. 노드 이동(ID·리스너 보존), 빈 wrapper 제거.
+    const uniSec = document.getElementById('unipassBondedSection');
+    const parcelSec = document.getElementById('parcelInfoSection');
+    if (uniSec && parcelSec) {
+      const uniH2 = uniSec.querySelector('h2');
+      const parcelH2 = parcelSec.querySelector('h2');
+      const t4badge = uniH2 && uniH2.querySelector('span[style*="ffe3e3"]');   // ★트리거4 배지 → §6 헤더로 이전
+      if (t4badge && parcelH2) parcelH2.appendChild(t4badge);
+      const wrap = document.createElement('div');                              // 화물 노출 게이트용 wrap
+      wrap.id = 'unipassMergedWrap';
+      wrap.style.display = 'none';
+      [...uniSec.children].forEach(ch => { if (ch !== uniH2) wrap.appendChild(ch); });
+      parcelSec.appendChild(wrap);
+      uniSec.remove();
+    }
+    nm.dataset.pairLayout = '1';
+    document.body.classList.add('pair-layout-active');
   } catch (e) {
-    console.warn('[Phase L] 2단 레이아웃 적용 실패(레이아웃만 영향, 업무로직 무관):', e.message);
+    console.warn('[Phase L-v2] 상단 짝 레이아웃 적용 실패(레이아웃만 영향, 업무로직 무관):', e.message);
   }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
   // i18n 적용
   applyTranslations();
-  // [Phase L] 데스크톱 2단 레이아웃 적용 (섹션 reparent — 정적 HTML/핸들러 불변)
-  applyTwoColumnLayout();
+  // [Phase L-v2] 상단 짝 2줄 레이아웃 (섹션 reparent — 핸들러/로직 불변)
+  applyTopPairedLayout();
 
   // v3.2.16: 관세청 세율표(kanghago_tariff.js) 로드 검증
   if (window.KANGHAGO_TARIFF && typeof window.KANGHAGO_TARIFF === 'object') {
@@ -3624,8 +3639,11 @@ window.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('pat').value) loadShipmentList();
   });
   // 작업2: 시작 시 UNI-PASS 실 환율 silent fetch (실패해도 Mock 그대로)
+  // [환율 수정] 기준일(입항일/오늘) 주차로 조회 — 사서함 미로드 시 오늘 잠정+예상.
   if (typeof fetchOfficialRatesFromAPI === 'function') {
-    fetchOfficialRatesFromAPI(false).then(r => {
+    const _b = (typeof getRateBasisInfo === 'function') ? getRateBasisInfo() : { date: '', estimate: true };
+    _rateBasisDate = _b.date; _rateEstimate = _b.estimate;
+    fetchOfficialRatesFromAPI(false, _b.date).then(r => {
       if (r && typeof renderOfficialRates === 'function') renderOfficialRates();
     });
   }
@@ -4019,6 +4037,7 @@ async function loadShipment() {
     // v3.2.2 (2026-05-30): 섹션 재배치 — §11 운임계산기를 §6 부대비용 앞으로 (사장님 요구).
     //   사유: 운임 계산이 부대비용 "국내 운임"에 반영되므로 운임이 먼저 와야 흐름이 맞음 (v3.2.1 동기화 버그 fix와 연동).
     try {
+      if (document.getElementById('normalMode')?.dataset.pairLayout === '1') throw 0;  // [v3] 본문 재배치가 순서 관리 — swap skip
       const sec11 = document.getElementById('shippingCalcSection');
       const sec6 = document.getElementById('overheadSection');
       if (sec11 && sec6 && sec11.parentNode === sec6.parentNode) {
@@ -4037,8 +4056,7 @@ async function loadShipment() {
     if (sc12) sc12.classList.remove('hidden');                                    // Phase F §12: 청구서 발행
     const sc13 = document.getElementById('paymentMatchSection');
     if (sc13) sc13.classList.remove('hidden');                                    // Phase F4 §13: 입금 매칭
-    const sc15 = document.getElementById('unipassBondedSection');
-    if (sc15) sc15.classList.remove('hidden');                                    // v3.2.0 Phase 7 §15: 유니패스 배차
+    // [L-v4d] 유니패스 배차/발송은 §6(parcelInfo)로 통합 — 별도 unhide 불필요(applyShipMethodVisibility가 §6 표시)
     // v2.9.14: 통합 적용환율 카드 표시 + 고시환율 정보 채우기
     document.getElementById('ratesSection').classList.remove('hidden');
     renderOfficialRates();
@@ -4047,6 +4065,8 @@ async function loadShipment() {
     document.getElementById('costSection').classList.remove('hidden');
     document.getElementById('boxSection').classList.remove('hidden');
     document.getElementById('overheadSection').classList.remove('hidden');
+    // [Phase L-v3] 신규 placeholder 섹션 표시 ([L-v4c] deliveryFeeCards 삭제)
+    document.getElementById('customsProgressSection')?.classList.remove('hidden');
     document.getElementById('invoicePreviewSection').classList.remove('hidden');
     document.getElementById('tariffSection').classList.remove('hidden');
     document.getElementById('summarySection').classList.remove('hidden');
@@ -4088,18 +4108,21 @@ async function loadShipment() {
     // P0-A: loadCustomer 뒤로 이동 — §10 응답 수취정보 카드가 state.customer 필요
     fillBLAndCustomerResponse();
 
-    // 환율: 사서함 로드 시 항상 현재 주차 관세청 실시간 환율로 우측 자동 세팅
-    // (과거 데이터 보존 불필요 — 열 때마다 실시간. [고시환율로 갱신] 버튼은 수동 재갱신용 유지)
-    const live = await fetchOfficialRatesFromAPI(false);
+    // [환율 수정] 환율 = 입항일(수입신고일) 주차 과세환율로 자동 세팅 (관세법 제18조).
+    //   ?date=입항일 조회 — 작성일(오늘) 주차 아님. 입항일 미정 시 오늘 잠정+예상. 전주 추가차감 없음.
+    const _basis = getRateBasisInfo();
+    _rateBasisDate = _basis.date; _rateEstimate = _basis.estimate;
+    const live = await fetchOfficialRatesFromAPI(false, _basis.date);
     if (live && live.rates && live.rates.USD > 0) {
-      refreshOfficialRates(true);  // 좌측+우측 모두 실시간으로 강제 덮어쓰기 (캐시 이미 있어 빠름)
-      log(`✓ 관세청 실시간 환율 자동 적용: USD ${live.rates.USD} · CNY ${live.rates.CNY}`, 'ok');
+      refreshOfficialRates(true, _basis.date);  // 입항일 주차로 강제 세팅 (캐시 있어 빠름)
+      log(`✓ 과세환율 자동 적용(입항일 ${_basis.date} 주차): USD ${live.rates.USD} · CNY ${live.rates.CNY}${_basis.estimate ? ' · 입항일 미정 잠정' : ''}`, 'ok');
     } else {
       // 실시간 실패 → 좌측만 갱신, 우측은 저장값 유지(빈 칸이면 폴백)
       renderOfficialRates();
       const needsAutoFetch = !document.getElementById('rateCnyUsd').value || !document.getElementById('rateUsdKrw').value;
-      if (needsAutoFetch) { log('실시간 환율 실패 — 빈 칸 폴백 채움', 'warn'); refreshOfficialRates(false); }
-      else log('실시간 환율 실패 — 저장 환율 유지', 'dim');
+      if (needsAutoFetch) { log('과세환율 실시간 실패 — 빈 칸 폴백 채움', 'warn'); refreshOfficialRates(false, _basis.date); }
+      else log('과세환율 실시간 실패 — 저장 환율 유지', 'dim');
+      updateRateBasisLabel();
     }
 
     // v2.9.2: 학습 데이터 자동 매칭 (관세사 확정 데이터 누적 적용)
@@ -5554,12 +5577,12 @@ function boxInputsEnabled() {
 // 색상 미선택 시 박스 입력(개수=박스번호, 치수=kg/cm) 차단 + 안내. 선택 시 활성화.
 function applyBoxInputLock() {
   const enabled = boxInputsEnabled();
-  // 박스 치수 (§5 boxTable) — cbm은 항상 readonly(자동)이라 제외
+  // 박스 치수 (§ boxTable) — cbm은 항상 readonly(자동)이라 제외
   document.querySelectorAll('#boxBody input[data-box]:not([data-field="cbm"]), #boxBody select[data-box]').forEach(el => { el.disabled = !enabled; });
-  // 박스번호 = 박스 개수 생성 (§3 제품행 + 그룹헤더) — 색상 전 생성 차단
-  document.querySelectorAll('input[data-field="박스번호"], .grp-box-input').forEach(el => {
+  // [L-v4 보정] 테이프 미선택 시 상품 입력칸(§1 productsBody) + 박스번호/그룹 박스 입력 전부 잠금 (단일 게이트).
+  document.querySelectorAll('#productsBody input, #productsBody select, #productsBody textarea, input[data-field="박스번호"], .grp-box-input').forEach(el => {
     el.disabled = !enabled;
-    if (!enabled) { el.dataset._title = el.title || ''; el.title = '테이프 색상을 먼저 선택하세요'; el.style.opacity = '0.5'; }
+    if (!enabled) { if (el.dataset._title == null) el.dataset._title = el.title || ''; el.title = '테이프 색상을 먼저 선택하세요'; el.style.opacity = '0.5'; }
     else { if (el.dataset._title != null) el.title = el.dataset._title; el.style.opacity = ''; }
   });
   const notice = document.getElementById('tapeColorNotice');
@@ -6671,11 +6694,15 @@ function renderOverhead() {
   dateRow.querySelector('#seaShipDate').addEventListener('change', (e) => {
     state.shipDateOverride = e.target.value || '';
     state.arrivalDateOverride = '';   // 선적일 바뀌면 입항일 자동(+1)으로 재계산
+    // [환율 수정] 입항일(선적+1) 주차로 과세환율 자동 재조회·재세팅 → recalc/관부가세/인보이스 갱신
+    refreshOfficialRates(true).then(() => { renderOverhead(); refreshAll(); });
     renderOverhead();
     refreshAll();
   });
   dateRow.querySelector('#seaArrivalDate').addEventListener('change', (e) => {
     state.arrivalDateOverride = e.target.value || '';   // 입항일만 따로 수정(특별한 경우)
+    // [환율 수정] 변경 입항일 주차로 과세환율 자동 재조회·재세팅
+    refreshOfficialRates(true).then(() => { renderOverhead(); });
     renderOverhead();
   });
 
@@ -8345,13 +8372,18 @@ const MOCK_OFFICIAL_RATES = {
 
 // 작업2: UNI-PASS 실 환율 캐시 (성공 시 Mock 대신 사용)
 let _officialRatesCache = null;
+// [환율 수정] 과세환율 기준일(입항일=수입신고일 주차) 상태 + 예상(잠정) 플래그
+let _rateBasisDate = '';
+let _rateEstimate = false;
 const UNIPASS_API_URL = 'https://kanghago-pages.vercel.app/api/exchange-rate';
 
 // 작업2: UNI-PASS 실 API 호출 (sessionStorage 24시간 캐시, 실패 시 null 반환 → Mock 폴백)
-async function fetchOfficialRatesFromAPI(force) {
+async function fetchOfficialRatesFromAPI(force, dateStr) {
+  // [환율 수정] dateStr = 입항일(수입신고일) — 주차별 분리 캐시 + ?date= 전달. 없으면 서버가 이번주.
+  const cacheKey = 'kanghago_official_rates' + (dateStr ? ('_' + dateStr) : '');
   try {
     if (!force) {
-      const raw = sessionStorage.getItem('kanghago_official_rates');
+      const raw = sessionStorage.getItem(cacheKey);
       if (raw) {
         const obj = JSON.parse(raw);
         // 24시간 + 유효 환율(USD>0)인 캐시만 재사용 — 옛 잘못된 0 데이터 무시
@@ -8362,7 +8394,10 @@ async function fetchOfficialRatesFromAPI(force) {
         }
       }
     }
-    const url = UNIPASS_API_URL + (force ? '?force=1' : '');
+    const _params = [];
+    if (force) _params.push('force=1');
+    if (dateStr) _params.push('date=' + encodeURIComponent(dateStr));
+    const url = UNIPASS_API_URL + (_params.length ? ('?' + _params.join('&')) : '');
     const r = await fetch(url);
     const data = await r.json();
     if (!r.ok || data.error || !(data.rates && data.rates.USD > 0)) {
@@ -8371,7 +8406,7 @@ async function fetchOfficialRatesFromAPI(force) {
       return null;
     }
     data._fetchedAt = Date.now();
-    sessionStorage.setItem('kanghago_official_rates', JSON.stringify(data));
+    sessionStorage.setItem(cacheKey, JSON.stringify(data));
     _officialRatesCache = data;
     return data;
   } catch (e) {
@@ -8383,6 +8418,28 @@ async function fetchOfficialRatesFromAPI(force) {
 function getOfficialRates() {
   // 실 API 캐시 있으면 그것을, 없으면 Mock
   return _officialRatesCache || MOCK_OFFICIAL_RATES;
+}
+
+// [환율 수정] 과세환율 기준일 = 입항일(수입신고일)이 속한 주차 (관세법 제18조).
+//   입항일 = getArrivalDate()(선적+1 또는 override). 미확정(선적일 없음) 시 오늘로 잠정 + estimate.
+function getRateBasisInfo() {
+  let arrival = '';
+  try { arrival = (typeof getArrivalDate === 'function') ? getArrivalDate() : ''; } catch (e) {}
+  if (arrival) return { date: arrival, estimate: false };
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return { date: `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`, estimate: true };
+}
+
+// [환율 수정] 기준일 라벨 갱신 — "예상" 명기(확정은 관세사 수입신고 시).
+function updateRateBasisLabel() {
+  const el = document.getElementById('rateBasisNote');
+  if (!el) return;
+  const d = _rateBasisDate ? _rateBasisDate.replace(/-/g, '.') : '-';
+  el.innerHTML = `기준일 <strong style="color:#1B2A3B;">${d}</strong> `
+    + `<span style="color:#888;">(입항일=수입신고일 주차)</span>`
+    + (_rateEstimate ? ` <span style="color:#c0392b; font-weight:700;">· 입항일 미정 — 오늘 기준 잠정</span>` : '')
+    + ` <span style="color:#C9973A;">· 예상 — 확정 과세환율은 관세사가 수입신고 시 결정</span>`;
 }
 
 function renderOfficialRates() {
@@ -8407,11 +8464,18 @@ function renderOfficialRates() {
     if (_officialRatesCache) { badge.textContent = '✅ 관세청 실시간'; badge.style.background = '#0a7b40'; }
     else { badge.textContent = '🔧 Mock (인증키/응답 대기)'; badge.style.background = '#C9973A'; }
   }
+  updateRateBasisLabel();
 }
 
-async function refreshOfficialRates(forceOverwrite) {
-  // 작업2: UNI-PASS 실 API 호출 (force 클릭 시 캐시 무시)
-  await fetchOfficialRatesFromAPI(!!forceOverwrite);
+async function refreshOfficialRates(forceOverwrite, dateStrArg) {
+  // [환율 수정] 과세환율 기준일 = 입항일(수입신고일) 주차 (관세법 제18조).
+  //   명시 dateStr 없으면 입항일/오늘 도출. 입항일 주차 고시값 그대로(전주 추가차감 금지 — 관세청 반영분).
+  const _b = getRateBasisInfo();
+  const basisDate = (dateStrArg === undefined) ? _b.date : dateStrArg;
+  // estimate(예상·잠정): 도출 기준일과 같으면 그 값, 명시 특수일이면 확정 간주 — 호출자 상태와 무관하게 자기완결.
+  _rateEstimate = (basisDate === _b.date) ? _b.estimate : false;
+  _rateBasisDate = basisDate;
+  await fetchOfficialRatesFromAPI(!!forceOverwrite, basisDate);
   const now = new Date();
   const pad = n => String(n).padStart(2, '0');
   // 실 API 캐시 실패 → Mock 시간만 갱신
@@ -8423,13 +8487,15 @@ async function refreshOfficialRates(forceOverwrite) {
   // 사서함 적용환율 칸에 채움 (forceOverwrite=true면 덮어쓰기, false면 빈 칸만)
   // 작업2: 실 API 캐시 우선 → 없으면 Mock
   const r = getOfficialRates().rates;
+  const haveLive = !!_officialRatesCache;   // [환율 수정] LIVE 캐시 있을 때만 덮어쓰기 허용
   const usdKrw = r.USD;
   const cnyKrw = r.CNY;
   const cnyUsd = r.CNY / r.USD;
   const setRate = (id, val, decimals) => {
     const inp = document.getElementById(id);
     if (!inp) return;
-    if (forceOverwrite || !inp.value) inp.value = (+val).toFixed(decimals);
+    // 덮어쓰기: LIVE 데이터 + force일 때만(엉뚱한 주차 Mock이 저장/입력값 훼손 방지). 빈 칸은 항상 채움.
+    if ((forceOverwrite && haveLive) || !inp.value) inp.value = (+val).toFixed(decimals);
   };
   setRate('rateUsdKrw', usdKrw, 2);
   setRate('rateCnyKrw', cnyKrw, 2);
@@ -13520,6 +13586,10 @@ function renderParcelInfoSection() {
   const boxes = state.boxes || {};
   const boxNums = Object.keys(boxes).sort((a, b) => parseInt(a) - parseInt(b));
 
+  // [L-v4d] 유니패스 배차/발송 통합 블록 — 화물·밀크런일 때만 노출(택배=운송장 그대로)
+  const uniWrap = document.getElementById('unipassMergedWrap');
+  if (uniWrap) uniWrap.style.display = (method === '화물' || method === '밀크런') ? '' : 'none';
+
   if (method === '택배') {
     if (sub) sub.textContent = `(택배 — 박스 ${boxNums.length}개 각 송장번호 입력)`;
     if (boxNums.length === 0) {
@@ -13595,6 +13665,7 @@ function renderParcelInfoSection() {
         </div>
       </div>
     `;
+    body.innerHTML += dispatchFormHtml();   // [L-v4 §6] 밀크런 배차/발송 폼(임시 — 화물과 동일)
   } else if (method === '화물') {
     if (sub) sub.textContent = '(화물 — 운임 계산기 §11 참조)';
     const ship = state._shippingLatest || {};
@@ -13622,6 +13693,7 @@ function renderParcelInfoSection() {
         </div>` : `<div style="padding:12px; background:#fff; border-radius:6px; color:#888;">§11에서 [견적 계산] 클릭 후 표시</div>`}
       </div>
     `;
+    body.innerHTML += dispatchFormHtml();   // [L-v4 §6] 화물 배차/발송 폼(고객 전달용)
   } else {
     if (sub) sub.textContent = '(배송방식 미선택 — §10에서 선택)';
     body.innerHTML = `<div style="padding:14px; color:#888; font-size:13px;">사서함 배송방식이 미선택입니다. §10에서 <strong>택배 / 화물 / 밀크런</strong> 중 하나를 선택해주세요.</div>`;
@@ -13633,6 +13705,44 @@ function onBoxTrackingInput(inp) {
   const bn = inp.dataset.parcelBox;
   if (!state.boxes[bn]) state.boxes[bn] = { num: bn, products: [] };
   state.boxes[bn].송장번호 = inp.value;
+}
+
+// [L-v4 §6] 배차/발송 정보 — 화물·밀크런 고객 전달용. ★폼/state(세션)에만 보존. 문서·전달·Airtable 미포함.
+function _dispatchData() {
+  if (!state.dispatchInfo) state.dispatchInfo = {};
+  const id = (state.shipment && state.shipment.id) ? state.shipment.id : '_';
+  if (!state.dispatchInfo[id]) state.dispatchInfo[id] = {};
+  return state.dispatchInfo[id];
+}
+function onDispatchInput(field, el) {
+  _dispatchData()[field] = el.value;
+}
+function dispatchFormHtml() {
+  const dd = _dispatchData();
+  const v = k => escAttr(dd[k] || '');
+  const fld = (label, key, ph, type) => `
+    <div>
+      <label style="font-size:11px; color:#666; display:block; margin-bottom:3px;">${label}</label>
+      <input type="${type || 'text'}" value="${v(key)}" placeholder="${ph || ''}" oninput="onDispatchInput('${key}', this)"
+             style="width:100%; padding:7px 9px; border:1px solid #ccc; border-radius:5px; font-size:13px; box-sizing:border-box;" />
+    </div>`;
+  return `
+    <div style="margin-top:14px; padding:14px 16px; background:#fff; border:1px solid #f0c860; border-radius:8px;">
+      <div style="font-size:13px; font-weight:700; color:var(--navy); margin-bottom:10px;">🚛 배차/발송 정보 <span style="font-size:11px; color:#888; font-weight:400;">(고객 전달용 · 입력값은 현재 세션 보존 — 문서·전달 기능은 다음 단계)</span></div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px 14px;">
+        ${fld('운송사명', 'carrier', '예: 대한통운 화물')}
+        ${fld('기사 성함', 'driverName', '홍길동')}
+        ${fld('기사 연락처', 'driverPhone', '010-0000-0000', 'tel')}
+        ${fld('차량번호', 'vehicleNo', '12가3456')}
+        ${fld('배차일', 'dispatchDate', '', 'date')}
+        ${fld('보세창고 (픽업지)', 'pickupWarehouse', '예: 인천 ○○보세창고')}
+      </div>
+      <div style="margin-top:10px;">
+        <label style="font-size:11px; color:#666; display:block; margin-bottom:3px;">발송 메모</label>
+        <textarea oninput="onDispatchInput('memo', this)" placeholder="특이사항·전달 메모" rows="2"
+                  style="width:100%; padding:7px 9px; border:1px solid #ccc; border-radius:5px; font-size:13px; box-sizing:border-box; resize:vertical;">${v('memo')}</textarea>
+      </div>
+    </div>`;
 }
 
 // Orders(들)에서 수취인주소 추출 → §11 도착지 input 채움 + 자동 길찾기

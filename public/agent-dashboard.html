@@ -39,9 +39,28 @@
   <h1>🛃 강하고 관세사 대시보드</h1>
   <div>
     <span class="me" id="meLabel">로딩 중...</span>
+    <button onclick="openAgentBooking()" style="background:#e8f7ef; color:#1B2A3B; border:1px solid #2BB673; border-radius:6px; padding:6px 12px; cursor:pointer;">📦 선적일별 부킹 요약</button>
     <button onclick="logout()">로그아웃</button>
   </div>
 </header>
+
+<!-- [부킹 요약] 관세사 조회 전용 모달 (서버 op=booking_summary 경유 — PAT 브라우저 노출 0) -->
+<div id="agentBookingModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.7); z-index:9999; padding:20px; overflow-y:auto;">
+  <div style="max-width:860px; margin:40px auto; background:#fff; border-radius:10px; padding:20px 24px; box-shadow:0 12px 40px rgba(0,0,0,0.4);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="margin:0; font-size:17px; color:#1B2A3B;">📦 선적일별 부킹 요약 <span style="font-size:11px; color:#888; font-weight:400;">(조회 전용)</span></h3>
+      <button onclick="document.getElementById('agentBookingModal').style.display='none'" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888;">×</button>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+      <input type="date" id="agentBookingDate" style="padding:7px 10px; border:1px solid #ccc; border-radius:6px;" />
+      <button onclick="fetchAgentBooking('single')" style="padding:8px 14px; font-size:13px; background:#1B5E9A; color:#fff; border:none; border-radius:6px; cursor:pointer;">📅 그날만 조회</button>
+      <button onclick="fetchAgentBooking('range7')" style="padding:8px 14px; font-size:13px; background:#eef5ff; color:#1B2A3B; border:1px solid #1B5E9A; border-radius:6px; cursor:pointer;">📆 오늘~+7일</button>
+      <button onclick="copyAgentBooking()" id="agentBookingCopyBtn" style="padding:8px 14px; font-size:13px; background:#2BB673; color:#fff; border:none; border-radius:6px; cursor:pointer; display:none;">📋 위챗 복사</button>
+      <span id="agentBookingLoading" style="font-size:12px; color:#888;"></span>
+    </div>
+    <div id="agentBookingResult"><div style="padding:18px; text-align:center; color:#999; font-size:13px;">날짜 선택 후 조회하세요.</div></div>
+  </div>
+</div>
 
 <main>
   <div id="error" class="err" style="display:none;"></div>
@@ -179,6 +198,56 @@
     if (!r.ok) { const err = new Error(data.error || ('HTTP ' + r.status)); err.status = r.status; throw err; }
     return data;
   }
+
+  // [부킹 요약] 관세사 조회 전용 (서버 op=booking_summary — PAT 브라우저 노출 0)
+  let agentBookingCopyText = '';
+  window.openAgentBooking = () => {
+    const inp = document.getElementById('agentBookingDate');
+    if (inp && !inp.value) inp.value = new Date().toISOString().slice(0, 10);
+    document.getElementById('agentBookingResult').innerHTML = '<div style="padding:18px; text-align:center; color:#999; font-size:13px;">날짜 선택 후 조회하세요.</div>';
+    document.getElementById('agentBookingCopyBtn').style.display = 'none';
+    document.getElementById('agentBookingModal').style.display = 'block';
+  };
+  function isoDayList(base, n) { const out = []; const d = new Date(base + 'T00:00:00'); for (let i = 0; i < n; i++) { const x = new Date(d); x.setDate(d.getDate() + i); out.push(x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')); } return out; }
+  window.fetchAgentBooking = async (mode) => {
+    const base = document.getElementById('agentBookingDate').value || new Date().toISOString().slice(0, 10);
+    const days = (mode === 'range7') ? isoDayList(base, 8) : [base];
+    const label = (mode === 'range7') ? `${days[0]} ~ ${days[days.length - 1]} (${days.length}일)` : base;
+    const loading = document.getElementById('agentBookingLoading');
+    const box = document.getElementById('agentBookingResult');
+    const copyBtn = document.getElementById('agentBookingCopyBtn');
+    loading.textContent = '⏳ 조회 중...'; box.innerHTML = ''; copyBtn.style.display = 'none';
+    try {
+      const data = await fetchAgent('GET', '?op=booking_summary&days=' + encodeURIComponent(days.join(',')));
+      const rows = data.rows || [];
+      loading.textContent = '';
+      if (!rows.length) { box.innerHTML = `<div style="padding:18px; text-align:center; color:#999; font-size:13px;">📭 <strong>${label}</strong> 선적 예정 사서함 0건</div>`; return; }
+      let kgT = 0, cbmT = 0, ctnT = 0;
+      const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+      const trs = rows.map(r => {
+        kgT += r.kgSum; cbmT += r.cbmSum; ctnT += r.boxCount;
+        const warn = r.missingMeasure ? ' style="background:#fff3e0;"' : '';
+        return `<tr${warn}><td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.shipDate)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.mailbox)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.company || r.member)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${r.boxCount}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${r.kgSum.toFixed(1)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${r.cbmSum.toFixed(5)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${r.isReady ? '✓' : '⚠ 입력대기'}</td></tr>`;
+      }).join('');
+      box.innerHTML = `<div style="font-size:12px;color:#666;margin-bottom:6px;">${esc(label)} · ${rows.length} 사서함</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="background:#1B2A3B;color:#fff;"><th style="padding:7px 8px;text-align:left;">선적일</th><th style="padding:7px 8px;text-align:left;">사서함</th><th style="padding:7px 8px;text-align:left;">고객</th><th style="padding:7px 8px;text-align:right;">박스</th><th style="padding:7px 8px;text-align:right;">무게KG</th><th style="padding:7px 8px;text-align:right;">CBM</th><th style="padding:7px 8px;text-align:center;">상태</th></tr></thead>
+        <tbody>${trs}</tbody>
+        <tfoot><tr style="font-weight:700;background:#f5f5f5;"><td colspan="3" style="padding:8px;text-align:right;">합계</td><td style="padding:8px;text-align:right;">${ctnT}</td><td style="padding:8px;text-align:right;">${kgT.toFixed(1)}</td><td style="padding:8px;text-align:right;">${cbmT.toFixed(5)}</td><td></td></tr></tfoot></table>`;
+      agentBookingCopyText = `[부킹 ${label}]\n` + rows.map(r => `${r.shipDate} ${r.mailbox} ${r.company || r.member} | ${r.boxCount}CTN ${r.kgSum.toFixed(1)}KG ${r.cbmSum.toFixed(5)}CBM${r.isReady ? '' : ' (입력대기)'}`).join('\n') + `\n합계 ${ctnT}CTN ${kgT.toFixed(1)}KG ${cbmT.toFixed(5)}CBM`;
+      copyBtn.style.display = '';
+    } catch (e) { loading.textContent = ''; box.innerHTML = `<div style="padding:18px;text-align:center;color:#c0392b;font-size:13px;">조회 실패: ${e.message || e}</div>`; }
+  };
+  window.copyAgentBooking = async () => {
+    try { await navigator.clipboard.writeText(agentBookingCopyText); const b = document.getElementById('agentBookingCopyBtn'); const t = b.textContent; b.textContent = '✓ 복사됨'; setTimeout(() => b.textContent = t, 1500); }
+    catch (e) { alert('복사 실패 — 수동 선택하세요'); }
+  };
 
   window.setFilter = (f) => {
     filter = f;
