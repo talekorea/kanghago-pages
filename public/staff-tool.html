@@ -1435,6 +1435,10 @@
     <div style="font-size:11px; color:#666; margin-bottom:10px;">상품 매입가(1688 단가CNY) × 1.06 × 환율(CNY→USD). <strong>통관 신고가(§8)·물류비 청구서(KRW)와 별개</strong> — 부대비용 미포함.</div>
     <div style="display:flex; gap:18px; flex-wrap:wrap; align-items:center;">
       <div>
+        <label style="font-size:11px; color:#666; display:block; margin-bottom:2px;">발행일 (PI Date)</label>
+        <input type="date" id="payInvDate" onchange="onPayInvDateChange()" title="PI Date·번호(PI-YYMMDD)에 반영 · 기본 오늘 · 과거 선택 가능" style="font-size:12px; padding:5px 8px; border:1px solid #ccc; border-radius:5px;" />
+      </div>
+      <div>
         <label style="font-size:11px; color:#666; display:block; margin-bottom:2px;">결제수단</label>
         <label style="font-size:12px; margin-right:10px;"><input type="radio" name="payInvMethod" value="bank" checked /> 무역송금(T/T)</label>
         <label style="font-size:12px;"><input type="radio" name="payInvMethod" value="card" /> 카드(Airwallex)</label>
@@ -3612,6 +3616,7 @@ window.addEventListener('DOMContentLoaded', () => {
   applyTranslations();
   // [Phase L-v2] 상단 짝 2줄 레이아웃 (섹션 reparent — 핸들러/로직 불변)
   applyTopPairedLayout();
+  if (typeof initPayInvDate === 'function') initPayInvDate();   // [Feature N] PI 발행일 기본값=오늘(KST)
 
   // v3.2.16: 관세청 세율표(kanghago_tariff.js) 로드 검증
   if (window.KANGHAGO_TARIFF && typeof window.KANGHAGO_TARIFF === 'object') {
@@ -11690,11 +11695,14 @@ function buildPaymentInvoiceData(opts) {
   const serviceFee = feeSeparate ? subtotalBase * (PAYMENT_INVOICE_MARKUP - 1) : 0;
   const subtotal = feeSeparate ? subtotalBase : subtotalBase * PAYMENT_INVOICE_MARKUP;
   const total = subtotal + serviceFee;   // 두 모드 동일 = subtotalBase × 1.06
-  const today = new Date().toISOString().slice(0, 10);
+  // [Feature N] 발행일: 입력값(YYYY-MM-DD) 우선, 없으면 오늘(KST). ★타임존 안전 — 문자열 직접 분해(new Date 파싱 금지).
+  const issueDate = (opts.issueDate && /^\d{4}-\d{2}-\d{2}$/.test(opts.issueDate))
+    ? opts.issueDate
+    : new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);   // 오늘 KST
   const mailbox = sf['사서함'] || 'AP';
-  const yymmdd = today.slice(2).replace(/-/g, '');
+  const yymmdd = issueDate.slice(2).replace(/-/g, '');   // YYMMDD (문자열 분해 — Date 미사용, 전날 밀림 없음)
   return {
-    invoiceNo: `${mailbox}-PI-${yymmdd}`, date: today, rate,
+    invoiceNo: `${mailbox}-PI-${yymmdd}`, date: issueDate, rate,
     issuer: PAYMENT_INVOICE_ISSUER, bank: PAYMENT_INVOICE_BANK,
     customer: {
       company: sf['수취_회사'] || cf['회사명'] || '-',
@@ -11757,12 +11765,23 @@ function renderPaymentInvoiceHTML(d) {
     <div style="margin-top:16px; font-size:10px; color:#999; line-height:1.5;">※ This is a Proforma Invoice for advance payment. Product procurement only (1688). Logistics/customs fees are billed separately.</div>`;
 }
 
+// [Feature N] 발행일 입력 기본값=오늘(KST) 세팅 + 변경 시 열린 미리보기 즉시 갱신.
+function initPayInvDate() {
+  const el = document.getElementById('payInvDate');
+  if (el && !el.value) el.value = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+function onPayInvDateChange() {
+  const modal = document.getElementById('paymentInvoicePreviewModal');
+  if (modal && modal.style.display === 'block') openPaymentInvoicePreview();   // 미리보기 열려있으면 새 날짜로 재렌더
+}
+
 async function downloadPaymentInvoicePdf() {
   if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
   if (typeof html2canvas === 'undefined' || !window.jspdf) { alert('PDF 라이브러리 로드 실패 — 새로고침'); return; }
   const opts = {
     payMethod: (document.querySelector('input[name="payInvMethod"]:checked') || {}).value || 'bank',
     feeSeparate: !!(document.getElementById('payInvFeeSeparate') || {}).checked,
+    issueDate: ((document.getElementById('payInvDate') || {}).value || '').trim(),   // [Feature N] 선택 발행일
   };
   const d = buildPaymentInvoiceData(opts);
   const doc = document.getElementById('paymentInvoiceDoc');
@@ -11798,6 +11817,7 @@ function openPaymentInvoicePreview() {
   const opts = {
     payMethod: (document.querySelector('input[name="payInvMethod"]:checked') || {}).value || 'bank',
     feeSeparate: !!(document.getElementById('payInvFeeSeparate') || {}).checked,
+    issueDate: ((document.getElementById('payInvDate') || {}).value || '').trim(),   // [Feature N] 선택 발행일
   };
   const doc = document.getElementById('paymentInvoiceDoc');
   if (doc) doc.innerHTML = renderPaymentInvoiceHTML(buildPaymentInvoiceData(opts));
