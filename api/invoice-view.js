@@ -122,6 +122,7 @@ module.exports = async (req, res) => {
         shipDate: f['출고요청일'] || '',
         blNo: f['BL번호'] || '',
         forwarder: f['포워딩사'] || '',
+        issueDate: f['청구서발행일시'] || '',
         rateCnyUsd, rateUsdKrw,
       },
       customer: cf ? {

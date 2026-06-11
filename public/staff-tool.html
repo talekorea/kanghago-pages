@@ -1357,6 +1357,10 @@
   <h2>📄 9. 청구서 발행 <span class="small-dim">(고객 발송용 · 영세율/10% 분리 · 5원칙 데이터 저장)</span><span style="font-size:11px; margin-left:8px; padding:2px 8px; border-radius:10px; background:#fff3d6; color:#1B2A3B; font-weight:600; vertical-align:middle;">★ 트리거2 카톡/이메일</span></h2>
   <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
     <div>
+      <label style="font-size:11px; color:#666; display:block;">발행일 (Invoice Date) <span style="color:#999; font-size:10px;">커머셜·청구서 공통 · 기본 오늘</span></label>
+      <input type="date" id="docIssueDate" onchange="onDocIssueDateChange()" title="커머셜 인보이스·청구서 Date·번호(YYMMDD)에 반영 · 과거 선택 가능 · CO 발급 후 변경 주의" style="padding:6px 9px; border:1px solid #ccc; border-radius:5px; font-size:12px;" />
+    </div>
+    <div>
       <label style="font-size:11px; color:#666; display:block;">
         해상운임 (영세율) <span id="seaFreightStatus" style="color:#0a7b40; font-size:10px; font-weight:700;">✓ 자동</span>
       </label>
@@ -9486,13 +9490,19 @@ const INVOICE_ACCOUNT = [
   '1661-5776   master@talekorea.com',
 ];
 
+// [Feature N 확장] 발행일 단일 헬퍼 (PI·CI·INV·파일명 공통). 입력(YYYY-MM-DD) 우선, 없으면 오늘 KST.
+//   ★타임존 안전: 입력 문자열 직접 slice — new Date(str) 파싱 안 함(전날 밀림 방지). 기본 today도 KST 보정.
+function todayKSTStr() { return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); }
+function resolveIssueDate(inputStr) {
+  var v = inputStr && /^\d{4}-\d{2}-\d{2}$/.test(String(inputStr).trim());
+  var date = v ? String(inputStr).trim() : todayKSTStr();
+  return { date: date, yymmdd: date.slice(2).replace(/-/g, '') };
+}
+
 function getInvoiceFilename() {
   const f = (state.shipment && state.shipment.fields) || {};
   const cf = (state.customer && state.customer.fields) || {};
-  const d = new Date();
-  const yymmdd = String(d.getFullYear()).slice(2)
-    + String(d.getMonth() + 1).padStart(2, '0')
-    + String(d.getDate()).padStart(2, '0');
+  const yymmdd = resolveIssueDate((document.getElementById('docIssueDate') || {}).value).yymmdd;   // [Feature N] 문서 발행일 따라감
   const member = cf['회원명'] || f['수취_수취인'] || '회원';
   const mailbox = f['사서함'] || '';
   const company = cf['회사명'] || '';
@@ -9793,13 +9803,17 @@ async function downloadInvoiceExcel(opts) {
     const wb = new ExcelJS.Workbook();
     const cf = (state.customer && state.customer.fields) || {};
     const rateCnyUsd = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
-    const today = new Date().toISOString().slice(0, 10);
-    // v3.2.0 (2026-05-30): 포워딩 prefix ZTK/BTK + 순번 (사장님 결정 — [포워딩코드]-YYMMDD-순번)
-    //   예: ZTK-260415-9 / BTK-260415-9
-    //   순번: Shipments.인보이스순번 (사장님이 일 단위로 관리, 기본 1)
-    const forwarder = (f['포워딩사'] || '').trim();   // 'ZTK' 또는 'BTK' 또는 빈값
+    // [Feature N 확장] 발행일 수동 지정(#docIssueDate) → 커머셜 인보이스 Date·번호. 미선택=오늘 KST.
+    const _issue = resolveIssueDate((document.getElementById('docIssueDate') || {}).value);
+    // ★CO 정합: CO 업로드된 사서함에서 발행일을 오늘과 다르게 지정 시 경고(통관 불일치 리스크). 경고만 — 진행 가능.
+    if (f['CO파일'] && f['CO파일'].length > 0 && _issue.date !== todayKSTStr()) {
+      if (!confirm('⚠ CO(원산지증명)가 업로드된 사서함입니다.\nCO는 커머셜 인보이스 번호·날짜를 참조합니다 — 발행일을 ' + _issue.date + '(오늘 아님)로 발행하면 CO와 불일치(통관 리스크)할 수 있습니다.\n그래도 이 날짜로 발행할까요?')) return;
+    }
+    const today = _issue.date;
+    // v3.2.0 (2026-05-30): 포워딩 prefix ZTK/BTK + 순번 ([포워딩코드]-YYMMDD-순번). 순번=Shipments.인보이스순번(기본 1).
+    const forwarder = (f['포워딩사'] || '').trim();
     const seq = parseInt(f['인보이스순번']) || 1;
-    const yymmdd = today.replace(/-/g, '').slice(2);
+    const yymmdd = _issue.yymmdd;
     // forwarder 미설정 시 사서함 기준 옛 형식 폴백 (호환), 설정 시 신 형식
     const invoiceNo = forwarder
       ? `${forwarder}-${yymmdd}-${seq}`
@@ -11695,14 +11709,11 @@ function buildPaymentInvoiceData(opts) {
   const serviceFee = feeSeparate ? subtotalBase * (PAYMENT_INVOICE_MARKUP - 1) : 0;
   const subtotal = feeSeparate ? subtotalBase : subtotalBase * PAYMENT_INVOICE_MARKUP;
   const total = subtotal + serviceFee;   // 두 모드 동일 = subtotalBase × 1.06
-  // [Feature N] 발행일: 입력값(YYYY-MM-DD) 우선, 없으면 오늘(KST). ★타임존 안전 — 문자열 직접 분해(new Date 파싱 금지).
-  const issueDate = (opts.issueDate && /^\d{4}-\d{2}-\d{2}$/.test(opts.issueDate))
-    ? opts.issueDate
-    : new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);   // 오늘 KST
+  // [Feature N] 발행일: resolveIssueDate 단일 헬퍼 재사용(중복 구현 금지). 입력 우선 · 오늘 KST · 타임존 안전.
+  const _pi = resolveIssueDate(opts.issueDate);
   const mailbox = sf['사서함'] || 'AP';
-  const yymmdd = issueDate.slice(2).replace(/-/g, '');   // YYMMDD (문자열 분해 — Date 미사용, 전날 밀림 없음)
   return {
-    invoiceNo: `${mailbox}-PI-${yymmdd}`, date: issueDate, rate,
+    invoiceNo: `${mailbox}-PI-${_pi.yymmdd}`, date: _pi.date, rate,
     issuer: PAYMENT_INVOICE_ISSUER, bank: PAYMENT_INVOICE_BANK,
     customer: {
       company: sf['수취_회사'] || cf['회사명'] || '-',
@@ -11767,8 +11778,10 @@ function renderPaymentInvoiceHTML(d) {
 
 // [Feature N] 발행일 입력 기본값=오늘(KST) 세팅 + 변경 시 열린 미리보기 즉시 갱신.
 function initPayInvDate() {
-  const el = document.getElementById('payInvDate');
-  if (el && !el.value) el.value = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  ['payInvDate', 'docIssueDate'].forEach(function(id){ var el=document.getElementById(id); if(el && !el.value) el.value = todayKSTStr(); });
+}
+function onDocIssueDateChange() {   // [Feature N 확장] CI 번호 미리보기 + 열린 청구서/PI 미리보기 갱신
+  if (typeof refreshInvoiceNoPreview === 'function') refreshInvoiceNoPreview();
 }
 function onPayInvDateChange() {
   const modal = document.getElementById('paymentInvoicePreviewModal');
@@ -11859,13 +11872,10 @@ function buildInvoiceData() {
   const total = bd.totalKrw;                                   // 최종 결제금액 — 4곳 동일
   const depositTotal = 0;
 
-  // 청구번호 + 날짜
-  const today = new Date();
-  const yymmdd = String(today.getFullYear()).slice(2)
-    + String(today.getMonth() + 1).padStart(2, '0')
-    + String(today.getDate()).padStart(2, '0');
+  // 청구번호 + 날짜 — [Feature N 확장] 발행일 수동 지정(#docIssueDate) 연동. 미선택=오늘 KST.
+  const _inv = resolveIssueDate((document.getElementById('docIssueDate') || {}).value);
   const mailbox = f['사서함'] || 'AP';
-  const invoiceNo = `${mailbox}-INV-${yymmdd}`;
+  const invoiceNo = `${mailbox}-INV-${_inv.yymmdd}`;
 
   // v3.2.31: 발행처 강하고로 전환 — 강하고 사업자 등록 완료. IBK 기업은행 계좌 표시.
   const ENTITIES = {
@@ -11912,7 +11922,7 @@ function buildInvoiceData() {
   const appliedFtaCode = FTA_APPLIED[selectedFta] || '일반';
 
   return {
-    invoiceNo, date: today.toISOString().slice(0, 10),
+    invoiceNo, date: _inv.date,
     mailbox, issuingEntity, entity, customer,
     items, depositItems,
     zeroRateTotal, tax10Subtotal, vat, subtotal, total, depositTotal,
@@ -13472,8 +13482,7 @@ function refreshInvoiceNoPreview() {
   if (!el || !state.shipment) return;
   const f = state.shipment.fields || {};
   const forwarder = (f['포워딩사'] || '').trim();
-  const today = new Date().toISOString().slice(0, 10);
-  const yymmdd = today.replace(/-/g, '').slice(2);
+  const yymmdd = resolveIssueDate((document.getElementById('docIssueDate') || {}).value).yymmdd;   // [Feature N] 발행일 연동
   const seq = parseInt(f['인보이스순번']) || 1;
   el.textContent = forwarder
     ? `${forwarder}-${yymmdd}-${seq}`
@@ -13707,6 +13716,7 @@ function resetShipUiFields() {
   var mn=document.getElementById('shippingMatrixNote'); if(mn) mn.textContent='';
   document.querySelectorAll('input[name="shipMethodSelect"]').forEach(function(r){ r.checked=false; });  // syncShipMethodRadio가 새 값으로 재설정
   var cr=document.getElementById('custRequestedShip'); if(cr) cr.innerHTML='📋 고객 요청 배송방법: <strong>—</strong> · 요청사항: <strong>—</strong>';
+  ['docIssueDate','payInvDate'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value = (typeof todayKSTStr==='function'?todayKSTStr():''); });   // [Feature N] 발행일=새 사서함 오늘
   state._shippingLatest = null;   // 이전 운임 계산결과 잔존 제거 (recalculate가 새로 채움)
 }
 
