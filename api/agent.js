@@ -16,6 +16,18 @@
 // 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY, AIRTABLE_PAT, AIRTABLE_BASE_ID
 
 const { handleCors, readBody, atRequest, atListAll, TABLES, BASE_ID } = require('./_lib');
+// [Phase2 판정 단일함수] 박스입력 완료 = 박스≥1 AND 모든 박스 무게KG·가로cm·세로cm·높이cm > 0.
+//   ★도구(인보이스 도구) isBoxInputComplete와 동일 로직 유지(중복 구현 금지 — 두 곳 동기).
+function isBoxInputComplete(boxes) {
+  if (!boxes || boxes.length < 1) return false;
+  return boxes.every(function (b) {
+    var src = b.fields || b;
+    var g = function (k) { return parseFloat(src[k]) || 0; };
+    return g('무게KG') > 0 && g('가로cm') > 0 && g('세로cm') > 0 && g('높이cm') > 0;
+  });
+}
+
+
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -651,6 +663,25 @@ module.exports = async (req, res) => {
         }
         rows.sort((a, b) => (a.shipDate || '').localeCompare(b.shipDate || '') || a.mailbox.localeCompare(b.mailbox));
         return res.json({ rows, days });
+      }
+
+      // [Phase2 박스입력 진행률] 읽기 전용 — Shipments.선적일 기준 그룹, 선적일 ≥ 오늘-7일(KST)만.
+      //   완료 판정 = isBoxInputComplete (도구와 동일 로직 — 박스≥1 + 모든 박스 무게/가로/세로/높이 > 0).
+      if (op === 'box_progress') {
+        const cutoff = new Date(Date.now() - 7 * 86400000 + 9 * 3600000).toISOString().slice(0, 10);   // 오늘-7일 KST (산술만)
+        const ships = await atListAll(`/${TABLES.Shipments}?fields[]=사서함&fields[]=선적일`);
+        const windowed = ships.filter(s => { const sd = (s.fields || {})['선적일']; return sd && sd >= cutoff; });   // 문자열 비교(파싱 X)
+        const groups = {};
+        for (const s of windowed) {
+          const f = s.fields || {}; const name = f['사서함'] || ''; const sd = f['선적일'] || '';
+          let boxes = [];
+          try { boxes = await atListAll(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${name}',ARRAYJOIN({Shipment}))`)}&fields[]=무게KG&fields[]=가로cm&fields[]=세로cm&fields[]=높이cm`); } catch (e) {}
+          if (!groups[sd]) groups[sd] = { date: sd, total: 0, complete: 0, incomplete: [] };
+          const g = groups[sd]; g.total++;
+          if (isBoxInputComplete(boxes)) g.complete++; else g.incomplete.push(name);
+        }
+        const rows = Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
+        return res.json({ rows, cutoff });
       }
       return res.status(400).json({ error: 'Unknown op' });
     }

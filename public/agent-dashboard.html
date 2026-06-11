@@ -64,6 +64,7 @@
 
 <main>
   <div id="error" class="err" style="display:none;"></div>
+  <div id="boxProgressCard" style="margin:0 0 14px;"></div>
   <!-- v3.2.7+ (2026-05-30): 상태 기반 차단 전체 제거 — 회의 결정 "모든 상태에서 작업 가능". -->
   <!-- 확정 필요 탭 = 관세사확정완료 외 모든 상태. 확정 완료 = 관세사확정완료만. -->
   <div class="tabs">
@@ -123,6 +124,7 @@
       const list = await fetchAgent('GET', '?op=list');
       shipments = list.shipments || [];
       render();
+      renderAgentBoxProgress();   // [Phase2] 선적분 박스입력 진행률(서버 op=box_progress)
 
       // v3.2.0 Phase 8 (2026-05-30): 30초 폴링 — 추출기가 새 사서함 푸시하면 자동 표시.
       //   사장님 요구: "직원이 출고요청 추출하면 관세사가 바로 그 사서함 내용을 볼 수 있어야 함".
@@ -132,6 +134,27 @@
     } catch (e) {
       showError(e.message || String(e));
     }
+  }
+
+  // [Phase2] 선적분 박스입력 진행률 — 서버 op=box_progress (도구와 동일 판정). 읽기 전용.
+  async function renderAgentBoxProgress() {
+    const el = document.getElementById('boxProgressCard');
+    if (!el) return;
+    try {
+      const data = await fetchAgent('GET', '?op=box_progress');
+      const rows = (data && data.rows) || [];
+      if (!rows.length) { el.innerHTML = ''; return; }
+      const esc = (x) => String(x == null ? '' : x).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+      const lines = rows.map(g => {
+        const mmdd = (g.date || '').slice(5).replace('-', '');
+        const done = g.complete === g.total;
+        return `<div style="font-size:13px; margin:3px 0; color:#1B2A3B;">${done ? '✅' : '🟡'} <strong>${esc(mmdd)} 선적분</strong> — 박스입력 ${g.complete}/${g.total}건 완료`
+          + ((g.incomplete && g.incomplete.length) ? ` · 미완료: <span style="color:#c0392b; font-weight:600;">${g.incomplete.map(esc).join(', ')}</span>` : '') + `</div>`;
+      });
+      el.innerHTML = `<div style="padding:12px 14px; background:#f4f8ff; border:1px solid #c4d5ea; border-radius:8px;">`
+        + `<div style="font-size:12px; color:#1B5E9A; font-weight:700; margin-bottom:5px;">📦 선적분 박스입력 진행률 <span style="color:#888; font-weight:400;">(D-1 12:00 마감 모니터링)</span></div>`
+        + lines.join('') + `</div>`;
+    } catch (e) { console.warn('[box_progress]', e.message); el.innerHTML = ''; }
   }
 
   // v3.2.0 Phase 8: 폴링 (30초 간격)
