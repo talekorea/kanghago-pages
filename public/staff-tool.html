@@ -3775,7 +3775,7 @@ function renderShipmentTabs() {
 // 폴백: 회원명+회사명 → 회원명만 → 사서함번호만. (Shipments에 '수취인' 필드 없음 — 422 방지로 폴백 미사용)
 function shipmentLabel(r) {
   const sname = (r.fields['사서함'] || '(no name)');
-  const c = (state.customerByPost && state.customerByPost[r.fields['사서함']]) || {};
+  const c = (state.customerByPost && state.customerByPost[baseMailbox(r.fields['사서함'])]) || {};
   const member = (c.회원명 || '').trim();
   const company = (c.회사명 || '').trim();
   // v3.2.11 C: 사서함명에 이미 회원명·회사명이 들어있으면 (EX 사서함) 추가 X — 중복 차단.
@@ -7228,10 +7228,11 @@ async function autoMatchProductsFromHistory() {
 
 async function loadCustomer(shipmentName) {
   if (!TABLES.Customers || !shipmentName) return;
+  const baseKey = baseMailbox(shipmentName);   // [선적분 키] 복합ID → 고객 사서함(base)로 조회
   try {
     const res = await fetch(
       'https://api.airtable.com/v0/' + BASE_ID + '/' + TABLES.Customers +
-      '?filterByFormula=' + encodeURIComponent(`{사서함번호}='${shipmentName}'`) + '&maxRecords=1',
+      '?filterByFormula=' + encodeURIComponent(`{사서함번호}='${baseKey}'`) + '&maxRecords=1',
       { headers: { 'Authorization': 'Bearer ' + airtablePat() } }
     );
     const data = await res.json();
@@ -7283,7 +7284,7 @@ function getCustomerFields() {
 async function saveCustomer() {
   if (!TABLES.Customers || !state.shipment) return;
   if (!state.modifiedCustomer && state.customer) return;  // 변경 없음
-  const shipmentName = state.shipment.fields['사서함'];
+  const shipmentName = baseMailbox(state.shipment.fields['사서함']);   // [선적분 키] Customers는 base 사서함 1:1
   const today = new Date().toISOString().slice(0, 10);
   const fields = {
     '사서함번호': shipmentName,
@@ -9493,6 +9494,9 @@ const INVOICE_ACCOUNT = [
 // [Feature N 확장] 발행일 단일 헬퍼 (PI·CI·INV·파일명 공통). 입력(YYYY-MM-DD) 우선, 없으면 오늘 KST.
 //   ★타임존 안전: 입력 문자열 직접 slice — new Date(str) 파싱 안 함(전날 밀림 방지). 기본 today도 KST 보정.
 function todayKSTStr() { return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); }
+// [선적분 키] 복합 사서함 ID({AP번호}-{선적일YYMMDD})에서 고객 사서함(base) 추출. 평문 키는 그대로.
+//   Customers(사서함번호=AP원본) 조회/저장 키. 'AP1234-261010'→'AP1234', 'AP1234'→'AP1234'.
+function baseMailbox(id) { return String(id || '').replace(/-\d{6}$/, ''); }
 function resolveIssueDate(inputStr) {
   var v = inputStr && /^\d{4}-\d{2}-\d{2}$/.test(String(inputStr).trim());
   var date = v ? String(inputStr).trim() : todayKSTStr();

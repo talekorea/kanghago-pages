@@ -646,7 +646,7 @@ module.exports = async (req, res) => {
           try { boxes = await atListAll(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=박스순번&fields[]=무게KG&fields[]=부피CBM`); } catch (e) {}
           let kgSum = 0, cbmSum = 0, missing = false;
           boxes.forEach(b => { const kg = parseFloat((b.fields || {})['무게KG']) || 0; const cbm = parseFloat((b.fields || {})['부피CBM']) || 0; kgSum += kg; cbmSum += cbm; if (kg <= 0 || cbm <= 0) missing = true; });
-          const cust = custMap[mailbox] || { member: '', company: '' };
+          const cust = custMap[String(mailbox).replace(/-\d{6}$/, '')] || custMap[mailbox] || { member: '', company: '' };   // [선적분 키] base 우선
           rows.push({ mailbox, shipDate, status, member: cust.member, company: cust.company, boxCount: boxes.length, kgSum, cbmSum, missingMeasure: missing, isReady: boxes.length > 0 && !missing });
         }
         rows.sort((a, b) => (a.shipDate || '').localeCompare(b.shipDate || '') || a.mailbox.localeCompare(b.mailbox));

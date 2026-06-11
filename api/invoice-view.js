@@ -29,7 +29,8 @@ module.exports = async (req, res) => {
     // 2. Customers (사서함번호 기준)
     let customer = null;
     try {
-      const custUrl = `/${TABLES.Customers || 'Customers'}?filterByFormula=${encodeURIComponent(`{사서함번호}="${mailbox}"`)}&maxRecords=1`;
+      const baseKey = String(mailbox || '').replace(/-\d{6}$/, '');   // [선적분 키] 복합ID → 고객 사서함(base)
+      const custUrl = `/${TABLES.Customers || 'Customers'}?filterByFormula=${encodeURIComponent(`{사서함번호}="${baseKey}"`)}&maxRecords=1`;
       const custResp = await atRequest('GET', custUrl);
       customer = (custResp.records || [])[0] || null;
     } catch (e) { console.warn('[invoice-view] Customers 조회 경고:', e.message); }
