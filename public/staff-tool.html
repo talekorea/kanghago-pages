@@ -9792,6 +9792,15 @@ function getProductUnitUsd(p) {
   return (parseFloat((p.fields || {})['단가CNY']) || 0) * rate;
 }
 
+// [IV 운임 정액제] 세관 신고용 운임 = 구간 정액 USD (CBM·무게 중 높은 구간). ★CBM 곱셈 없음.
+//   경계: 5.00CBM+499kg=$10 / 5.01CBM=$20 / 500kg=$20 / 10CBM=$30 / 1000kg=$30.
+//   ★calcSeaFreightKRW(§6/§9 고객 청구 해운비)와 의도적으로 별개 — 단일소스로 합치지 말 것.
+//   (추후 §8 과세표준 가산 검토 시 이 함수 재사용 전제 — 현재 IV만 사용)
+function calcIvFreightUSD(cbm, kg) {
+  var c = parseFloat(cbm) || 0, w = parseFloat(kg) || 0;
+  return (c >= 10 || w >= 1000) ? 30 : ((c > 5 || w >= 500) ? 20 : 10);
+}
+
 async function downloadInvoiceExcel(opts) {
   if (typeof ExcelJS === 'undefined') {
     toastError('ExcelJS 로딩 실패 — 인터넷 연결 확인 후 새로고침');
@@ -10207,26 +10216,25 @@ async function downloadInvoiceExcel(opts) {
     }
 
     // ── 시트 3: FREIGHT INVOICE (운임 신고용 — 통관 신고 전용, 강하고 청구 해상운임과 별개) ──
-    // ⑨ v3.2.47 RATE 계단: 기본 $10 / (CBM>5 또는 총kg≥500) $20 / (CBM≥10 또는 총kg≥1000) $30.
-    //   CBM·kg 중 '높은 단계' 적용. Total = CBM × RATE. (calcSeaFreightKRW=강하고 청구와 무관)
+    // ⑨ 정액제(2026-06, 사장님 확정·관세사 확인): 구간 정액 $10/$20/$30 (CBM·kg 중 높은 구간). ★CBM 곱셈 없음.
+    //   calcIvFreightUSD 단일 함수. calcSeaFreightKRW(§6/§9 고객 청구)와 별개 — 합치지 말 것.
     const ivCbm = Number(pTotCbm.toFixed(5));
     const ivKg = Number(pTotWt.toFixed(1));
-    const ivRate = (ivCbm >= 10 || ivKg >= 1000) ? 30 : ((ivCbm > 5 || ivKg >= 500) ? 20 : 10);
-    const ivTotal = Number((ivCbm * ivRate).toFixed(2));
+    const ivTotal = calcIvFreightUSD(ivCbm, ivKg);
     const ws3 = wb.addWorksheet('IV');
     ws3.columns = [{ width: 28 }, { width: 14 }, { width: 16 }, { width: 16 }];
     writeFormHeader(ws3, 'FREIGHT INVOICE', 4);
-    const ivHead = ws3.addRow(['Description', 'CBM', 'RATE(USD/CBM)', 'TOTAL(USD)']);
+    const ivHead = ws3.addRow(['Description', 'CBM', 'G.W.(KG)', 'FREIGHT CHARGE(USD)']);
     ivHead.font = { ...FONT, bold: true, size: 12 };
     ivHead.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
     ivHead.height = 26;
     for (let c = 1; c <= 4; c++) { const cell = ivHead.getCell(c); cell.border = allBorder; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E2D5' } }; }
-    const ivRow = ws3.addRow(['OCEAN FREIGHT', ivCbm, ivRate, ivTotal]);
+    const ivRow = ws3.addRow(['OCEAN FREIGHT', ivCbm, ivKg, ivTotal]);
     ivRow.font = { ...FONT, size: 10 };
     ivRow.height = 18;
     ivRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
     ivRow.getCell(2).alignment = { vertical: 'middle', horizontal: 'center' }; ivRow.getCell(2).numFmt = '0.00000';
-    ivRow.getCell(3).alignment = { vertical: 'middle', horizontal: 'center' }; ivRow.getCell(3).numFmt = '"$"#,##0';
+    ivRow.getCell(3).alignment = { vertical: 'middle', horizontal: 'center' }; ivRow.getCell(3).numFmt = '0.0';
     ivRow.getCell(4).alignment = { vertical: 'middle', horizontal: 'center' }; ivRow.getCell(4).numFmt = '"$"#,##0.00';
     for (let c = 1; c <= 4; c++) ivRow.getCell(c).border = allBorder;
     const ivTotRow = ws3.addRow(['TOTAL', '', '', ivTotal]);
