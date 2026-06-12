@@ -9854,7 +9854,7 @@ async function downloadInvoiceExcel(opts) {
     // v3.2.30: 고객 확인 요청 절차 폐기 → 고객응답 필수 게이트 제거
     if (!f['BL번호']) miss.push('BL번호');
     if (!(f['BL파일'] && Array.isArray(f['BL파일']) && f['BL파일'].length)) miss.push('BL파일');
-    if (!(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length)) miss.push('CO파일');
+    // [CO 게이트 완화] CO파일은 하드 차단 제거 → miss 통과 후 소프트 confirm (없으면 기본세율 건).
     if (f['대조확인상태'] !== '확인완료') miss.push('BL/CO 대조확인');   // v3.2.49 [Phase 1-G]
   }
 
@@ -9862,6 +9862,11 @@ async function downloadInvoiceExcel(opts) {
     const gateLabel = (stage === 'first') ? '1차' : '최종';
     toastWarn(`${gateLabel} 발행 조건 미충족 — 누락: ${miss.join(', ')}`, { title: '🔒 발행 잠금' });
     return;
+  }
+
+  // [CO 게이트 완화] 최종 + CO파일 없음 → 소프트 확인(기본세율 분기). 취소 시 중단. CO 있으면 무확인 진행(CO발행 분기).
+  if (stage === 'final' && !(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length)) {
+    if (!confirm('CO 파일이 없습니다.\nCO 미발행(기본세율) 건으로 최종 발행할까요?')) return;
   }
 
   // v3.2.40: 1차에서 환율·작업비 비면 차단은 안 하되 경고 토스트 (포워딩 부킹 초안 — 단가 $0/0 분배)
