@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;">v3.2.42</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.49</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;">v3.2.42</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.49</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1593,6 +1593,14 @@
 <!-- 6. 저장 -->
 <div class="section hidden" id="actionsSection">
   <div class="saved-banner" id="savedBanner" data-i18n="msg.saved">✅ 저장 완료!</div>
+  <!-- [E v3.2.49] 저장 실패 시 요란한 빨간 배너 — 옛버전은 로그 한 줄뿐이라 직원이 놓침(silent fail). 닫기 전까지 유지. -->
+  <div id="saveErrorBanner" style="display:none; background:#fdecea; color:#b71c1c; border:2px solid #e53935; border-radius:8px; padding:12px 14px; margin-bottom:10px; font-weight:600; font-size:13px; line-height:1.5;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+      <span>❌ <span id="saveErrorText">저장 실패</span></span>
+      <button onclick="document.getElementById('saveErrorBanner').style.display='none'" style="background:#b71c1c; color:#fff; border:0; border-radius:4px; padding:3px 9px; font-size:12px; cursor:pointer;">닫기</button>
+    </div>
+    <div id="saveErrorHint" style="font-weight:400; font-size:12px; color:#7a1c1c; margin-top:6px;"></div>
+  </div>
   <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
     <button class="primary" onclick="saveAll()" data-i18n="btn.save">Airtable에 저장</button>
     <button class="secondary" onclick="loadShipment()" data-i18n="btn.refresh">새로고침</button>
@@ -3495,7 +3503,11 @@ async function api(method, path, body) {
   });
   if (!res.ok) {
     const t = await res.text();
-    throw new Error(`${res.status}: ${t.substring(0, 250)}`);
+    // [E v3.2.49] 쓰기 권한 부족(403)·인증오류(401)를 한국어로 명시 — 직원이 silent fail 원인을 바로 알게.
+    let prefix = '';
+    if (res.status === 403) prefix = '쓰기 권한 없음(403 — PAT에 data.records:write 필요): ';
+    else if (res.status === 401) prefix = '인증 실패(401 — PAT 확인): ';
+    throw new Error(`${prefix}${res.status}: ${t.substring(0, 250)}`);
   }
   return res.json();
 }
@@ -4246,6 +4258,15 @@ function groupKeyOf(productId) {
   const i = s.indexOf('_');
   return i > 0 ? s.slice(0, i) : '__기타';   // '_' 없거나 형식 불일치 → 기타/미분류 그룹
 }
+// [D v3.2.49] 주문 내 제품 고유번호 = 상품ID '_' 뒤 숫자. 화면 §1/§3 표시 순번과 패킹리스트 Order No. 접미가
+//   이 단일 함수를 공유한다(중복구현 금지). 박스 배치·표시 순서와 무관하게 제품 고유 — 표시순 재번호 폐기.
+function prodSeqInOrder(p) {
+  const id = String(((p && p.fields) || {})['상품ID'] || '');
+  const i = id.indexOf('_');
+  if (i < 0) return null;
+  const n = parseInt(id.slice(i + 1), 10);
+  return isNaN(n) ? null : n;
+}
 function buildGroupedOrder(products) {
   const map = new Map();
   (products || []).forEach(p => {
@@ -4263,12 +4284,8 @@ function buildGroupedOrder(products) {
   const out = [];
   // v3.2.45 ④: 주문 내 제품을 원본 시퀀스(상품ID '_' 뒤 숫자) 오름차순으로 정렬 — 흩어짐 교정.
   //   표시 순서만 정렬(state.products 불변, 계산은 합계CNY 기반이라 순서 무관).
-  const seqOf = (p) => {
-    const id = String((p.fields || {})['상품ID'] || '');
-    const suf = id.split('_').slice(1).join('_');
-    const n = parseInt(suf, 10);
-    return isNaN(n) ? null : n;
-  };
+  // [D v3.2.49] 최상위 prodSeqInOrder 공유 (패킹리스트 Order No. 접미와 동일 산출).
+  const seqOf = prodSeqInOrder;
   keys.forEach(k => {
     const arr = map.get(k).slice().sort((a, b) => {
       const sa = seqOf(a), sb = seqOf(b);
@@ -8757,6 +8774,10 @@ async function saveAll(skipReload) {
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━', 'dim');
   log('저장 시작...', 'info');
   document.getElementById('savedBanner').style.display = 'none';
+  // [E v3.2.49] 저장 단계 추적 — 실패 시 어느 단계에서 끊겼는지 빨간 배너에 표시.
+  //   단일 try라 앞 단계가 throw하면 뒤(작업비·박스)가 통째 미실행 → 직원 "입력했는데 저장 안 됨".
+  let _saveStep = '환율·BL(Shipments)';
+  { const eb = document.getElementById('saveErrorBanner'); if (eb) eb.style.display = 'none'; }
 
   const rateCnyUsd = parseFloat(document.getElementById('rateCnyUsd').value) || 0;
   const rateUsdKrw = parseFloat(document.getElementById('rateUsdKrw').value) || 0;
@@ -8803,6 +8824,9 @@ async function saveAll(skipReload) {
           '대조확인자': sf['대조확인자'] || '',
         };
         if (sf['대조확인상태']) gFields['대조확인상태'] = sf['대조확인상태'];
+        // [F v3.2.49] 직원이 §1에서 명시 입력한 선적일(shipDateOverride)을 Shipments.선적일에 영속화 →
+        //   리로드·다운로드([A])에서 동일 날짜 사용(세션 한정 → 영구). 출고요청일 폴백값은 저장 안 함(실제 선적일 오염 방지).
+        if (state.shipDateOverride) gFields['선적일'] = String(state.shipDateOverride).slice(0, 10);
         await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: gFields, typecast: true });
       } catch (ge) { console.warn('[Phase1-G] 선적항/선명/대조 저장 실패(필드 미생성 가능 — Airtable에 5필드 수동추가 필요):', ge.message); }
     }
@@ -8810,6 +8834,7 @@ async function saveAll(skipReload) {
     // 2. Products 업데이트 (적용FTA, 박스번호, 단가USD/합계USD — 직원 권한 필드만)
     //    읽기 전용 전환(2026-05-23): HS코드/Description/Material/세율은 관세사 페이지가 확정·저장하므로
     //    인보이스 도구는 더 이상 이 필드들을 PATCH하지 않는다(관세사 확정값 경합 방지).
+    _saveStep = '제품(Products)';
     const productUpdates = [];
     state.products.forEach(p => {
       if (!state.modifiedProducts.has(p.id) && !rateCnyUsd) return;
@@ -8879,6 +8904,7 @@ async function saveAll(skipReload) {
     //    읽기 전용 전환(2026-05-23): 인보이스 도구는 HS/세율을 표시만 하므로 학습 쓰기 제거.
 
     // 4. CostItems: 새/수정/삭제
+    _saveStep = '작업비(CostItems)';
     // 4a. 새 행 create
     const recordsToCreate = [];
     document.querySelectorAll('#costBody tr').forEach(tr => {
@@ -8985,6 +9011,7 @@ async function saveAll(skipReload) {
     }
 
     // 5. Boxes upsert (사용자 입력한 CBM/KG/치수)
+    _saveStep = '박스(Boxes)';
     const shipmentName = state.shipment.fields['사서함'];
     const boxNums = Object.keys(state.boxes).sort((a,b) => parseInt(a) - parseInt(b));
     if (boxNums.length) {
@@ -9095,6 +9122,7 @@ async function saveAll(skipReload) {
     }
 
     // 6. 고객 정보 저장 (사서함번호 키로 upsert)
+    _saveStep = '고객정보(Customers)';
     await saveCustomer();
 
     log('━━━━━━━━━━━━━━━━━━━━━━━━━━', 'dim');
@@ -9109,6 +9137,24 @@ async function saveAll(skipReload) {
     state.lastSaveError = e.message;   // shareToCustomer 등에서 실제 원인 표시용
     log('❌ 저장 오류: ' + e.message, 'err');
     console.error(e);
+    // [E v3.2.49] 요란한 빨간 배너 — 옛버전은 로그 한 줄뿐이라 직원이 못 보고 "저장됐다" 착각(silent fail).
+    //   어느 단계에서 끊겼는지 + 이후 단계(작업비·박스 등) 미저장 경고 + 권한 힌트.
+    try {
+      const eb = document.getElementById('saveErrorBanner');
+      const et = document.getElementById('saveErrorText');
+      const eh = document.getElementById('saveErrorHint');
+      if (eb && et) {
+        et.textContent = `저장 실패 — [${_saveStep}] 단계에서 중단됨. 이 단계 이후(작업비·박스·고객정보 등)는 저장되지 않았습니다.`;
+        const msg = String(e.message || '');
+        let hint = msg;
+        if (/\b401\b|AUTHENTICATION|PAT 필요/.test(msg)) hint = '⚠ PAT(토큰)가 없거나 잘못됨 — §1 Personal Access Token 칸을 확인하세요.';
+        else if (/\b403\b|NOT_AUTHORIZED|INVALID_PERMISSIONS|insufficient/i.test(msg)) hint = '⚠ 이 PAT에 쓰기 권한이 없습니다 — 관리자에게 data.records:write 권한(+해당 테이블 접근)이 포함된 PAT을 요청하세요.';
+        else if (/\b422\b/.test(msg)) hint = '⚠ 입력값/필드 형식 오류(422) — 위 메시지의 필드를 확인하세요.';
+        if (eh) eh.textContent = hint + (hint !== msg ? '  ·  원본: ' + msg.slice(0, 160) : '');
+        eb.style.display = 'block';
+        eb.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    } catch (_) {}
     return false;  // v3.0.2: 실패 신호
   }
 }
@@ -9564,7 +9610,9 @@ function resolveIssueDate(inputStr) {
 function getInvoiceFilename() {
   const f = (state.shipment && state.shipment.fields) || {};
   const cf = (state.customer && state.customer.fields) || {};
-  const yymmdd = ((f['선적일'] || f['출고요청일'] || '').slice(2, 10).replace(/-/g, '')) || resolveIssueDate('').yymmdd;   // [A] 선적일 기준
+  // [F v3.2.49] 파일명 날짜도 [A]와 동일 소스: 선적일 → 화면 선적일(getShipDate) → 출고요청일.
+  const _sd = (f['선적일'] || (typeof getShipDate === 'function' ? (getShipDate() || '') : '') || f['출고요청일'] || '');
+  const yymmdd = (_sd.slice(2, 10).replace(/-/g, '')) || resolveIssueDate('').yymmdd;   // 선적일 기준
   const member = cf['회원명'] || f['수취_수취인'] || '회원';
   const mailbox = f['사서함'] || '';
   const company = cf['회사명'] || '';
@@ -9900,8 +9948,13 @@ async function downloadInvoiceExcel(opts) {
     // [Feature N 확장] 발행일 수동 지정(#docIssueDate) → 커머셜 인보이스 Date·번호. 미선택=오늘 KST.
     // [A] 통관 서류 날짜 = Shipments.선적일 고정 (다운로드 날짜·발행일 input 무시 — PI/청구서는 별도 보존).
     //   ★선적일 문자열 slice — new Date() 파싱 금지. CO 정합 소프트 경고는 선적일 고정으로 의미 소멸 → 제거.
-    const shipDateIso = (f['선적일'] || f['출고요청일'] || '').slice(0, 10);
+    // [F v3.2.49] 통관 서류 날짜 = 선적일. Shipments.선적일이 비면 화면 선적일(getShipDate: 직원수정값→Orders.실제출고요청일)로
+    //   대체 — 다운로드가 Shipments.선적일만 보던 탓에 화면에서 고친 선적일이 무시되던 불일치 교정.
+    //   그래도 없을 때만 출고요청일. 선적일 미입력 시 조용히 출고요청일을 찍던 함정 → 경고 표시.
+    const _screenShipDate = (typeof getShipDate === 'function' ? (getShipDate() || '') : '');
+    const shipDateIso = (f['선적일'] || _screenShipDate || f['출고요청일'] || '').slice(0, 10);
     if (!shipDateIso) { toastWarn('선적일이 없어 통관 서류 날짜를 확정할 수 없습니다 — 선적일 확인'); return; }
+    if (!f['선적일']) toastWarn(`⚠ Shipments.선적일이 비어 ${_screenShipDate ? '화면 선적일' : '출고요청일'}(${shipDateIso})로 통관 서류 날짜를 정했습니다. 정확한 선적일을 §1에서 입력·저장 후 다시 받으세요.`, { title: '선적일 미확정' });
     const today = shipDateIso;
     const yymmdd = shipDateIso.slice(2).replace(/-/g, '');   // YYMMDD (선적일 기준)
     const forwarder = (f['포워딩사'] || '').trim();
@@ -10174,8 +10227,14 @@ async function downloadInvoiceExcel(opts) {
           pTotQty += qty;
           const ordIds = pf['Order'] || [];
           const ordNoBase = ordIds.map(id => orderNoMap[id]).filter(Boolean).join(', ');
-          let ordNo = '';   // [E] 주문번호-순번
-          if (ordNoBase) { orderNoSeq[ordNoBase] = (orderNoSeq[ordNoBase] || 0) + 1; ordNo = ordNoBase + '-' + orderNoSeq[ordNoBase]; }
+          // [D v3.2.49] 접미 = 주문 내 제품 고유번호(상품ID '_' 뒤, prodSeqInOrder 공유) — §1/§3 화면 번호와 항상 동일.
+          //   박스 배치·표시 순서와 무관. 표시순 재번호(-1,-2,-3)는 상품ID에 순번이 없을 때만 폴백.
+          let ordNo = '';
+          if (ordNoBase) {
+            const _seq = prodSeqInOrder(p);
+            if (_seq != null) { ordNo = ordNoBase + '-' + _seq; }
+            else { orderNoSeq[ordNoBase] = (orderNoSeq[ordNoBase] || 0) + 1; ordNo = ordNoBase + '-' + orderNoSeq[ordNoBase]; }
+          }
           vals = ['', '', '', ordNo, pf['Description'] || pf['상품ID'] || '', '',
             qty, Number((unitUsd * qty).toFixed(2)), Number(unitUsd.toFixed(4)),
             '', '', '', pf['Material'] || ''];
