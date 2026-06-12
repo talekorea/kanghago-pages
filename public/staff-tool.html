@@ -900,8 +900,8 @@
           <th data-i18n="th.product_id">상품ID</th>
           <!-- v3.0.7 [Phase B.1]: 영문명·재질·HS·세율3개·FTA·박스번호는 주문 헤더(그룹헤더)에서만 입력.
                제품 행에선 숨김. 데이터(state.products[].fields)는 그대로 유지됨. -->
-          <th data-i18n="th.description" style="display:none;">Description (영문)</th>
-          <th data-i18n="th.material" style="display:none;">Material</th>
+          <th data-i18n="th.description" style="width:130px;">영문명</th>
+          <th data-i18n="th.material" style="width:90px;">재질</th>
           <th style="width:140px;"><span data-i18n="th.hscode">HS코드</span></th>
           <th class="num" style="width:55px;display:none;"><span data-i18n="th.base_rate">기본</span> <span class="small-dim">%</span></th>
           <th class="num" style="width:55px;display:none;"><span data-i18n="th.fta_kc">한중</span> <span class="small-dim">%</span></th>
@@ -2191,7 +2191,7 @@ const I18N = {
     'msg.modified_suffix': '건 (저장 안 됨)',
 
     'section.tariff': '예상 관부가세',
-    'section.tariff.sub': '(시나리오 비교 — 어떤 FTA가 유리한지)',
+    'section.tariff.sub': '(시나리오 비교 · 과세가격에 해상운임 포함 — 관세사 신고치 정합)',
     'section.summary': '청구 요약',
     'tip.tariff': '💡 <strong>관세</strong> = 인보이스 신고가 KRW × 세율(%). <strong>부가세</strong> = (인보이스 + 관세) × 10%. 가장 적은 시나리오에 ⭐ 표시.',
     'tariff.scenario.base': '기본세율',
@@ -4767,10 +4767,10 @@ function renderProducts() {
             ? '<div style="font-size:9px;color:#C9973A;margin-top:2px;text-align:center;" title="' + escAttr(f['관세사메모']) + '">⚠ 유사</div>'
             : '')}
       </td>
-      <td class="desc-cell" style="display:none;">
-        <input type="text" data-field="Description" value="${escAttr(f['Description'] || '')}" placeholder="${t('placeholder.eng_name')}" ${empAttr} title="${empTitle}" style="${empBg}" />
+      <td class="desc-cell">
+        <input type="text" data-field="Description" value="${escAttr(f['Description'] || '')}" placeholder="${t('placeholder.eng_name')}" ${empAttr} title="${empTitle}" style="min-width:120px;${empBg}" />
       </td>
-      <td style="display:none;">
+      <td>
         <input type="text" data-field="Material" value="${escAttr(f['Material'] || '')}" placeholder="${t('placeholder.material')}" style="min-width:80px;${empBg}" ${empAttr} title="${empTitle}" />
       </td>
       <td style="min-width:140px;">
@@ -8190,6 +8190,15 @@ function calcTariffForScenario(scenario) {
   let totalDutyKrw = 0;
   const rows = [];
 
+  // [B] 과세가격에 해상운임 가산 — IV 시트와 동일 calcIvFreightUSD(정액 USD) 재사용, §8 과세환율(USD→KRW)로 환산.
+  //   분배: 전 제품 합계CNY 비례(현 §8 제품단위 구조와 동일 가치비례 키). ★표시용 §8 — 청구/payapp 미반영.
+  const _ivBoxes = state.boxes || {};
+  let _ivCbm = 0, _ivKg = 0;
+  Object.keys(_ivBoxes).forEach(bn => { _ivCbm += parseFloat(_ivBoxes[bn].cbm) || 0; _ivKg += parseFloat(_ivBoxes[bn].kg) || 0; });
+  const _freightKrw = (typeof calcIvFreightUSD === 'function') ? (calcIvFreightUSD(_ivCbm, _ivKg) * rateUsdKrw) : 0;
+  let _globalCNY = 0;
+  (state.products || []).forEach(p => { _globalCNY += parseFloat((p.fields || {})['합계CNY']) || 0; });
+
   units.forEach(u => {
     // v3.2.45: 제품단위 관세 — 주문 신고총액(KRW)을 제품 합계CNY 비율로 배분 후 제품별 세율 적용.
     //   ★ 동일 HS/FTA면 Σ(배분×세율)=주문단위 결과와 동일(무변동). 혼합 HS만 라인별 분리.
@@ -8203,7 +8212,9 @@ function calcTariffForScenario(scenario) {
       const pf = p.fields || {};
       // 제품 신고가 배분 (합계CNY 비율, 합이 0이면 균등). Σ share = 1 → 동일세율 시 주문단위와 동일.
       const share = sumHap > 0 ? ((parseFloat(pf['합계CNY']) || 0) / sumHap) : (1 / items.length);
-      const invoiceLineKrw = unitInvoiceKrw * share;
+      // [B] 과세가격 = 물품 신고가 + 운임 분배분(전 제품 합계CNY 비례). 운임 $30 정액을 가치비례로 안분.
+      const _freightShare = _globalCNY > 0 ? (_freightKrw * ((parseFloat(pf['합계CNY']) || 0) / _globalCNY)) : 0;
+      const invoiceLineKrw = unitInvoiceKrw * share + _freightShare;
 
       // 제품별 HS·세율: Products.fields(관세사 override) → 새 관세표 → hsRatesByCode 폴백. 주문 HS는 최후 폴백.
       const hs = pf['HS코드'] || u.HS코드 || '';
@@ -8421,7 +8432,7 @@ function renderTariffEstimate() {
       <!-- v3.2.13 #60: 관부가세 = FTA 절세 안내 패널 (결제금액 미포함 — 관세사 직접 청구) -->
       <div style="margin-top:12px; padding:12px 16px; background:#FAF6EE; border-left:4px solid #C9973A; border-radius:6px; font-size:12px; color:#666;">
         <div style="font-weight:700; color:var(--navy); margin-bottom:6px;">💡 FTA 절세 안내 (결제금액 미포함 — 관세사 직접 청구)</div>
-        <div>· 신고가 (인보이스 KRW): <strong>₩${Math.round(current.totalInvoiceKrw).toLocaleString()}</strong></div>
+        <div>· 과세가격 (신고가 + 해상운임 KRW): <strong>₩${Math.round(current.totalInvoiceKrw).toLocaleString()}</strong> <span style="font-size:10px; color:#888;">(해상운임 IV 정액 포함)</span></div>
         <div>· 관세 (예상): ₩${Math.round(current.totalDutyKrw).toLocaleString()}</div>
         <div>· 수입 부가세 (예상): ₩${Math.round(current.totalVatKrw).toLocaleString()}</div>
         <div style="margin-top:4px; color:#0a7b40;">→ 관세사가 화주에게 별도 청구. 강하고 청구서엔 미포함.</div>
