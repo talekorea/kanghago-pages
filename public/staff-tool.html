@@ -9553,7 +9553,7 @@ function resolveIssueDate(inputStr) {
 function getInvoiceFilename() {
   const f = (state.shipment && state.shipment.fields) || {};
   const cf = (state.customer && state.customer.fields) || {};
-  const yymmdd = resolveIssueDate((document.getElementById('docIssueDate') || {}).value).yymmdd;   // [Feature N] 문서 발행일 따라감
+  const yymmdd = ((f['선적일'] || f['출고요청일'] || '').slice(2, 10).replace(/-/g, '')) || resolveIssueDate('').yymmdd;   // [A] 선적일 기준
   const member = cf['회원명'] || f['수취_수취인'] || '회원';
   const mailbox = f['사서함'] || '';
   const company = cf['회사명'] || '';
@@ -9801,6 +9801,24 @@ function calcIvFreightUSD(cbm, kg) {
   return (c >= 10 || w >= 1000) ? 30 : ((c > 5 || w >= 500) ? 20 : 10);
 }
 
+// [B] CI 순번 부여(영구 불변) — 같은 (포워딩사, 선적일)의 기존 인보이스순번 max+1, 이 사서함에 저장 후 반환.
+//   ★최초 다운로드에서만 부여. 이후엔 저장값 재사용(재계산·재정렬 금지 — CO가 번호 참조).
+async function assignInvoiceSeq(forwarder, shipDateIso) {
+  try {
+    const formula = `AND({포워딩사}='${forwarder}', IS_SAME({선적일},'${shipDateIso}','day'), {인보이스순번}>0)`;
+    const recs = await apiPaged(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(formula)}&fields[]=인보이스순번`);
+    let maxSeq = 0;
+    recs.forEach(r => { const n = parseInt((r.fields || {})['인보이스순번']) || 0; if (n > maxSeq) maxSeq = n; });
+    const next = maxSeq + 1;
+    await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: { '인보이스순번': next }, typecast: true });
+    if (state.shipment && state.shipment.fields) state.shipment.fields['인보이스순번'] = next;   // 로컬 즉시 반영(재사용)
+    return next;
+  } catch (e) {
+    console.warn('[B] CI 순번 부여 실패:', e.message);
+    return parseInt((state.shipment && state.shipment.fields || {})['인보이스순번']) || 1;
+  }
+}
+
 async function downloadInvoiceExcel(opts) {
   if (typeof ExcelJS === 'undefined') {
     toastError('ExcelJS 로딩 실패 — 인터넷 연결 확인 후 새로고침');
@@ -9864,17 +9882,19 @@ async function downloadInvoiceExcel(opts) {
     const cf = (state.customer && state.customer.fields) || {};
     const rateCnyUsd = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
     // [Feature N 확장] 발행일 수동 지정(#docIssueDate) → 커머셜 인보이스 Date·번호. 미선택=오늘 KST.
-    const _issue = resolveIssueDate((document.getElementById('docIssueDate') || {}).value);
-    // ★CO 정합: CO 업로드된 사서함에서 발행일을 오늘과 다르게 지정 시 경고(통관 불일치 리스크). 경고만 — 진행 가능.
-    if (f['CO파일'] && f['CO파일'].length > 0 && _issue.date !== todayKSTStr()) {
-      if (!confirm('⚠ CO(원산지증명)가 업로드된 사서함입니다.\nCO는 커머셜 인보이스 번호·날짜를 참조합니다 — 발행일을 ' + _issue.date + '(오늘 아님)로 발행하면 CO와 불일치(통관 리스크)할 수 있습니다.\n그래도 이 날짜로 발행할까요?')) return;
-    }
-    const today = _issue.date;
-    // v3.2.0 (2026-05-30): 포워딩 prefix ZTK/BTK + 순번 ([포워딩코드]-YYMMDD-순번). 순번=Shipments.인보이스순번(기본 1).
+    // [A] 통관 서류 날짜 = Shipments.선적일 고정 (다운로드 날짜·발행일 input 무시 — PI/청구서는 별도 보존).
+    //   ★선적일 문자열 slice — new Date() 파싱 금지. CO 정합 소프트 경고는 선적일 고정으로 의미 소멸 → 제거.
+    const shipDateIso = (f['선적일'] || f['출고요청일'] || '').slice(0, 10);
+    if (!shipDateIso) { toastWarn('선적일이 없어 통관 서류 날짜를 확정할 수 없습니다 — 선적일 확인'); return; }
+    const today = shipDateIso;
+    const yymmdd = shipDateIso.slice(2).replace(/-/g, '');   // YYMMDD (선적일 기준)
     const forwarder = (f['포워딩사'] || '').trim();
-    const seq = parseInt(f['인보이스순번']) || 1;
-    const yymmdd = _issue.yymmdd;
-    // forwarder 미설정 시 사서함 기준 옛 형식 폴백 (호환), 설정 시 신 형식
+    // [B] 최종 다운로드 + 포워딩 미선택 → 차단 (CI 번호 확정 불가).
+    if (stage === 'final' && !forwarder) { toastWarn('최종 다운로드는 포워딩사(ZTK/BTK) 선택 후 가능 — CI 번호 확정 필요', { title: '🔒 번호 확정' }); return; }
+    // [B] CI 순번 영구 불변: 부여돼 있으면 재사용, 없으면 같은 (포워딩,선적일) max+1 부여·저장(포워딩 선택분만 확정).
+    let seq = parseInt(f['인보이스순번']) || 0;
+    if (!seq && forwarder) { seq = await assignInvoiceSeq(forwarder, shipDateIso); }
+    if (!seq) seq = 1;   // 1차 + 포워딩 미선택 → 임시 표기(저장 안 함)
     const invoiceNo = forwarder
       ? `${forwarder}-${yymmdd}-${seq}`
       : (f['사서함'] || '') + '-' + yymmdd;
@@ -9980,24 +10000,32 @@ async function downloadInvoiceExcel(opts) {
 
     // ── 시트 1: COMMERCIAL INVOICE ──
     const ws1 = wb.addWorksheet('테일코리아인보이스');
-    // v3.2.48 ⑤⑧: N/W(KG) 열 삭제 → 9열. Description 25 / Quantity 10 / Unit Price 12 / Amount 14 / HS 14 / 기본·CO미·CO발 각 8~10 / Material 18
-    ws1.columns = [
-      { width: 25 }, { width: 10 }, { width: 12 }, { width: 14 }, { width: 14 },
-      { width: 8 },  { width: 10 }, { width: 10 }, { width: 18 },
-    ];
-    writeFormHeader(ws1, 'COMMERCIAL INVOICE', 9);
+    // [C] CI 세율 칸 단계별: 1차=3칸(기본/CO미/CO발) 빈칸 / 최종+CO업로드=CO발행 1칸(한중FTA) / 최종+CO없음=기본 1칸(기본세율).
+    //   CO 신호 = f['CO파일'].length (CO 정합 경고가 쓰던 신호와 동일). ※현 최종 게이트는 CO파일 필수 → 최종은 사실상 'co' 모드.
+    const coUploaded = !!(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length);
+    const taxMode = (stage === 'first') ? 'first' : (coUploaded ? 'co' : 'base');
+    const rateCols = (taxMode === 'first')
+      ? [{ label: '기본', src: 'blank' }, { label: 'CO미발행', src: 'blank' }, { label: 'CO발행', src: 'blank' }]
+      : (taxMode === 'co') ? [{ label: 'CO발행 (한중FTA)', src: 'fta' }]
+      : [{ label: '기본', src: 'base' }];
+    const nRate = rateCols.length;
+    const ws1Cols = 5 + nRate + 1;   // Desc,Qty,UnitPrice,Amount,HS + 세율 + Material
+    ws1.columns = [{ width: 25 }, { width: 10 }, { width: 12 }, { width: 14 }, { width: 14 }]
+      .concat(rateCols.map(() => ({ width: 12 }))).concat([{ width: 18 }]);
+    writeFormHeader(ws1, 'COMMERCIAL INVOICE', ws1Cols);
 
     // 헤더 행: 회색 배경 + bold 12pt (⑦ 전 셀 가운데)
-    const invHead = ws1.addRow(['Description', 'Quantity', 'Unit Price', 'Amount', 'HS CODE',
-      '기본', 'CO미발행', 'CO발행', 'Material']);
+    const invHead = ws1.addRow(['Description', 'Quantity', 'Unit Price', 'Amount', 'HS CODE']
+      .concat(rateCols.map(rc => rc.label)).concat(['Material']));
     invHead.font = { ...FONT, bold: true, size: 12 };
     invHead.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
     invHead.height = 26;
-    for (let c = 1; c <= 9; c++) {
+    for (let c = 1; c <= ws1Cols; c++) {
       const cell = invHead.getCell(c);
       cell.border = allBorder;
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E2D5' } };
     }
+    let _rateMissing = false;   // [C] 세율 미확정 품목 안내용
 
     let totQty = 0, totAmt = 0;
     const exportProducts = (state.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0);
@@ -10021,37 +10049,45 @@ async function downloadInvoiceExcel(opts) {
     [...invMerge.values()].forEach(m => {
       const unitPrice = m.qty > 0 ? m.amount / m.qty : 0;
       totQty += m.qty; totAmt += m.amount;
+      const rateVals = rateCols.map(rc => {
+        if (rc.src === 'blank') return '';
+        const v = (rc.src === 'fta') ? m.ftaR : m.baseR;
+        if (v === '' || v == null) { if (rc.src !== 'blank') _rateMissing = true; return ''; }
+        return v;
+      });
       const row = ws1.addRow([
         m.desc, m.qty,
         Number(unitPrice.toFixed(4)), Number(m.amount.toFixed(2)),
-        m.hs, m.baseR, m.baseR, m.ftaR, m.mat,
-      ]);
+        m.hs,
+      ].concat(rateVals).concat([m.mat]));
       row.font = { ...FONT, size: 10 };
       row.height = 18;
-      // ⑦ 전 셀 가운데(가로·세로). Description은 wrapText 유지.
-      for (let c = 1; c <= 9; c++) {
+      // ⑦ 전 셀 가운데. Description(1)·Material(끝열) wrapText.
+      for (let c = 1; c <= ws1Cols; c++) {
         const cell = row.getCell(c);
-        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: c === 1 || c === 9 };
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: c === 1 || c === ws1Cols };
         cell.border = allBorder;
       }
       row.getCell(2).numFmt = '#,##0';
       row.getCell(3).numFmt = '"$"#,##0.0000';
       row.getCell(4).numFmt = '"$"#,##0.00';
-      for (let c = 6; c <= 8; c++) { const cell = row.getCell(c); if (typeof cell.value === 'number') cell.numFmt = '0.0"%"'; }
+      for (let c = 6; c < 6 + nRate; c++) { const cell = row.getCell(c); if (typeof cell.value === 'number') cell.numFmt = '0.0"%"'; }
     });
 
     // TOTAL — 굵게 + 상단 두꺼운 선 (⑦ 가운데)
-    const invTot = ws1.addRow(['TOTAL', totQty, '', Number(totAmt.toFixed(2)), '', '', '', '', '']);
+    const invTot = ws1.addRow(['TOTAL', totQty, '', Number(totAmt.toFixed(2)), '']
+      .concat(rateCols.map(() => '')).concat(['']));
     invTot.font = { ...FONT, bold: true, size: 11 };
     invTot.height = 22;
     invTot.getCell(2).numFmt = '#,##0';
     invTot.getCell(4).numFmt = '"$"#,##0.00';
-    for (let c = 1; c <= 9; c++) {
+    for (let c = 1; c <= ws1Cols; c++) {
       const cell = invTot.getCell(c);
       cell.alignment = { vertical: 'middle', horizontal: 'center' };
       cell.border = { top: MEDIUM, left: THIN, bottom: MEDIUM, right: THIN };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8F4E9' } };
     }
+    if (taxMode !== 'first' && _rateMissing) toastWarn('일부 품목 세율 미확정 — 해당 칸 빈칸 (관세사 확정 필요)', { title: '⚠ 세율' });
 
     // 도장 — 우측 하단 (col F~J 영역), 180×180, TOTAL 아래 한 줄 띄움
     const stampStartRow = invTot.number + 2;
@@ -10094,6 +10130,7 @@ async function downloadInvoiceExcel(opts) {
     // 작업4: 주문 ID → 주문번호 매핑 (D열 Order No.)
     const orderNoMap = {};
     (state.orders || []).forEach(o => { orderNoMap[o.id] = (o.fields || {})['주문번호'] || ''; });
+    const orderNoSeq = {};   // [E] 주문번호별 순번 카운터 (같은 주문번호 -1,-2… / 다른 주문번호는 -1부터)
     let pTotQty = 0, pTotWt = 0, pTotGw = 0, pTotCbm = 0, ctns = 0;
     const packImgJobs = [];  // H3: {url, rowNumber} — 패킹 PICTURES(F열) 사진 임베드
     const boxNums = Object.keys(state.boxes || {}).sort((a, b) => parseInt(a) - parseInt(b));
@@ -10120,7 +10157,9 @@ async function downloadInvoiceExcel(opts) {
           const unitUsd = getProductUnitUsd(p);
           pTotQty += qty;
           const ordIds = pf['Order'] || [];
-          const ordNo = ordIds.map(id => orderNoMap[id]).filter(Boolean).join(', ');
+          const ordNoBase = ordIds.map(id => orderNoMap[id]).filter(Boolean).join(', ');
+          let ordNo = '';   // [E] 주문번호-순번
+          if (ordNoBase) { orderNoSeq[ordNoBase] = (orderNoSeq[ordNoBase] || 0) + 1; ordNo = ordNoBase + '-' + orderNoSeq[ordNoBase]; }
           vals = ['', '', '', ordNo, pf['Description'] || pf['상품ID'] || '', '',
             qty, Number((unitUsd * qty).toFixed(2)), Number(unitUsd.toFixed(4)),
             '', '', '', pf['Material'] || ''];
@@ -10151,9 +10190,9 @@ async function downloadInvoiceExcel(opts) {
       // #8: 한글 라벨 → 영문 (예: 검정 → Black)
       const tapeKo = (state.shipment && state.shipment.fields && state.shipment.fields['테이프색상']) || '';
       ws2.getCell('B' + rStart).value = tapeKo ? (getTapeColorEn(tapeKo) || tapeKo) : '';
-      // #9: 사서함 prefix만 추출 (예: 'EX260530 조유리(조유리)' → 'EX260530')
-      const mailboxPrefix = String(mailbox || '').split(' ')[0] || mailbox;
-      ws2.getCell('C' + rStart).value = mailboxPrefix + '-' + bn;
+      // [D] C/T NO. = 고객사서함(AP원본)-박스순번 (복합키 아님 — 표시만). 예 AP2882-1.
+      const ctBase = (f['고객사서함'] || String(mailbox || '').replace(/-\d{6}$/, '').split(' ')[0] || mailbox);
+      ws2.getCell('C' + rStart).value = ctBase + '-' + bn;
       ws2.getCell('J' + rStart).value = wt;
       ws2.getCell('K' + rStart).value = gw;
       ws2.getCell('L' + rStart).value = Number(cbm.toFixed(5));
