@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.58</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.59</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.58</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.59</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -473,6 +473,7 @@
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#fff7e6; color:#1B2A3B; border:1px solid var(--gold);" onclick="openExcelUploadModal()" title="표준 양식 엑셀로 사서함 데이터 업로드 — 알리피드 대체 트랙">📂 엑셀 업로드</button>
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openAgentAdmin()">👥 관세사 관리</button>
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openMemberAdmin()">🏢 회원 관리</button>
+    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#e8f7ef; border:1px solid #2BB673;" onclick="openNotifyModal()" title="채널톡 고객 알림 — 사서함 직접 입력 가능(주문 없어도)">📨 채널톡 알림</button>
     <!-- v3.2.42: 직원 관리 (admin만, 관세사 패턴 미러) -->
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#eef5ff; color:#1B2A3B; border:1px solid #1B5E9A;" onclick="openStaffAdmin()" title="직원 계정 발급·관리 (ADMIN_INVITE_TOKEN 필요)">🧑‍💼 직원 관리</button>
     <!-- v3.2.41 (2026-06-05): 선적일별 부킹 요약 — 그날 사서함 박스 무게·CBM 합산 → 위챗 복사 -->
@@ -1527,7 +1528,8 @@
       <h3 style="margin:0; color:#1B2A3B;">📨 고객 알림 발송 <span style="font-size:12px; color:#888;">(채널톡 1:1)</span></h3>
       <button class="secondary small" onclick="closeNotifyModal()">✕</button>
     </div>
-    <div style="font-size:12px; color:#666; margin-bottom:6px;">사서함: <strong id="notifyMailbox">-</strong> (현재 사서함 기준, base 매칭)</div>
+    <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">사서함번호 (직접 입력 — 주문 없는 사서함도 발송 가능)</label>
+    <input id="notifyMailboxInput" placeholder="예: AP20" style="width:100%; padding:7px; border:1px solid #ccc; border-radius:6px; margin-bottom:8px; font-family:ui-monospace,monospace;">
     <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">알림 종류</label>
     <select id="notifyKind" onchange="onNotifyKindChange()" style="width:100%; padding:7px; border:1px solid #ccc; border-radius:6px; margin-bottom:8px;">
       <option value="통관단계">통관 단계 안내</option>
@@ -7729,9 +7731,9 @@ function renderCustomsTimeline(d, blNo) {
 }
 // [채널톡 발송 v1] 고객 알림 — dryRun 미리보기 → 직원 확인 → 실발송. 자동발송 없음.
 function openNotifyModal() {
-  if (!state.shipment) { (typeof toastWarn==='function'?toastWarn:alert)('사서함을 먼저 불러오세요'); return; }
-  const mb = (state.shipment.fields||{})['고객사서함'] || String((state.shipment.fields||{})['사서함']||'').replace(/-\d{6}$/,'').split(' ')[0] || '';
-  document.getElementById('notifyMailbox').textContent = mb || '-';
+  // 사서함 로드돼 있으면 base 사서함 프리필, 없으면 직접 입력(주문 없는 사서함도 발송 가능 — 예 AP20)
+  const mb = state.shipment ? ((state.shipment.fields||{})['고객사서함'] || String((state.shipment.fields||{})['사서함']||'').replace(/-\d{6}$/,'').split(' ')[0] || '') : '';
+  document.getElementById('notifyMailboxInput').value = mb;
   document.getElementById('notifyResult').innerHTML = '';
   document.getElementById('notifySendBtn').style.display = 'none';
   document.getElementById('notifyModal').style.display = 'block';
@@ -7755,11 +7757,13 @@ function _notifyPayload() {
 }
 async function _notifyCall(dryRun) {
   const auth = (typeof customsAuthHeader==='function') ? customsAuthHeader() : null;
-  if (!auth) throw new Error('로그인 또는 관리자 토큰 필요');
+  if (!auth) throw new Error('로그인 또는 관리자 토큰 필요 (👥 관세사 관리에서 토큰 입력)');
+  const mailbox = (document.getElementById('notifyMailboxInput').value||'').trim();
+  if (!mailbox) throw new Error('사서함번호를 입력하세요');
   const p = _notifyPayload();
   const r = await fetch(AGENT_API_BASE, {
     method:'POST', headers:{ 'Authorization': auth, 'Content-Type':'application/json' },
-    body: JSON.stringify({ op:'notify_customer', shipmentId: state.shipment.id, dryRun: dryRun?1:undefined, kind:p.kind, payload:p.payload }),
+    body: JSON.stringify({ op:'notify_customer', '사서함': mailbox, dryRun: dryRun?1:undefined, kind:p.kind, payload:p.payload }),
   });
   const d = await r.json().catch(()=>({}));
   if (!r.ok || !d.ok) { const e=new Error(d.error||('HTTP '+r.status)); e.detail=d.detail; throw e; }
