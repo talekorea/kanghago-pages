@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.51</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.52</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.51</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.52</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -4152,6 +4152,12 @@ async function loadShipment() {
     document.getElementById('overheadSection').classList.remove('hidden');
     // [Phase L-v3] 신규 placeholder 섹션 표시 ([L-v4c] deliveryFeeCards 삭제)
     document.getElementById('customsProgressSection')?.classList.remove('hidden');
+    // [통관 진행상황 v2] 자동조회 — BL 있고 + 직전 조회와 다른 BL + 인증 있을 때만(30회/분 가드).
+    //   인증 없으면 스킵(버튼은 노출). 같은 BL 재로드/같은 BL 사서함 전환 시 중복호출 차단.
+    try {
+      const _bl = ((state.shipment.fields || {})['BL번호'] || '').trim();
+      if (_bl && _bl !== _lastCustomsQueryBL && customsAuthHeader()) loadCustomsProgress({ auto: true });
+    } catch (e) { /* 자동조회 실패는 무시 — 수동 버튼 유지 */ }
     document.getElementById('invoicePreviewSection').classList.remove('hidden');
     document.getElementById('tariffSection').classList.remove('hidden');
     document.getElementById('summarySection').classList.remove('hidden');
@@ -7463,54 +7469,100 @@ async function adminApiCall(method, qs, body) {
   return data;
 }
 
-// [통관 진행상황 v1] 서울 중계(kanghago-relay) 경유 UNIPASS 화물통관진행정보 조회.
-//   adminApiCall(Admin 토큰)로 /api/agent?op=customs_progress 호출 → 요약 + 처리단계 타임라인 렌더.
-async function loadCustomsProgress() {
+// [통관 진행상황 v2] 서울 중계(kanghago-relay) 경유 UNIPASS 화물통관진행정보.
+//   인증: 역할 무관 — staff/관세사 Supabase JWT(sb-kanghago-staff) 우선, 없으면 admin 토큰.
+//   op=customs_progress가 Admin·JWT 공용 핸들러라 각자 자기 토큰으로 호출(관리자 토큰·PAT 미노출).
+let _lastCustomsQueryBL = null;   // 30회/분 가드: 직전 조회 BL과 다를 때만 자동호출
+function customsAuthHeader() {
+  // 1) 직원/관세사 Supabase JWT (자기 토큰)
+  try {
+    const raw = localStorage.getItem('sb-kanghago-staff');
+    if (raw) {
+      const s = JSON.parse(raw);
+      const jwt = s && (s.access_token || (s.currentSession && s.currentSession.access_token));
+      if (jwt) return 'Bearer ' + jwt;
+    }
+  } catch (e) { /* 파싱 실패 → 토큰으로 폴백 */ }
+  // 2) admin 토큰 (사장님 file:// / 관세사관리 모달)
+  const t = ((document.getElementById('agentAdminToken') || {}).value || '').trim()
+    || sessionStorage.getItem('kanghago_admin_token') || localStorage.getItem('kanghago_admin_token') || '';
+  return t ? ('Admin ' + t) : null;
+}
+function fmtPrcsDttm(v) {
+  const s = String(v || '').replace(/\D/g, '');
+  if (s.length >= 12) return `${s.slice(4,6)}-${s.slice(6,8)} ${s.slice(8,10)}:${s.slice(10,12)}`;
+  if (s.length >= 8) return `${s.slice(4,6)}-${s.slice(6,8)}`;
+  return String(v || '');
+}
+function renderCustomsTimeline(d, blNo) {
+  const s = d.summary || {};
+  const cur = s.csclPrgsStts || (d.stages[d.stages.length - 1] || {}).진행상태 || '-';
+  const sumHtml = `<div style="background:#f0f7ff; border:1px solid #1B5E9A; border-radius:10px; padding:12px 14px; margin-bottom:10px; font-size:13px;">
+    <div style="font-weight:700; color:#1B2A3B; margin-bottom:4px;">📦 ${s.prnm || '(품명 미상)'} <span style="font-size:11px; color:#888;">화물관리번호 ${s.cargMtNo || '-'}</span></div>
+    <div style="color:#555;">BL ${s.blNo || blNo} · 포장 ${s.pckGcnt || '-'} · 총중량 ${s.ttwg || '-'}kg · 선적국 ${s.shipNat || '-'} · 입항 ${s.etprDt || '-'}</div>
+    <div style="color:#1B5E9A; font-weight:600; margin-top:3px;">현재 진행상태: ${cur}</div>
+  </div>`;
+  const n = d.stages.length;
+  const items = d.stages.map((st, i) => {
+    const last = i === n - 1;
+    const label = st.진행상태 || st.반출입내용 || '단계';
+    const isInspect = /검사|선별|검역/.test((st.진행상태 || '') + (st.반출입내용 || ''));   // 느슨한 키워드
+    const isFinalOut = last && /반출/.test(label);
+    const isAccept = /신고\s*수리/.test(label) && !/수리후 반출/.test(label);
+    let dot = '#bbb', lblColor = '#1B2A3B', lblWeight = last ? 700 : 500, marker = '', badge = '';
+    if (isInspect) { dot = '#E8A800'; marker = '🟡'; badge = ' <span style="background:#fff3cd;color:#856404;font-size:10px;padding:1px 6px;border-radius:8px;">검사</span>'; }
+    else if (isFinalOut) { dot = '#2BB673'; marker = '🏁'; lblColor = '#1b7a44'; }
+    else if (isAccept) { dot = '#1B5E9A'; lblColor = '#1B5E9A'; lblWeight = 700; }
+    else if (last) { dot = '#1B5E9A'; }
+    const sub = [fmtPrcsDttm(st.처리일시), st.장치장 || '', (st.반출입내용 && st.반출입내용 !== st.진행상태) ? st.반출입내용 : ''].filter(Boolean).join(' · ');
+    return `<div style="display:flex; gap:10px;">
+      <div style="display:flex; flex-direction:column; align-items:center; width:14px; flex:0 0 14px;">
+        <div style="width:11px;height:11px;border-radius:50%;background:${dot};box-shadow:0 0 0 2px #fff,0 0 0 3px ${dot};margin-top:3px;"></div>
+        ${last ? '' : '<div style="flex:1;width:2px;background:#e3e3e3;margin:2px 0;"></div>'}
+      </div>
+      <div style="flex:1; padding-bottom:${last ? 0 : 12}px;">
+        <div style="font-weight:${lblWeight};color:${lblColor};font-size:13px;">${marker ? marker + ' ' : ''}${label}${badge}</div>
+        <div style="font-size:11px;color:#888;margin-top:1px;">${sub}</div>
+      </div>
+    </div>`;
+  }).join('');
+  return sumHtml + `<div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px 14px 14px;">${items}</div>
+    <div style="font-size:10px;color:#aaa;margin-top:6px;">조회 ${d.queriedAt || ''} · 서울 중계 경유 · ${n}단계 · MRN ${s.cargMtNo || '-'}</div>`;
+}
+async function loadCustomsProgress(opts) {
+  const auto = !!(opts && opts.auto);
   const blEl = document.getElementById('cpBlNo'), yrEl = document.getElementById('cpBlYear');
   const resEl = document.getElementById('cpResult');
-  // 빈 칸이면 §7 BL번호/선적일 연도로 자동 채움
-  if (blEl && !blEl.value.trim() && state.shipment && state.shipment.fields) {
+  if (!blEl || !yrEl || !resEl) return;
+  if (auto && state.shipment && state.shipment.fields) {
+    // 자동: 사서함 전환 시 stale BL 방지 — state.shipment 값으로 강제 주입
     blEl.value = state.shipment.fields['BL번호'] || '';
-  }
-  if (yrEl && !yrEl.value.trim()) {
-    const sd = (state.shipment && state.shipment.fields && (state.shipment.fields['선적일'] || state.shipment.fields['출고요청일'])) || '';
-    yrEl.value = sd ? String(sd).slice(0, 4) : String(new Date().getFullYear());
+    const sd = state.shipment.fields['선적일'] || state.shipment.fields['출고요청일'] || '';
+    if (sd) yrEl.value = String(sd).slice(0, 4);
+  } else {
+    // 수동: 빈 칸만 §7 BL/선적일 연도로 채움(직원이 타이핑한 BL 보존)
+    if (!blEl.value.trim() && state.shipment && state.shipment.fields) blEl.value = state.shipment.fields['BL번호'] || '';
+    if (!yrEl.value.trim()) {
+      const sd = (state.shipment && state.shipment.fields && (state.shipment.fields['선적일'] || state.shipment.fields['출고요청일'])) || '';
+      yrEl.value = sd ? String(sd).slice(0, 4) : String(new Date().getFullYear());
+    }
   }
   const blNo = (blEl.value || '').trim(), blYear = (yrEl.value || '').trim();
-  if (!blNo) { resEl.innerHTML = '<div style="color:#c0392b; font-size:13px;">⚠ BL번호를 입력하세요</div>'; return; }
+  if (!blNo) { if (!auto) resEl.innerHTML = '<div style="color:#c0392b; font-size:13px;">⚠ BL번호를 입력하세요</div>'; return; }
+  const auth = customsAuthHeader();
+  if (!auth) { if (!auto) resEl.innerHTML = '<div style="color:#c0392b; font-size:13px;">⚠ 로그인 또는 관리자 토큰이 필요합니다</div>'; return; }
+  _lastCustomsQueryBL = blNo;   // 수동·자동 가드 공유
   resEl.innerHTML = '<div style="color:#888; font-size:13px;">🔎 유니패스 조회 중… (서울 중계 경유)</div>';
   try {
     const qs = `?op=customs_progress&blNo=${encodeURIComponent(blNo)}&blYear=${encodeURIComponent(blYear)}`;
-    const d = await adminApiCall('GET', qs);
-    if (!d.ok) { resEl.innerHTML = `<div style="color:#c0392b; font-size:13px;">❌ ${d.error || '조회 실패'}</div>`; return; }
-    if (d.ntce && d.tCnt <= 0) {
-      resEl.innerHTML = `<div style="color:#a14a00; font-size:13px; padding:10px; background:#fff7e6; border-radius:8px;">ℹ️ ${d.ntce}</div>`;
-      return;
-    }
-    if (!d.stagesCount) {
-      resEl.innerHTML = `<div style="color:#a14a00; font-size:13px; padding:10px; background:#fff7e6; border-radius:8px;">처리단계가 아직 없습니다 (통관 진행 전이거나 BL/연도 확인).</div>`;
-      return;
-    }
-    const s = d.summary || {};
-    const sumHtml = `<div style="background:#f0f7ff; border:1px solid #1B5E9A; border-radius:10px; padding:12px 14px; margin-bottom:10px; font-size:13px;">
-      <div style="font-weight:700; color:#1B2A3B; margin-bottom:4px;">📦 ${s.prnm || '(품명 미상)'} <span style="font-size:11px; color:#888;">화물관리번호 ${s.cargMtNo || '-'}</span></div>
-      <div style="color:#555;">BL ${s.blNo || blNo} · 포장 ${s.pckGcnt || '-'} · 총중량 ${s.ttwg || '-'}kg · 선적국 ${s.shipNat || '-'} · 입항 ${s.etprDt || '-'}</div>
-      <div style="color:#1B5E9A; font-weight:600; margin-top:3px;">현재 진행상태: ${s.csclPrgsStts || (d.stages[d.stages.length-1]||{}).진행상태 || '-'}</div>
-    </div>`;
-    const rows = d.stages.map((st, i) => {
-      const last = i === d.stages.length - 1;
-      return `<div style="display:flex; gap:10px; padding:7px 0; border-bottom:1px solid #eee;">
-        <div style="width:8px; flex:0 0 8px; margin-top:5px;"><div style="width:8px; height:8px; border-radius:50%; background:${last ? '#1B5E9A' : '#bbb'};"></div></div>
-        <div style="flex:1;">
-          <div style="font-weight:${last ? 700 : 500}; color:#1B2A3B; font-size:13px;">${st.진행상태 || st.반출입내용 || '단계'}</div>
-          <div style="font-size:11px; color:#888;">${st.처리일시 || ''} ${st.장치장 ? '· ' + st.장치장 : ''} ${st.반출입내용 && st.반출입내용 !== st.진행상태 ? '· ' + st.반출입내용 : ''}</div>
-        </div>
-      </div>`;
-    }).join('');
-    resEl.innerHTML = sumHtml + `<div style="background:#fff; border:1px solid #ddd; border-radius:10px; padding:6px 14px;">${rows}</div>
-      <div style="font-size:10px; color:#aaa; margin-top:6px;">조회 ${d.queriedAt || ''} · 서울 중계 경유 · ${d.stagesCount}단계</div>`;
+    const r = await fetch(AGENT_API_BASE + qs, { headers: { 'Authorization': auth } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) { resEl.innerHTML = `<div style="color:#c0392b; font-size:13px;">❌ ${d.error || ('HTTP ' + r.status)}${r.status === 401 ? ' (인증 확인)' : ''}</div>`; return; }
+    if (d.ntce && d.tCnt <= 0) { resEl.innerHTML = `<div style="color:#a14a00; font-size:13px; padding:10px; background:#fff7e6; border-radius:8px;">ℹ️ ${d.ntce}</div>`; return; }
+    if (!d.stagesCount) { resEl.innerHTML = `<div style="color:#a14a00; font-size:13px; padding:10px; background:#fff7e6; border-radius:8px;">처리단계가 아직 없습니다 (통관 진행 전이거나 BL/연도 확인).</div>`; return; }
+    resEl.innerHTML = renderCustomsTimeline(d, blNo);
   } catch (e) {
-    resEl.innerHTML = `<div style="color:#c0392b; font-size:13px;">❌ ${e.message}${e.status === 401 ? ' (관리자 토큰 확인 — 👥 관세사 관리에서 설정)' : ''}</div>`;
+    resEl.innerHTML = `<div style="color:#c0392b; font-size:13px;">❌ ${e.message}</div>`;
   }
 }
 

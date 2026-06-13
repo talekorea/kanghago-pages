@@ -107,6 +107,14 @@
     <div class="meta" style="display:none;">
       <div style="margin-left:auto;" class="actions"></div>
     </div>
+    <!-- [통관 진행상황 v2] 관세사도 직원·관리자와 동일 렌더 (BL 있으면 자동조회) -->
+    <div id="customsProgressAgent" style="background:#fff; border:1px solid #ddd; border-radius:10px; padding:14px; margin-bottom:14px;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+        <h3 style="margin:0; font-size:15px; color:#1B2A3B;">🛃 통관 진행상황</h3>
+        <button onclick="loadCustomsProgressAgent()" style="background:#1B5E9A; color:#fff; border:none; padding:5px 10px; border-radius:6px; font-size:12px; cursor:pointer;">🔎 새로고침</button>
+      </div>
+      <div id="cpResultAgent" style="font-size:13px; color:#888;">BL번호가 있으면 자동 조회됩니다.</div>
+    </div>
     <table id="prodTable">
       <thead>
         <tr>
@@ -257,6 +265,7 @@
         document.getElementById('confirmBtn').textContent = '✅ 이미 확정됨';
       }
       renderDocMatchAgent();   // v3.2.49: BL/CO 대조 배지
+      loadCustomsProgressAgent(true);   // [통관 v2] BL 있으면 자동조회(관세사 JWT)
       renderProducts();
       document.getElementById('content').style.display = '';
     } catch (e) { showError(e.message || String(e)); }
@@ -302,6 +311,65 @@
     if (!r.ok) { const err = new Error(data.error || ('HTTP ' + r.status)); err.status = r.status; throw err; }
     return data;
   }
+
+  // [통관 진행상황 v2] 도구(직원·관리자)와 동일 세로 타임라인 렌더 — 관세사는 자기 JWT(api())로 호출.
+  function fmtPrcsDttm(v) {
+    const s = String(v || '').replace(/\D/g, '');
+    if (s.length >= 12) return `${s.slice(4,6)}-${s.slice(6,8)} ${s.slice(8,10)}:${s.slice(10,12)}`;
+    if (s.length >= 8) return `${s.slice(4,6)}-${s.slice(6,8)}`;
+    return String(v || '');
+  }
+  function renderCustomsTimeline(d, blNo) {
+    const s = d.summary || {};
+    const cur = s.csclPrgsStts || (d.stages[d.stages.length - 1] || {}).진행상태 || '-';
+    const sumHtml = `<div style="background:#f0f7ff; border:1px solid #1B5E9A; border-radius:10px; padding:12px 14px; margin-bottom:10px; font-size:13px;">
+      <div style="font-weight:700; color:#1B2A3B; margin-bottom:4px;">📦 ${s.prnm || '(품명 미상)'} <span style="font-size:11px; color:#888;">화물관리번호 ${s.cargMtNo || '-'}</span></div>
+      <div style="color:#555;">BL ${s.blNo || blNo} · 포장 ${s.pckGcnt || '-'} · 총중량 ${s.ttwg || '-'}kg · 선적국 ${s.shipNat || '-'} · 입항 ${s.etprDt || '-'}</div>
+      <div style="color:#1B5E9A; font-weight:600; margin-top:3px;">현재 진행상태: ${cur}</div></div>`;
+    const n = d.stages.length;
+    const items = d.stages.map((st, i) => {
+      const last = i === n - 1;
+      const label = st.진행상태 || st.반출입내용 || '단계';
+      const isInspect = /검사|선별|검역/.test((st.진행상태 || '') + (st.반출입내용 || ''));
+      const isFinalOut = last && /반출/.test(label);
+      const isAccept = /신고\s*수리/.test(label) && !/수리후 반출/.test(label);
+      let dot = '#bbb', lblColor = '#1B2A3B', lblWeight = last ? 700 : 500, marker = '', badge = '';
+      if (isInspect) { dot = '#E8A800'; marker = '🟡'; badge = ' <span style="background:#fff3cd;color:#856404;font-size:10px;padding:1px 6px;border-radius:8px;">검사</span>'; }
+      else if (isFinalOut) { dot = '#2BB673'; marker = '🏁'; lblColor = '#1b7a44'; }
+      else if (isAccept) { dot = '#1B5E9A'; lblColor = '#1B5E9A'; lblWeight = 700; }
+      else if (last) { dot = '#1B5E9A'; }
+      const sub = [fmtPrcsDttm(st.처리일시), st.장치장 || '', (st.반출입내용 && st.반출입내용 !== st.진행상태) ? st.반출입내용 : ''].filter(Boolean).join(' · ');
+      return `<div style="display:flex; gap:10px;">
+        <div style="display:flex; flex-direction:column; align-items:center; width:14px; flex:0 0 14px;">
+          <div style="width:11px;height:11px;border-radius:50%;background:${dot};box-shadow:0 0 0 2px #fff,0 0 0 3px ${dot};margin-top:3px;"></div>
+          ${last ? '' : '<div style="flex:1;width:2px;background:#e3e3e3;margin:2px 0;"></div>'}
+        </div>
+        <div style="flex:1; padding-bottom:${last ? 0 : 12}px;">
+          <div style="font-weight:${lblWeight};color:${lblColor};font-size:13px;">${marker ? marker + ' ' : ''}${label}${badge}</div>
+          <div style="font-size:11px;color:#888;margin-top:1px;">${sub}</div>
+        </div></div>`;
+    }).join('');
+    return sumHtml + `<div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px;">${items}</div>
+      <div style="font-size:10px;color:#aaa;margin-top:6px;">조회 ${d.queriedAt || ''} · 서울 중계 경유 · ${n}단계 · MRN ${s.cargMtNo || '-'}</div>`;
+  }
+  async function loadCustomsProgressAgent(auto) {
+    const resEl = document.getElementById('cpResultAgent');
+    if (!resEl || !shipment) return;
+    const f = shipment.fields || {};
+    const blNo = (f['BL번호'] || '').trim();
+    const sd = (f['선적일'] || f['출고요청일'] || '');
+    const blYear = sd ? String(sd).slice(0, 4) : String(new Date().getFullYear());
+    if (!blNo) { resEl.innerHTML = auto ? 'BL번호 입력 전 — 통관 조회 대기' : '<span style="color:#c0392b;">⚠ 이 사서함에 BL번호가 없습니다</span>'; return; }
+    resEl.innerHTML = '🔎 유니패스 조회 중… (서울 중계 경유)';
+    try {
+      const d = await api('GET', `?op=customs_progress&blNo=${encodeURIComponent(blNo)}&blYear=${encodeURIComponent(blYear)}`);
+      if (!d.ok) { resEl.innerHTML = `<span style="color:#c0392b;">❌ ${d.error || '조회 실패'}</span>`; return; }
+      if (d.ntce && d.tCnt <= 0) { resEl.innerHTML = `<div style="color:#a14a00; padding:8px; background:#fff7e6; border-radius:8px;">ℹ️ ${d.ntce}</div>`; return; }
+      if (!d.stagesCount) { resEl.innerHTML = `<div style="color:#a14a00; padding:8px; background:#fff7e6; border-radius:8px;">처리단계가 아직 없습니다 (통관 진행 전이거나 BL/연도 확인).</div>`; return; }
+      resEl.innerHTML = renderCustomsTimeline(d, blNo);
+    } catch (e) { resEl.innerHTML = `<span style="color:#c0392b;">❌ ${e.message || e}</span>`; }
+  }
+  window.loadCustomsProgressAgent = loadCustomsProgressAgent;
 
   // 작업2: 셋 중 가장 낮은 세율 자동 추천
   // ===== 최저세율 단일 선택 helper (세 화면 통일: 도구·staff-tool·agent-shipment) =====
