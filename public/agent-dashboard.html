@@ -299,11 +299,12 @@
     if (!list.length) { c.innerHTML = '<div class="empty">해당 상태의 사서함이 없습니다.</div>'; return; }
     c.innerHTML = list.map(s => {
       const status = s.fields['상태'] === '관세사확정완료' ? '완료' : '대기';
-      const date = s.fields['출고요청일'] || '';
+      const shipDate = s.fields['선적일'] || s.fields['출고요청일'] || '';   // 선적일 우선, 없으면 출고요청일 폴백
+      const dateLabel = shipDate ? ('선적일 ' + String(shipDate).slice(0, 10)) : '';
       return `<div class="item" onclick="location.href='/agent-shipment.html?id=${s.id}'">
         <div>
           <div class="name">${s.fields['사서함'] || '(이름 없음)'}</div>
-          <div style="font-size:11px; color:#888; margin-top:2px;">${date}</div>
+          <div style="font-size:11px; color:#888; margin-top:2px;">${dateLabel}</div>
         </div>
         <div class="status ${status}">${s.fields['상태']}</div>
       </div>`;

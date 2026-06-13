@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.50</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.51</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.50</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.51</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1488,12 +1488,22 @@
 <!-- [Phase L-v3] 배송요금 카드 placeholder (택배/화물/밀크런 — 요금 산출은 2단계). reparent로 운임 다음 배치 -->
 <!-- [L-v4c] 배송요금 3카드 섹션 삭제 (운임 계산기가 선택 배송방식 운임만 표시) -->
 
-<!-- [Phase L-v3] 통관 진행사항 placeholder (UNIPASS 연동 3단계) -->
+<!-- [통관 진행상황 v1] UNIPASS 화물통관진행정보 — 서울 중계(kanghago-relay) 경유 -->
 <div class="section hidden" id="customsProgressSection">
-  <h2>🛃 통관 진행사항 <span class="small-dim">(UNIPASS 연동 — 3단계 · BL 입력 전 대기)</span></h2>
-  <div style="border:1px dashed #ccc; border-radius:10px; padding:24px; text-align:center; color:#999; background:#fafafa;">
-    🛃 통관 진행 상태 표시 — <strong>준비 중</strong> (3단계 UNIPASS API 연동에서 구현)
+  <h2>🛃 통관 진행상황 <span class="small-dim">(UNIPASS 화물통관진행정보 — BL번호 조회)</span></h2>
+  <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px;">
+    <div>
+      <label style="font-size:11px; color:#666; display:block;">BL번호 (HBL)</label>
+      <input id="cpBlNo" placeholder="예: WY3561E701" style="padding:7px 10px; border:1px solid #ccc; border-radius:6px; width:200px;">
+    </div>
+    <div>
+      <label style="font-size:11px; color:#666; display:block;">연도</label>
+      <input id="cpBlYear" placeholder="2026" style="padding:7px 10px; border:1px solid #ccc; border-radius:6px; width:80px;">
+    </div>
+    <button class="primary" onclick="loadCustomsProgress()" style="background:#1B5E9A;">🔎 통관 진행 조회</button>
+    <span style="font-size:11px; color:#999;">관리자 토큰 필요 (👥 관세사 관리에서 설정한 토큰)</span>
   </div>
+  <div id="cpResult"></div>
 </div>
 
 <!-- v3.2.0: ═══ 8. 배차/발송 ═══ (★ 트리거 4 — 입금 확인 → 유니패스 보세창고 → 배차/발송 정보 → 직원·기사) -->
@@ -4296,6 +4306,21 @@ function buildGroupedOrder(products) {
   });
   return out;
 }
+// [D v3.2.50 정정] 패킹 Order No 접미 = §1 화면 표시번호(그룹 내 1,2,3…), pro_seq(상품ID '_' 뒤) 아님.
+//   prodSeqInOrder는 그룹 내 *정렬*에만 쓰고, 표시번호/Order No 접미는 이 맵을 단일 출처로 공유한다.
+//   buildGroupedOrder 순서대로 그룹키가 바뀌면 1로 리셋 → p.id별 표시순번(1-based) 반환.
+function buildDisplaySeqMap(products) {
+  const ordered = buildGroupedOrder(products || []);
+  const map = {};
+  let curKey = null, seq = 0;
+  ordered.forEach(p => {
+    const gk = groupKeyOf((p.fields || {})['상품ID']);
+    if (gk !== curKey) { curKey = gk; seq = 0; }
+    seq++;
+    map[p.id] = seq;
+  });
+  return map;
+}
 function buildGroupHeader(gk, ordered) {
   const items = ordered.filter(p => groupKeyOf((p.fields || {})['상품ID']) === gk);
   const qty = items.reduce((s, p) => {
@@ -4615,8 +4640,8 @@ function renderProducts() {
 
   // 그룹핑(표시 전용): 상품ID 첫 '_' 앞=주문번호. 렌더 순서만 그룹키 오름차순(원본 state.products 불변).
   const ordered = buildGroupedOrder(state.products);
+  const _dispSeqMap = buildDisplaySeqMap(state.products);   // [D v3.2.50] §1 표시번호 = 패킹 Order No 접미 단일 출처
   let _curGroupKey = null;
-  let _seqInGroup = 0;          // 그룹 내 표시용 순번 (렌더링 시점에만 계산 — 저장/데이터엔 안 넣음)
 
   ordered.forEach(p => {
     const f = p.fields;
@@ -4624,10 +4649,9 @@ function renderProducts() {
     const _gk = groupKeyOf(f['상품ID']);
     if (_gk !== _curGroupKey) {
       _curGroupKey = _gk;
-      _seqInGroup = 0;          // 그룹 바뀌면 순번 1부터 다시
       tbody.appendChild(buildGroupHeader(_gk, ordered));
     }
-    _seqInGroup++;              // 그룹 안에서 1,2,3...
+    const _seqInGroup = _dispSeqMap[p.id] || 0;   // 그룹 안에서 1,2,3... (맵 단일 출처)
     const tr = document.createElement('tr');
     tr.dataset.recordId = p.id;
     tr.dataset.group = _gk;
@@ -7439,6 +7463,57 @@ async function adminApiCall(method, qs, body) {
   return data;
 }
 
+// [통관 진행상황 v1] 서울 중계(kanghago-relay) 경유 UNIPASS 화물통관진행정보 조회.
+//   adminApiCall(Admin 토큰)로 /api/agent?op=customs_progress 호출 → 요약 + 처리단계 타임라인 렌더.
+async function loadCustomsProgress() {
+  const blEl = document.getElementById('cpBlNo'), yrEl = document.getElementById('cpBlYear');
+  const resEl = document.getElementById('cpResult');
+  // 빈 칸이면 §7 BL번호/선적일 연도로 자동 채움
+  if (blEl && !blEl.value.trim() && state.shipment && state.shipment.fields) {
+    blEl.value = state.shipment.fields['BL번호'] || '';
+  }
+  if (yrEl && !yrEl.value.trim()) {
+    const sd = (state.shipment && state.shipment.fields && (state.shipment.fields['선적일'] || state.shipment.fields['출고요청일'])) || '';
+    yrEl.value = sd ? String(sd).slice(0, 4) : String(new Date().getFullYear());
+  }
+  const blNo = (blEl.value || '').trim(), blYear = (yrEl.value || '').trim();
+  if (!blNo) { resEl.innerHTML = '<div style="color:#c0392b; font-size:13px;">⚠ BL번호를 입력하세요</div>'; return; }
+  resEl.innerHTML = '<div style="color:#888; font-size:13px;">🔎 유니패스 조회 중… (서울 중계 경유)</div>';
+  try {
+    const qs = `?op=customs_progress&blNo=${encodeURIComponent(blNo)}&blYear=${encodeURIComponent(blYear)}`;
+    const d = await adminApiCall('GET', qs);
+    if (!d.ok) { resEl.innerHTML = `<div style="color:#c0392b; font-size:13px;">❌ ${d.error || '조회 실패'}</div>`; return; }
+    if (d.ntce && d.tCnt <= 0) {
+      resEl.innerHTML = `<div style="color:#a14a00; font-size:13px; padding:10px; background:#fff7e6; border-radius:8px;">ℹ️ ${d.ntce}</div>`;
+      return;
+    }
+    if (!d.stagesCount) {
+      resEl.innerHTML = `<div style="color:#a14a00; font-size:13px; padding:10px; background:#fff7e6; border-radius:8px;">처리단계가 아직 없습니다 (통관 진행 전이거나 BL/연도 확인).</div>`;
+      return;
+    }
+    const s = d.summary || {};
+    const sumHtml = `<div style="background:#f0f7ff; border:1px solid #1B5E9A; border-radius:10px; padding:12px 14px; margin-bottom:10px; font-size:13px;">
+      <div style="font-weight:700; color:#1B2A3B; margin-bottom:4px;">📦 ${s.prnm || '(품명 미상)'} <span style="font-size:11px; color:#888;">화물관리번호 ${s.cargMtNo || '-'}</span></div>
+      <div style="color:#555;">BL ${s.blNo || blNo} · 포장 ${s.pckGcnt || '-'} · 총중량 ${s.ttwg || '-'}kg · 선적국 ${s.shipNat || '-'} · 입항 ${s.etprDt || '-'}</div>
+      <div style="color:#1B5E9A; font-weight:600; margin-top:3px;">현재 진행상태: ${s.csclPrgsStts || (d.stages[d.stages.length-1]||{}).진행상태 || '-'}</div>
+    </div>`;
+    const rows = d.stages.map((st, i) => {
+      const last = i === d.stages.length - 1;
+      return `<div style="display:flex; gap:10px; padding:7px 0; border-bottom:1px solid #eee;">
+        <div style="width:8px; flex:0 0 8px; margin-top:5px;"><div style="width:8px; height:8px; border-radius:50%; background:${last ? '#1B5E9A' : '#bbb'};"></div></div>
+        <div style="flex:1;">
+          <div style="font-weight:${last ? 700 : 500}; color:#1B2A3B; font-size:13px;">${st.진행상태 || st.반출입내용 || '단계'}</div>
+          <div style="font-size:11px; color:#888;">${st.처리일시 || ''} ${st.장치장 ? '· ' + st.장치장 : ''} ${st.반출입내용 && st.반출입내용 !== st.진행상태 ? '· ' + st.반출입내용 : ''}</div>
+        </div>
+      </div>`;
+    }).join('');
+    resEl.innerHTML = sumHtml + `<div style="background:#fff; border:1px solid #ddd; border-radius:10px; padding:6px 14px;">${rows}</div>
+      <div style="font-size:10px; color:#aaa; margin-top:6px;">조회 ${d.queriedAt || ''} · 서울 중계 경유 · ${d.stagesCount}단계</div>`;
+  } catch (e) {
+    resEl.innerHTML = `<div style="color:#c0392b; font-size:13px;">❌ ${e.message}${e.status === 401 ? ' (관리자 토큰 확인 — 👥 관세사 관리에서 설정)' : ''}</div>`;
+  }
+}
+
 async function agentInvite() {
   const emailEl = document.getElementById('agentInviteEmail');
   const nameEl = document.getElementById('agentInviteName');
@@ -10223,7 +10298,8 @@ async function downloadInvoiceExcel(opts) {
     // 작업4: 주문 ID → 주문번호 매핑 (D열 Order No.)
     const orderNoMap = {};
     (state.orders || []).forEach(o => { orderNoMap[o.id] = (o.fields || {})['주문번호'] || ''; });
-    const orderNoSeq = {};   // [E] 주문번호별 순번 카운터 (같은 주문번호 -1,-2… / 다른 주문번호는 -1부터)
+    const orderNoSeq = {};   // [E] 주문번호별 순번 카운터 (상품ID에 순번 없을 때만 폴백)
+    const _pkSeqMap = buildDisplaySeqMap(state.products);   // [D v3.2.50] §1 표시번호와 동일한 맵 공유
     let pTotQty = 0, pTotWt = 0, pTotGw = 0, pTotCbm = 0, ctns = 0;
     const packImgJobs = [];  // H3: {url, rowNumber} — 패킹 PICTURES(F열) 사진 임베드
     const boxNums = Object.keys(state.boxes || {}).sort((a, b) => parseInt(a) - parseInt(b));
@@ -10251,11 +10327,12 @@ async function downloadInvoiceExcel(opts) {
           pTotQty += qty;
           const ordIds = pf['Order'] || [];
           const ordNoBase = ordIds.map(id => orderNoMap[id]).filter(Boolean).join(', ');
-          // [D v3.2.49] 접미 = 주문 내 제품 고유번호(상품ID '_' 뒤, prodSeqInOrder 공유) — §1/§3 화면 번호와 항상 동일.
-          //   박스 배치·표시 순서와 무관. 표시순 재번호(-1,-2,-3)는 상품ID에 순번이 없을 때만 폴백.
+          // [D v3.2.50 정정] 접미 = §1 화면 표시번호(그룹 내 1,2,3…) — buildDisplaySeqMap 공유.
+          //   pro_seq(상품ID '_' 뒤 -55,-56)가 아니라 화면 순번과 항상 동일. 박스 배치 순서와 무관.
+          //   맵에 없을 때만(상품ID 순번 결손) 주문별 -1,-2 폴백.
           let ordNo = '';
           if (ordNoBase) {
-            const _seq = prodSeqInOrder(p);
+            const _seq = _pkSeqMap[p.id];
             if (_seq != null) { ordNo = ordNoBase + '-' + _seq; }
             else { orderNoSeq[ordNoBase] = (orderNoSeq[ordNoBase] || 0) + 1; ordNo = ordNoBase + '-' + orderNoSeq[ordNoBase]; }
           }

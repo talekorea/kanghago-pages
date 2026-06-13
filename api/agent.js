@@ -16,6 +16,84 @@
 // 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY, AIRTABLE_PAT, AIRTABLE_BASE_ID
 
 const { handleCors, readBody, atRequest, atListAll, TABLES, BASE_ID } = require('./_lib');
+const https = require('https');
+
+// [통관 진행상황 v1] UNIPASS(:38010)는 LINK형 → Vercel 직접호출 불가.
+//   서울 전용 중계(kanghago-relay)로만 호출. self-signed HTTPS라 인증서 검증 끄고
+//   X-Relay-Secret(RELAY_SECRET)으로 핀닝. 중계는 원본 XML만 반환, 파싱은 여기서.
+function callCustomsRelay(urlStr, secret, payload) {
+  return new Promise((resolve, reject) => {
+    let u;
+    try { u = new URL(urlStr); } catch (e) { return reject(new Error('RELAY_URL 형식 오류')); }
+    const data = Buffer.from(payload, 'utf8');
+    const r = https.request({
+      hostname: u.hostname, port: u.port || 443, path: u.pathname, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': data.length, 'X-Relay-Secret': secret },
+      rejectUnauthorized: false, timeout: 20000,
+    }, (resp) => {
+      let body = '';
+      resp.on('data', c => body += c);
+      resp.on('end', () => { try { resolve(JSON.parse(body)); } catch (e) { reject(new Error('relay non-JSON: ' + body.slice(0, 120))); } });
+    });
+    r.on('error', reject);
+    r.on('timeout', () => r.destroy(new Error('relay timeout')));
+    r.write(data); r.end();
+  });
+}
+function _xmlTag(block, name) {
+  const m = block.match(new RegExp('<' + name + '>([^<]*)</' + name + '>'));
+  return m ? m[1].trim() : '';
+}
+// UNIPASS 화물통관진행정보(cargCsclPrgsInfo) XML → 요약 + 처리단계 타임라인
+function parseCargoProgress(xml) {
+  xml = xml || '';
+  const ntce = _xmlTag(xml, 'ntceInfo');
+  const tCnt = parseInt(_xmlTag(xml, 'tCnt') || '0', 10);
+  const sumBlocks = xml.match(/<cargCsclPrgsInfoQryVo>[\s\S]*?<\/cargCsclPrgsInfoQryVo>/g) || [];
+  let summary = null;
+  if (sumBlocks.length) {
+    const b = sumBlocks[0];
+    summary = {
+      blNo: _xmlTag(b, 'blNo') || _xmlTag(b, 'hblNo'),
+      cargMtNo: _xmlTag(b, 'cargMtNo'),
+      prnm: _xmlTag(b, 'prnm'),                 // 품명
+      pckGcnt: _xmlTag(b, 'pckGcnt'),           // 포장개수
+      ttwg: _xmlTag(b, 'ttwg'),                 // 총중량
+      shipNat: _xmlTag(b, 'shipNatNm'),         // 선적국
+      etprDt: _xmlTag(b, 'etprDt'),             // 입항일
+      csclPrgsStts: _xmlTag(b, 'csclPrgsStts'), // 통관진행상태
+      shedNm: _xmlTag(b, 'shedNm'),             // 장치장
+    };
+  }
+  const dtlBlocks = xml.match(/<cargCsclPrgsInfoDtlQryVo>[\s\S]*?<\/cargCsclPrgsInfoDtlQryVo>/g) || [];
+  const stages = dtlBlocks.map(b => ({
+    처리일시: _xmlTag(b, 'prcsDttm'),
+    장치장: _xmlTag(b, 'shedNm'),
+    반출입내용: _xmlTag(b, 'rlbrCn'),
+    진행상태: _xmlTag(b, 'cargTrcnRelaBsopTpcd') || _xmlTag(b, 'csclPrgsStts'),
+    중량: _xmlTag(b, 'wght'),
+    포장: _xmlTag(b, 'pckGcnt'),
+  })).sort((a, b) => (a.처리일시 || '').localeCompare(b.처리일시 || ''));
+  return { ntce, tCnt, summary, stages, stagesCount: stages.length };
+}
+// [통관 진행상황 v1] 공용 핸들러 — Admin 토큰(도구)·Supabase JWT(관세사) 양쪽 분기에서 호출.
+async function handleCustomsProgress(req, res) {
+  const blNo = String(req.query.blNo || req.query.bl || '').trim();
+  const blYear = String(req.query.blYear || req.query.year || '').trim();
+  const cargoMgmtNo = String(req.query.cargoMgmtNo || '').trim();
+  if (!blNo && !cargoMgmtNo) return res.status(400).json({ ok: false, error: 'blNo 또는 cargoMgmtNo 필요' });
+  const RELAY_URL = process.env.RELAY_URL, RELAY_SECRET = process.env.RELAY_SECRET;
+  if (!RELAY_URL || !RELAY_SECRET) return res.status(503).json({ ok: false, error: '중계 미설정(RELAY_URL/RELAY_SECRET)' });
+  const payload = JSON.stringify(cargoMgmtNo ? { cargoMgmtNo } : { blNo, blYear });
+  let rr;
+  try { rr = await callCustomsRelay(RELAY_URL, RELAY_SECRET, payload); }
+  catch (e) { return res.status(502).json({ ok: false, error: '중계 호출 실패', detail: String(e.message || e).slice(0, 200) }); }
+  if (!rr || !rr.ok) return res.status(502).json({ ok: false, error: (rr && rr.error) || '중계 오류', detail: rr && rr.detail });
+  const parsed = parseCargoProgress(rr.xml || '');
+  const out = { ok: true, ...parsed, queriedAt: rr.queriedAt };
+  if (req.query.debug === '1') out._rawSample = String(rr.xml || '').slice(0, 1500);
+  return res.json(out);
+}
 // [Phase2 판정 단일함수] 박스입력 완료 = 박스≥1 AND 모든 박스 무게KG·가로cm·세로cm·높이cm > 0.
 //   ★도구(인보이스 도구) isBoxInputComplete와 동일 로직 유지(중복 구현 금지 — 두 곳 동기).
 function isBoxInputComplete(boxes) {
@@ -455,6 +533,10 @@ module.exports = async (req, res) => {
         const staff = await adminListStaff();
         return res.json({ staff });
       }
+      // [통관 진행상황 v1] 도구(Admin 토큰)에서 통관 진행 조회 — 공용 핸들러 호출.
+      if (req.method === 'GET' && req.query.op === 'customs_progress') {
+        return await handleCustomsProgress(req, res);
+      }
       if (req.method === 'POST') {
         const body = await readBody(req);
         // 직원 관리 op (v3.2.42) — 같은 ADMIN_INVITE_TOKEN, role='staff' 고정 발급
@@ -540,6 +622,11 @@ module.exports = async (req, res) => {
       });
     }
 
+    // [통관 진행상황 v1] 로그인(staff/관세사 공통)만 통과하면 사용 — 중계 호출.
+    if (req.method === 'GET' && req.query.op === 'customs_progress') {
+      return await handleCustomsProgress(req, res);
+    }
+
     // ===== 관세사 op (Authorization: Bearer <Supabase JWT>) =====
     const agent = await loadAgent(user.id, user.email);
 
@@ -552,7 +639,8 @@ module.exports = async (req, res) => {
         // v3.2.7+ (2026-05-30): filter 자체 제거 — 회의 결정 "모든 상태가 관세사 페이지에 표시·작업 가능".
         //   출고요청·박스확정·관세사확정대기·관세사확정완료·인보이스완료·통관중·통관완료·배송중·출고완료·입금완료 등 모두 list에.
         //   관세사 페이지의 탭이 시각 필터링 담당. API는 차단 안 함.
-        const url = `/${TABLES.Shipments}?fields[]=사서함&fields[]=상태&fields[]=출고요청일`;
+        // 선적일 추가(관세사 대시보드 목록 날짜 = 선적일 표시용). 출고요청일도 호환 위해 유지.
+        const url = `/${TABLES.Shipments}?fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=선적일`;
         const recs = await atListAll(url);
         return res.json({ count: recs.length, shipments: recs.map(r => ({ id: r.id, fields: r.fields })) });
       }
