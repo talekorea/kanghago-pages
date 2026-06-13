@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.54</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.55</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.54</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.55</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -7628,6 +7628,44 @@ function fmtPrcsDttm(v) {
   if (s.length >= 8) return `${s.slice(4,6)}-${s.slice(6,8)}`;
   return String(v || '');
 }
+// [v3.2.55] 핵심 6단계 식별 — 15단계 원본에서 슬롯별 매칭(없으면 null=대기). 매칭 실패해도 안 깨짐.
+function selectCore6(stages) {
+  const L = s => (s.진행상태 || '');
+  const B = s => (s.진행상태 || '') + ' ' + (s.반출입내용 || '');
+  const first = pred => { for (let i = 0; i < stages.length; i++) if (pred(stages[i])) return stages[i]; return null; };
+  const last = pred => { for (let i = stages.length - 1; i >= 0; i--) if (pred(stages[i])) return stages[i]; return null; };
+  return {
+    입항: first(s => /입항/.test(L(s))),
+    하선: first(s => /하선신고\s*수리/.test(L(s))) || first(s => /하선/.test(L(s))),
+    수입신고: first(s => /수입신고/.test(L(s)) && !/수리/.test(L(s)) && !/사용소비/.test(L(s))),
+    수입신고수리: first(s => /수입신고\s*수리|수입신고수리/.test(L(s))),
+    반입: first(s => /보세운송\s*반입/.test(B(s))),   // 여러 반입 중 보세운송 반입만(올바른 보세창고)
+    반출: last(s => /반출/.test(L(s))),
+    검사: first(s => /검사|선별|검역/.test(B(s))),
+  };
+}
+// 단계 1줄 렌더 — 공용(핵심·전체 동일 마크업). st=null이면 '대기' 회색.
+function _cpStageRow(label, st, opt) {
+  opt = opt || {};
+  const waiting = !st;
+  let dot = '#bbb', lblColor = '#1B2A3B', weight = 500, marker = '', badge = '';
+  if (waiting) { dot = '#d9d9d9'; lblColor = '#aaa'; }
+  else if (opt.inspect) { dot = '#E8A800'; marker = '🟡'; badge = ' <span style="background:#fff3cd;color:#856404;font-size:10px;padding:1px 6px;border-radius:8px;">검사</span>'; }
+  else if (opt.final) { dot = '#2BB673'; marker = '🏁'; lblColor = '#1b7a44'; }
+  else if (opt.accept) { dot = '#1B5E9A'; lblColor = '#1B5E9A'; weight = 700; }
+  const text = waiting ? (label + ' <span style="color:#bbb;">· 대기</span>')
+    : (marker ? marker + ' ' : '') + (st.진행상태 || label) + badge;
+  const sub = waiting ? '' : [fmtPrcsDttm(st.처리일시), st.장치장 || '', (st.반출입내용 && st.반출입내용 !== st.진행상태) ? st.반출입내용 : ''].filter(Boolean).join(' · ');
+  return `<div style="display:flex; gap:10px;">
+    <div style="display:flex;flex-direction:column;align-items:center;width:14px;flex:0 0 14px;">
+      <div style="width:11px;height:11px;border-radius:50%;background:${dot};box-shadow:0 0 0 2px #fff,0 0 0 3px ${dot};margin-top:3px;"></div>
+      ${opt.isLast ? '' : '<div style="flex:1;width:2px;background:#e3e3e3;margin:2px 0;"></div>'}
+    </div>
+    <div style="flex:1;padding-bottom:${opt.isLast ? 0 : 12}px;">
+      <div style="font-weight:${weight};color:${lblColor};font-size:13px;">${text}</div>
+      ${sub ? `<div style="font-size:11px;color:#888;margin-top:1px;">${sub}</div>` : ''}
+    </div></div>`;
+}
 function renderCustomsTimeline(d, blNo) {
   const s = d.summary || {};
   const cur = s.csclPrgsStts || (d.stages[d.stages.length - 1] || {}).진행상태 || '-';
@@ -7637,31 +7675,30 @@ function renderCustomsTimeline(d, blNo) {
     <div style="color:#1B5E9A; font-weight:600; margin-top:3px;">현재 진행상태: ${cur}</div>
   </div>`;
   const n = d.stages.length;
-  const items = d.stages.map((st, i) => {
-    const last = i === n - 1;
-    const label = st.진행상태 || st.반출입내용 || '단계';
-    const isInspect = /검사|선별|검역/.test((st.진행상태 || '') + (st.반출입내용 || ''));   // 느슨한 키워드
-    const isFinalOut = last && /반출/.test(label);
-    const isAccept = /신고\s*수리/.test(label) && !/수리후 반출/.test(label);
-    let dot = '#bbb', lblColor = '#1B2A3B', lblWeight = last ? 700 : 500, marker = '', badge = '';
-    if (isInspect) { dot = '#E8A800'; marker = '🟡'; badge = ' <span style="background:#fff3cd;color:#856404;font-size:10px;padding:1px 6px;border-radius:8px;">검사</span>'; }
-    else if (isFinalOut) { dot = '#2BB673'; marker = '🏁'; lblColor = '#1b7a44'; }
-    else if (isAccept) { dot = '#1B5E9A'; lblColor = '#1B5E9A'; lblWeight = 700; }
-    else if (last) { dot = '#1B5E9A'; }
-    const sub = [fmtPrcsDttm(st.처리일시), st.장치장 || '', (st.반출입내용 && st.반출입내용 !== st.진행상태) ? st.반출입내용 : ''].filter(Boolean).join(' · ');
-    return `<div style="display:flex; gap:10px;">
-      <div style="display:flex; flex-direction:column; align-items:center; width:14px; flex:0 0 14px;">
-        <div style="width:11px;height:11px;border-radius:50%;background:${dot};box-shadow:0 0 0 2px #fff,0 0 0 3px ${dot};margin-top:3px;"></div>
-        ${last ? '' : '<div style="flex:1;width:2px;background:#e3e3e3;margin:2px 0;"></div>'}
-      </div>
-      <div style="flex:1; padding-bottom:${last ? 0 : 12}px;">
-        <div style="font-weight:${lblWeight};color:${lblColor};font-size:13px;">${marker ? marker + ' ' : ''}${label}${badge}</div>
-        <div style="font-size:11px;color:#888;margin-top:1px;">${sub}</div>
-      </div>
-    </div>`;
-  }).join('');
-  return sumHtml + `<div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px 14px 14px;">${items}</div>
-    <div style="font-size:10px;color:#aaa;margin-top:6px;">조회 ${d.queriedAt || ''} · 서울 중계 경유 · ${n}단계 · MRN ${s.cargMtNo || '-'}</div>`;
+  const c = selectCore6(d.stages);
+  // 표시 순서(고정): 입항→하선→수입신고→[검사]→수입신고수리→반입→반출
+  const seq = [
+    { label: '입항', st: c.입항 },
+    { label: '하선', st: c.하선 },
+    { label: '수입신고', st: c.수입신고 },
+  ];
+  if (c.검사) seq.push({ label: '검사', st: c.검사, opt: { inspect: true } });
+  seq.push({ label: '수입신고수리', st: c.수입신고수리, opt: { accept: true } });
+  seq.push({ label: '보세운송 반입', st: c.반입 });
+  seq.push({ label: '반출', st: c.반출, opt: { final: true } });
+  const coreHtml = seq.map((r, i) => _cpStageRow(r.label, r.st, Object.assign({ isLast: i === seq.length - 1 }, r.opt || {}))).join('');
+  // 전체 N단계 (원본 보존, 기본 접힘)
+  const fullHtml = d.stages.map((st, i) => _cpStageRow(st.진행상태 || st.반출입내용 || '단계', st, {
+    isLast: i === n - 1,
+    final: i === n - 1 && /반출/.test(st.진행상태 || ''),
+    accept: /수입신고\s*수리|수입신고수리/.test(st.진행상태 || ''),
+    inspect: /검사|선별|검역/.test((st.진행상태 || '') + (st.반출입내용 || '')),
+  })).join('');
+  return sumHtml +
+    `<div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px;">${coreHtml}</div>
+     <button type="button" onclick="(function(b){var f=document.getElementById('cpFullStages');var sh=f.style.display==='none';f.style.display=sh?'':'none';b.textContent=sh?'▴ 핵심 단계만 보기':'▾ 전체 ${n}단계 보기';})(this)" style="margin-top:6px;background:none;border:none;color:#1B5E9A;font-size:11px;cursor:pointer;padding:2px;">▾ 전체 ${n}단계 보기</button>
+     <div id="cpFullStages" style="display:none;background:#fafafa;border:1px solid #eee;border-radius:10px;padding:14px;margin-top:4px;">${fullHtml}</div>
+     <div style="font-size:10px;color:#aaa;margin-top:6px;">조회 ${d.queriedAt || ''} · 서울 중계 경유 · 핵심 6 / 전체 ${n}단계 · MRN ${s.cargMtNo || '-'}</div>`;
 }
 async function loadCustomsProgress(opts) {
   const auto = !!(opts && opts.auto);
