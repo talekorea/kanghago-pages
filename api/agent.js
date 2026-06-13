@@ -712,7 +712,16 @@ module.exports = async (req, res) => {
           const filter = 'OR(' + prodIds.map(id => `RECORD_ID()='${id}'`).join(',') + ')';
           products = await atListAll(`/${TABLES.Products}?filterByFormula=${encodeURIComponent(filter)}`);
         }
-        return res.json({ shipment: ship, products, orders });
+        // [파일허브] 위임장·사업자등록증(Customers, 재사용) 다운로드용 — base 사서함으로 1건 매칭
+        let customer = null;
+        try {
+          const base = (ship.fields['고객사서함'] || String(shipName || '').replace(/-\d{6}$/, '').split(' ')[0] || shipName);
+          if (base) {
+            const cs = await atListAll(`/${TABLES.Customers}?filterByFormula=${encodeURIComponent(`{사서함번호}='${base}'`)}&maxRecords=1`);
+            if (cs.length) customer = cs[0];
+          }
+        } catch (e) { /* 고객 없으면 null */ }
+        return res.json({ shipment: ship, products, orders, customer });
       }
 
       // [부킹 요약] 읽기 전용 — 선적일(Orders.실제출고요청일)별 사서함 박스 무게/CBM 합산.
@@ -870,6 +879,19 @@ module.exports = async (req, res) => {
         });
         await logAction(agent, shipmentId, null, { '대조확인상태': prev }, { '대조확인상태': '확인완료' });
         return res.json({ ok: true, 대조확인일시: today });
+      }
+
+      // [파일허브] 면허(수입신고필증) 업로드 — 관세사 JWT. Shipments.면허파일만 PATCH(1장 replace).
+      if (op === 'upload_license') {
+        const { shipmentId, file } = body;
+        if (!shipmentId) return res.status(400).json({ error: 'shipmentId 누락' });
+        if (!file || !file.url) return res.status(400).json({ error: '파일(file.url) 누락' });
+        const att = [{ url: String(file.url), filename: String(file.filename || '면허.pdf') }];
+        await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, {
+          fields: { '면허파일': att }, typecast: true,   // 1장 replace
+        });
+        await logAction(agent, shipmentId, null, { '면허파일': '(이전)' }, { '면허파일': att[0].filename });
+        return res.json({ ok: true, filename: att[0].filename });
       }
 
       return res.status(400).json({ error: 'Unknown op' });

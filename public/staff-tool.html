@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.55</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.56</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.55</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.56</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1462,6 +1462,8 @@
       <label style="font-size:12px;"><input type="checkbox" id="payInvFeeSeparate" /> 6% 별도 라인(Service fee) 표시 <span style="color:#999;">(기본: 단가 임베드 · 합계 동일)</span></label>
       <button class="secondary small" onclick="openPaymentInvoicePreview()" style="padding:8px 16px;">👁 미리보기</button>
       <button class="primary small" onclick="downloadPaymentInvoicePdf()" style="padding:8px 18px; background:#1B5E9A; color:#fff;">📄 결제 인보이스 PDF</button>
+      <button class="primary small" onclick="savePaymentInvoiceForAgent()" style="padding:8px 18px; background:#0a7b40; color:#fff;" title="이 PI를 관세사 페이지에 노출되는 제출용으로 저장(최신 1장). 다운로드와 별개.">📤 관세사 제출용 저장</button>
+      <div style="font-size:11px; color:#999; margin-top:4px;">💡 다운로드는 저장 안 됨(테스트·미리보기 안전). 관세사에게 보일 PI는 <strong>[📤 관세사 제출용 저장]</strong>으로만.</div>
     </div>
   </div>
 </div>
@@ -12285,13 +12287,13 @@ function onPayInvDateChange() {
   if (modal && modal.style.display === 'block') openPaymentInvoicePreview();   // 미리보기 열려있으면 새 날짜로 재렌더
 }
 
-async function downloadPaymentInvoicePdf() {
-  if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
-  if (typeof html2canvas === 'undefined' || !window.jspdf) { alert('PDF 라이브러리 로드 실패 — 새로고침'); return; }
+// [파일허브 v3.2.56] PDF 생성 핵심 — 다운로드·저장 공용(다운로드본=저장본 동일 보장). jsPDF doc + d 반환.
+async function _buildPaymentInvoicePdf() {
+  if (typeof html2canvas === 'undefined' || !window.jspdf) throw new Error('PDF 라이브러리 로드 실패 — 새로고침');
   const opts = {
     payMethod: (document.querySelector('input[name="payInvMethod"]:checked') || {}).value || 'bank',
     feeSeparate: !!(document.getElementById('payInvFeeSeparate') || {}).checked,
-    issueDate: ((document.getElementById('payInvDate') || {}).value || '').trim(),   // [Feature N] 선택 발행일
+    issueDate: ((document.getElementById('payInvDate') || {}).value || '').trim(),
   };
   const d = buildPaymentInvoiceData(opts);
   const doc = document.getElementById('paymentInvoiceDoc');
@@ -12306,19 +12308,43 @@ async function downloadPaymentInvoicePdf() {
       scale: 2, useCORS: true, backgroundColor: '#ffffff',
       onclone: (cd) => { const m = cd.getElementById('paymentInvoicePreviewModal'); if (m) { m.style.display = 'block'; m.style.visibility = 'visible'; m.style.opacity = '1'; } const dd = cd.getElementById('paymentInvoiceDoc'); if (dd) { dd.style.visibility = 'visible'; dd.style.opacity = '1'; } },
     });
-    if (wasHidden) { modal.style.display = 'none'; modal.style.visibility = ''; }
     if (!canvas || canvas.width < 10) throw new Error('인보이스 캡쳐 실패 — [👁 미리보기] 후 다시 시도');
     const imgData = canvas.toDataURL('image/png');
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
     const imgW = 190, imgH = (canvas.height * imgW) / canvas.width;
     pdf.addImage(imgData, 'PNG', 10, 10, imgW, imgH);
-    pdf.save(`${d.invoiceNo}-${d.customer.company !== '-' ? d.customer.company : 'PI'}.pdf`);
-    if (typeof toastSuccess === 'function') toastSuccess('결제용 인보이스 PDF 발행 완료', { title: '💳 PI' });
-  } catch (e) {
+    return { pdf, d };
+  } finally {
     if (wasHidden) { modal.style.display = 'none'; modal.style.visibility = ''; }
+  }
+}
+// 다운로드 — 저장 안 함(테스트·미리보기 안전). 기존 동작 유지.
+async function downloadPaymentInvoicePdf() {
+  if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
+  try {
+    const { pdf, d } = await _buildPaymentInvoicePdf();
+    pdf.save(`${d.invoiceNo}-${d.customer.company !== '-' ? d.customer.company : 'PI'}.pdf`);
+    if (typeof toastSuccess === 'function') toastSuccess('결제용 인보이스 PDF 발행 (다운로드만 — 관세사 저장 X)', { title: '💳 PI' });
+  } catch (e) {
     if (typeof toastError === 'function') toastError('PDF 생성 실패: ' + (e.message || e));
     console.error('[Feature N] downloadPaymentInvoicePdf', e);
+  }
+}
+// [파일허브 v3.2.56] 관세사 제출용 PI 저장 — 명시적 동작에서만 Shipments.PI파일 저장(다운로드와 분리, 최신 1장 replace).
+async function savePaymentInvoiceForAgent() {
+  if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
+  if (!confirm('이 PI를 관세사에게 공개되는 "제출용"으로 저장합니다.\n기존 제출본이 있으면 덮어씁니다(최신 1장).\n\n테스트·미리보기가 아니라 확정 PI가 맞습니까?')) return;
+  try {
+    const { pdf, d } = await _buildPaymentInvoicePdf();
+    const att = [{ url: pdf.output('datauristring'), filename: `${d.invoiceNo}-PI.pdf` }];
+    await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: { 'PI파일': att }, typecast: true });
+    if (!state.shipment.fields) state.shipment.fields = {};
+    state.shipment.fields['PI파일'] = att;
+    if (typeof toastSuccess === 'function') toastSuccess('관세사 제출용 PI 저장 완료 — 관세사 페이지에 노출됩니다', { title: '📤 PI' });
+  } catch (e) {
+    if (typeof toastError === 'function') toastError('PI 저장 실패: ' + (e.message || e));
+    console.error('[파일허브] savePaymentInvoiceForAgent', e);
   }
 }
 

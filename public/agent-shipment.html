@@ -115,6 +115,16 @@
       </div>
       <div id="cpResultAgent" style="font-size:13px; color:#888;">BL번호가 있으면 자동 조회됩니다.</div>
     </div>
+    <!-- [파일허브 v3.2.56] 통관 서류 — 다운로드 5종 + 면허 업로드 -->
+    <div id="docsHubAgent" style="background:#fff; border:1px solid #ddd; border-radius:10px; padding:14px; margin-bottom:14px;">
+      <h3 style="margin:0 0 8px; font-size:15px; color:#1B2A3B;">📂 통관 서류</h3>
+      <div id="docsHubList" style="font-size:13px;">사서함 로드 중…</div>
+      <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #ddd;">
+        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">📋 면허(수입신고필증) 업로드 <span id="licenseStatus" style="font-size:11px; margin-left:6px;"></span></label>
+        <input type="file" id="licenseFileInput" accept=".pdf,.jpg,.jpeg,.png" style="font-size:12px;" />
+        <div id="licenseMsg" style="font-size:11px; color:#888; margin-top:3px;"></div>
+      </div>
+    </div>
     <table id="prodTable">
       <thead>
         <tr>
@@ -143,7 +153,7 @@
 <script type="module">
   const params = new URLSearchParams(location.search);
   const shipId = params.get('id');
-  let supabase = null, session = null, agent = null, shipment = null, products = [];
+  let supabase = null, session = null, agent = null, shipment = null, products = [], customer = null;
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // v3.2.20 (2026-05-31) 관세청 전체 세율표 (11,326 HS) + AI HS 추천 통합
@@ -241,7 +251,7 @@
       document.getElementById('meLabel').textContent = ' · ' + (agent.name ? `${agent.name} · ${agent.email}` : agent.email);
 
       const data = await api('GET', '?op=shipment&id=' + shipId);
-      shipment = data.shipment; products = data.products || [];
+      shipment = data.shipment; products = data.products || []; customer = data.customer || null;
       document.getElementById('shipTitle').textContent = `🛃 ${shipment.fields['사서함']} 작업`;
       document.getElementById('mailbox').textContent = shipment.fields['사서함'];
       // v3.2.23: 헤더 가운데 고객 라벨 채움 — 회원명 + 회사명 (data.customer 있으면)
@@ -266,6 +276,7 @@
       }
       renderDocMatchAgent();   // v3.2.49: BL/CO 대조 배지
       loadCustomsProgressAgent(true);   // [통관 v2] BL 있으면 자동조회(관세사 JWT)
+      renderDocsHub();         // [파일허브 v3.2.56] 통관 서류 다운로드 5종 + 면허 업로드
       renderProducts();
       document.getElementById('content').style.display = '';
     } catch (e) { showError(e.message || String(e)); }
@@ -401,6 +412,58 @@
     } catch (e) { resEl.innerHTML = `<span style="color:#c0392b;">❌ ${e.message || e}</span>`; }
   }
   window.loadCustomsProgressAgent = loadCustomsProgressAgent;
+
+  // [파일허브 v3.2.56] 통관 서류 다운로드 5종 + 면허 업로드 (관세사 JWT)
+  function _docRow(label, atts) {
+    const arr = Array.isArray(atts) ? atts.filter(a => a && a.url) : [];
+    let right;
+    if (!arr.length) { right = '<span style="color:#bbb;">미등록</span>'; }
+    else {
+      right = arr.map((a, i) => `<a href="${a.url}" target="_blank" rel="noopener" style="color:#1B5E9A; text-decoration:none; margin-left:6px;">⬇ 다운로드${arr.length > 1 ? ' ' + (i + 1) : ''}</a>`).join('');
+    }
+    return `<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #f0f0f0;"><span style="color:#333;">${label}</span><span>${right}</span></div>`;
+  }
+  function renderDocsHub() {
+    const el = document.getElementById('docsHubList');
+    if (!el) return;
+    const sf = (shipment && shipment.fields) || {};
+    const cf = (customer && customer.fields) || {};
+    el.innerHTML =
+      _docRow('PI (결제 인보이스)', sf['PI파일']) +
+      _docRow('CO (원산지증명서)', sf['CO파일']) +
+      _docRow('BL (선하증권)', sf['BL파일']) +
+      _docRow('위임장', cf['위임장']) +
+      _docRow('사업자등록증', cf['사업자등록증']) +
+      _docRow('면허 (수입신고필증)', sf['면허파일']);
+    // 면허 현재 상태 배지
+    const ls = document.getElementById('licenseStatus');
+    if (ls) { const has = Array.isArray(sf['면허파일']) && sf['면허파일'].length; ls.textContent = has ? '✓ 업로드됨' : '미업로드'; ls.style.color = has ? '#0a7b40' : '#c0392b'; }
+  }
+  function _fileToDataURL(file) {
+    return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+  }
+  async function handleLicenseUpload(inp) {
+    if (!shipment) return;
+    if (!inp.files || !inp.files.length) return;
+    const file = inp.files[0];
+    const msg = document.getElementById('licenseMsg');
+    if (file.size > 5 * 1024 * 1024 && !confirm(`파일이 ${Math.round(file.size/1024/1024)}MB입니다. 계속할까요?`)) { inp.value = ''; return; }
+    if (msg) { msg.textContent = '업로드 중…'; msg.style.color = '#888'; }
+    try {
+      const dataUrl = await _fileToDataURL(file);
+      const r = await api('POST', '', { op: 'upload_license', shipmentId: shipment.id, file: { url: dataUrl, filename: file.name } });
+      shipment.fields['면허파일'] = [{ url: dataUrl, filename: file.name }];   // 로컬 반영(다음 로드 시 Airtable URL)
+      renderDocsHub();
+      if (msg) { msg.textContent = '✓ 면허 업로드 완료 (' + (r.filename || file.name) + ')'; msg.style.color = '#0a7b40'; }
+    } catch (e) {
+      if (msg) { msg.textContent = '❌ 업로드 실패: ' + (e.message || e); msg.style.color = '#c0392b'; }
+    }
+    inp.value = '';
+  }
+  (function bindLicense() {
+    const inp = document.getElementById('licenseFileInput');
+    if (inp && !inp.dataset.bound) { inp.dataset.bound = '1'; inp.addEventListener('change', () => handleLicenseUpload(inp)); }
+  })();
 
   // 작업2: 셋 중 가장 낮은 세율 자동 추천
   // ===== 최저세율 단일 선택 helper (세 화면 통일: 도구·staff-tool·agent-shipment) =====
