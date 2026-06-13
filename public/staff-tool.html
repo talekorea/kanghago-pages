@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.53</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.54</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.53</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.54</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1268,6 +1268,8 @@
         </label>
         <input type="file" id="blFileInput" accept=".pdf,.jpg,.jpeg,.png" style="width:100%; padding:6px; border:1px solid #c7dcf3; border-radius:4px; font-size:11px; background:#fff;" />
         <div id="blFileList" style="font-size:11px; color:#666; margin-top:4px;"></div>
+        <!-- [v3.2.54] BL 텍스트PDF → BL번호 자동추출 결과/확정 (자동저장 X, 직원 확정 게이트) -->
+        <div id="blAutoExtract" style="font-size:11px; margin-top:5px;"></div>
       </div>
       <div>
         <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">
@@ -5870,6 +5872,8 @@ async function handleBlCoFileUpload(kind, fileInput) {
     renderBlCoFiles();
     if (typeof log === 'function') log(`✓ ${kind.toUpperCase()} 파일 ${arr.length}장 업로드 준비 (저장 시 Airtable 업로드) — 대조 확인 필요`, 'ok');
     if (typeof saveAll === 'function') { try { await saveAll({ silent: true }); } catch (e) {} }
+    // [v3.2.54] BL PDF면 saveAll 이후 추출 시작 → blNumber는 미저장 채우기(확정 버튼 전까지 저장 안 됨)
+    if (kind === 'bl' && files[0]) { try { extractBlNumberFromFile(files[0]); } catch (e) {} }
     if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();
   } catch (e) {
     console.error(e);
@@ -5889,6 +5893,109 @@ function bindBlCoFileInputs() {
     coInp.dataset.bound = '1';
     coInp.addEventListener('change', () => handleBlCoFileUpload('co', coInp));
   }
+}
+
+// ===== [v3.2.54] BL 텍스트PDF → BL번호 자동추출 (1차) — 클라이언트 전용, 새 API 0 =====
+let _pdfjsLib = null;
+async function loadPdfJs() {
+  if (_pdfjsLib) return _pdfjsLib;
+  const V = '4.7.76';
+  const libs = [
+    `https://cdn.jsdelivr.net/npm/pdfjs-dist@${V}/build/pdf.min.mjs`,
+    `https://unpkg.com/pdfjs-dist@${V}/build/pdf.min.mjs`,
+    `https://esm.sh/pdfjs-dist@${V}`,
+  ];
+  const wkrs = [
+    `https://cdn.jsdelivr.net/npm/pdfjs-dist@${V}/build/pdf.worker.min.mjs`,
+    `https://unpkg.com/pdfjs-dist@${V}/build/pdf.worker.min.mjs`,
+    `https://esm.sh/pdfjs-dist@${V}/build/pdf.worker.min.mjs`,
+  ];
+  let lastErr;
+  for (let i = 0; i < libs.length; i++) {
+    try {
+      const mod = await import(/* webpackIgnore: true */ libs[i]);
+      const lib = mod.getDocument ? mod : (mod.default && mod.default.getDocument ? mod.default : mod);
+      if (lib && lib.GlobalWorkerOptions) lib.GlobalWorkerOptions.workerSrc = wkrs[i];
+      if (lib && lib.getDocument) { _pdfjsLib = lib; return lib; }
+    } catch (e) { lastErr = e; console.warn('[v3.2.54 pdf.js] CDN 실패:', libs[i], e.message); }
+  }
+  throw new Error('PDF 파서 CDN 모두 차단됨 (' + (lastErr && lastErr.message) + ')');
+}
+
+const BL_PREFIXES = ['XWK', 'WY', 'TALE', 'HBL', 'MBL', 'SITC'];   // 접두 폴백 — 발견 시 한 줄 추가
+function extractBlCandidates(text) {
+  const T = String(text || '').replace(/ /g, ' ');
+  const seen = new Map();   // value -> rank (0 라벨 / 1 접두 / 2 일반)
+  const add = (raw, rank) => {
+    let v = String(raw || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').replace(/^-+|-+$/g, '');
+    if (v.length < 6 || v.length > 20) return;
+    if (/^[A-Z]{4}\d{7}$/.test(v)) return;          // ISO 컨테이너번호 제외
+    if (/^\d+$/.test(v)) return;                     // 순수 숫자 제외
+    if (!/[A-Z]/.test(v) || !/\d/.test(v)) return;   // BL은 영문+숫자 혼합
+    if (!seen.has(v) || seen.get(v) > rank) seen.set(v, rank);
+  };
+  let m;
+  // (a) 라벨 우선
+  const labelRe = /(?:HOUSE\s*B\s*\/?\s*L|H\s*\/?\s*B\s*\/?\s*L|B\s*\/?\s*L|BILL\s*OF\s*LADING)\s*(?:No\.?|NO\.?|NUMBER|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\- ]{4,22})/ig;
+  while ((m = labelRe.exec(T))) add(m[1].split(/\s{2,}/)[0], 0);
+  // (b) 접두 폴백
+  const preRe = new RegExp('\\b((?:' + BL_PREFIXES.join('|') + ')[A-Z0-9-]{4,})\\b', 'ig');
+  while ((m = preRe.exec(T))) add(m[1], 1);
+  // (c) 일반 폴백
+  const genRe = /\b([A-Z]{2,5}\d{5,}[A-Z0-9]*)\b/g;
+  while ((m = genRe.exec(T))) add(m[1], 2);
+  return [...seen.entries()].sort((a, b) => a[1] - b[1]).map(([value, rank]) => ({ value, rank }));
+}
+
+async function extractBlTextFromPdf(file) {
+  const lib = await loadPdfJs();
+  const buf = await file.arrayBuffer();
+  const pdf = await lib.getDocument({ data: buf }).promise;
+  let text = '';
+  const pages = Math.min(2, pdf.numPages);
+  for (let p = 1; p <= pages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    text += tc.items.map(it => it.str).join(' ') + '\n';
+  }
+  return text;
+}
+
+async function extractBlNumberFromFile(file) {
+  const area = document.getElementById('blAutoExtract');
+  if (!area) return;
+  const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+  if (!isPdf) { area.innerHTML = '<span style="color:#a14a00;">ℹ️ 이미지 BL이라 자동추출 불가 — BL번호를 수기 입력하세요.</span>'; return; }
+  area.innerHTML = '<span style="color:#888;">🔎 BL번호 자동추출 중…</span>';
+  let text;
+  try { text = await extractBlTextFromPdf(file); }
+  catch (e) { area.innerHTML = '<span style="color:#a14a00;">⚠ PDF 파싱 실패 — BL번호 수기 입력하세요. (' + (e.message || '') + ')</span>'; return; }
+  if (!text || text.replace(/\s/g, '').length < 30) {
+    area.innerHTML = '<span style="color:#a14a00;">ℹ️ 텍스트 없는 스캔 이미지 BL로 보입니다 — BL번호 수기 입력하세요. (OCR 추후)</span>'; return;
+  }
+  const cands = extractBlCandidates(text);
+  if (!cands.length) { area.innerHTML = '<span style="color:#a14a00;">BL번호를 찾지 못했습니다 — 수기 입력하세요.</span>'; return; }
+  if (cands.length === 1) { fillBlNumberCandidate(cands[0].value); return; }
+  const btns = cands.slice(0, 5).map(c => `<button type="button" onclick="fillBlNumberCandidate('${c.value}')" style="margin:2px 4px 2px 0; padding:3px 8px; border:1px solid #c9973a; background:#fff7e6; border-radius:5px; cursor:pointer; font-family:ui-monospace,monospace; font-size:11px;">${c.value}</button>`).join('');
+  area.innerHTML = '<div style="color:#1B5E9A;">여러 후보 — 맞는 BL번호 선택:</div><div style="margin-top:3px;">' + btns + '</div>';
+}
+
+function fillBlNumberCandidate(val) {
+  const inp = document.getElementById('blNumber');
+  const area = document.getElementById('blAutoExtract');
+  if (!inp) return;
+  inp.value = val;                      // ★ input 이벤트 미발생 → 자동저장 안 탐(확정 전까지 미저장)
+  inp.style.background = '#fff3cd';      // 노란 강조 = 미확인·미저장
+  inp.style.borderColor = '#c9973a';
+  if (area) area.innerHTML = `<span style="color:#856404;">✅ 추출: <strong style="font-family:ui-monospace,monospace;">${val}</strong> — 실물과 대조 후</span> <button type="button" onclick="confirmExtractedBl()" style="margin-left:6px; padding:3px 10px; border:none; background:#0a7b40; color:#fff; border-radius:5px; cursor:pointer; font-size:11px;">✓ 확정·저장</button>`;
+}
+
+function confirmExtractedBl() {
+  const inp = document.getElementById('blNumber');
+  const area = document.getElementById('blAutoExtract');
+  if (inp) { inp.style.background = ''; inp.style.borderColor = ''; }
+  if (typeof autoSaveBL === 'function') autoSaveBL();   // 명시적 확정 → 저장(BL번호 등 PATCH)
+  if (area) area.innerHTML = '<span style="color:#0a7b40;">✓ BL번호 확정·저장됨.</span>';
 }
 
 // v3.1.0 (2026-05-30): 옵션별 균등 분할 — 박스 N개에 옵션 수량 자동 분배.
