@@ -117,20 +117,33 @@ function callChannel(method, path, payload, key, secret) {
     if (data) r.write(data); r.end();
   });
 }
-// 메시지 템플릿(상수 분리) — 통관단계 / 면허 / 자유. 면허는 URL 링크(직접 첨부 아님).
+// 메시지 템플릿(상수 분리) — 분기점(통관완료·출고) / 통관단계 / 면허 / 자유. 분기점은 45자 SMS 확정 문구.
+const BRANCHPOINT_TEMPLATES = {
+  '수입신고수리': (mb) => `[강하고] ${mb} 수입통관 완료됐어요. 곧 출고 안내드릴게요.`,
+  '반출': (mb) => `[강하고] ${mb} 통관품 출고(반출)됐어요. 도착 안내 곧 드려요.`,
+};
 function buildNotifyMessage(kind, payload, mailbox) {
   payload = payload || {};
+  // 분기점 알림: payload.stage(수입신고수리/반출)면 확정 SMS 템플릿 사용
+  if (kind === '통관단계' && payload.stage && BRANCHPOINT_TEMPLATES[payload.stage]) return BRANCHPOINT_TEMPLATES[payload.stage](mailbox);
   if (kind === '통관단계') return `[강하고] ${mailbox} 통관 안내\n현재: ${payload.진행상태 || payload.stage || '-'}${payload.note ? '\n' + payload.note : ''}`;
   if (kind === '면허') return `[강하고] ${mailbox} 수입신고필증(면허)이 발급되었습니다.${payload.url ? '\n다운로드: ' + payload.url : ''}`;
   return `[강하고] ${mailbox}\n${payload.text || ''}`.trim();
 }
+// 통관알림이력(쉼표구분 stage 키) 헬퍼
+function histList(s) { return String(s || '').split(',').map(x => x.trim()).filter(Boolean); }
+function histHas(s, stage) { return histList(s).includes(stage); }
+function histAppend(s, stage) { const a = histList(s); if (!a.includes(stage)) a.push(stage); return a.join(','); }
 // [채널톡 발송 v1] 사서함 → Customers.채널톡userId → user-chats(조회/생성) → 메시지. dryRun이면 발송 X.
+//   stage(분기점) 있으면: 발송 전 통관알림이력에 있으면 skip(중복금지), 성공 후 append(dedup).
 async function handleNotifyCustomer(req, res, body, actor) {
   const kind = body.kind || '자유';
+  const stage = String(body.stage || '').trim();
   let mailbox = String(body['사서함'] || body.mailbox || '').trim();
   const shipmentId = body.shipmentId || null;
-  if (!mailbox && shipmentId) {
-    try { const sh = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`); mailbox = sh.fields['고객사서함'] || sh.fields['사서함'] || ''; } catch (e) {}
+  let hist = '';
+  if (shipmentId) {
+    try { const sh = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`); if (!mailbox) mailbox = sh.fields['고객사서함'] || sh.fields['사서함'] || ''; hist = String(sh.fields['통관알림이력'] || ''); } catch (e) {}
   }
   const base = String(mailbox).replace(/-\d{6}$/, '').split(' ')[0];
   if (!base) return res.status(400).json({ ok: false, error: '사서함 누락' });
@@ -138,7 +151,9 @@ async function handleNotifyCustomer(req, res, body, actor) {
   const userId = cs.length ? String(cs[0].fields['채널톡userId'] || '').trim() : '';
   if (!userId) return res.status(400).json({ ok: false, error: '채널톡 미연결(채널톡userId 없음) — 수동 안내 필요', mailbox: base });
   const text = buildNotifyMessage(kind, body.payload, base);
-  if (body.dryRun) return res.json({ ok: true, dryRun: true, mailbox: base, userId, message: text });
+  if (body.dryRun) return res.json({ ok: true, dryRun: true, mailbox: base, userId, message: text, alreadySent: !!(stage && histHas(hist, stage)) });
+  // 중복금지: 이미 보낸 분기점이면 발송 안 함
+  if (stage && shipmentId && histHas(hist, stage)) return res.json({ ok: true, skipped: true, reason: '이미 발송됨', stage, mailbox: base });
   const KEY = process.env.CHANNELTALK_ACCESS_KEY, SECRET = process.env.CHANNELTALK_ACCESS_SECRET;
   if (!KEY || !SECRET) return res.status(503).json({ ok: false, error: '채널톡 키 미설정(CHANNELTALK_ACCESS_KEY/SECRET)' });
   try {
@@ -152,8 +167,12 @@ async function handleNotifyCustomer(req, res, body, actor) {
     if (!chatId) return res.status(502).json({ ok: false, error: 'user-chat 생성/조회 실패' });
     const sent = await callChannel('POST', `/open/v5/user-chats/${chatId}/messages?botName=${encodeURIComponent('강하고')}`, { plainText: text }, KEY, SECRET);
     const messageId = sent && (sent.message ? sent.message.id : sent.id);
-    await logAction(actor, shipmentId, null, {}, { 채널톡발송: messageId, kind, mailbox: base });
-    return res.json({ ok: true, mailbox: base, userId, chatId, messageId });
+    // 성공 후 분기점 기록(append, dedup)
+    if (stage && shipmentId) {
+      try { await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, { fields: { '통관알림이력': histAppend(hist, stage) }, typecast: true }); } catch (e) { console.warn('[notify] 이력 기록 실패:', e.message); }
+    }
+    await logAction(actor, shipmentId, null, {}, { 채널톡발송: messageId, kind, stage, mailbox: base });
+    return res.json({ ok: true, mailbox: base, userId, chatId, messageId, stage: stage || undefined });
   } catch (e) {
     return res.status(502).json({ ok: false, error: '채널톡 발송 실패', detail: String(e.message || e).slice(0, 200) });
   }

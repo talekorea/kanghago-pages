@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.59</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.60</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.59</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.60</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -7730,7 +7730,8 @@ function renderCustomsTimeline(d, blNo) {
      <div style="font-size:10px;color:#aaa;margin-top:6px;">조회 ${d.queriedAt || ''} · 서울 중계 경유 · 핵심 6 / 전체 ${n}단계 · MRN ${s.cargMtNo || '-'}</div>`;
 }
 // [채널톡 발송 v1] 고객 알림 — dryRun 미리보기 → 직원 확인 → 실발송. 자동발송 없음.
-function openNotifyModal() {
+function openNotifyModal(fromBranchpoint) {
+  if (!fromBranchpoint) _notifyStage = '';   // 일반 진입은 수동(분기점 모드 해제)
   // 사서함 로드돼 있으면 base 사서함 프리필, 없으면 직접 입력(주문 없는 사서함도 발송 가능 — 예 AP20)
   const mb = state.shipment ? ((state.shipment.fields||{})['고객사서함'] || String((state.shipment.fields||{})['사서함']||'').replace(/-\d{6}$/,'').split(' ')[0] || '') : '';
   document.getElementById('notifyMailboxInput').value = mb;
@@ -7751,6 +7752,7 @@ function onNotifyKindChange() {
 function _notifyPayload() {
   const k = document.getElementById('notifyKind').value;
   const t = (document.getElementById('notifyText').value||'').trim();
+  if (k==='통관단계' && _notifyStage) return { kind:k, payload:{ stage:_notifyStage } };   // 분기점: 확정 템플릿
   if (k==='통관단계') return { kind:k, payload:{ 진행상태: t } };
   if (k==='면허') return { kind:k, payload:{ url: t } };
   return { kind:k, payload:{ text: t } };
@@ -7761,9 +7763,11 @@ async function _notifyCall(dryRun) {
   const mailbox = (document.getElementById('notifyMailboxInput').value||'').trim();
   if (!mailbox) throw new Error('사서함번호를 입력하세요');
   const p = _notifyPayload();
+  const body = { op:'notify_customer', '사서함': mailbox, dryRun: dryRun?1:undefined, kind:p.kind, payload:p.payload };
+  if (_notifyStage && state.shipment) { body.stage = _notifyStage; body.shipmentId = state.shipment.id; }   // 분기점: 중복방지·이력 기록
   const r = await fetch(AGENT_API_BASE, {
     method:'POST', headers:{ 'Authorization': auth, 'Content-Type':'application/json' },
-    body: JSON.stringify({ op:'notify_customer', '사서함': mailbox, dryRun: dryRun?1:undefined, kind:p.kind, payload:p.payload }),
+    body: JSON.stringify(body),
   });
   const d = await r.json().catch(()=>({}));
   if (!r.ok || !d.ok) { const e=new Error(d.error||('HTTP '+r.status)); e.detail=d.detail; throw e; }
@@ -7790,8 +7794,14 @@ async function notifySend() {
   res.innerHTML = '<span style="color:#888;">📨 발송 중…</span>';
   try {
     const d = await _notifyCall(false);
+    if (d.skipped) { res.innerHTML = `<span style="color:#a14a00;">ℹ️ 이미 발송된 분기점입니다 (${d.stage}) — 재발송 안 함</span>`; return; }
     res.innerHTML = `<span style="color:#0a7b40;">✓ 발송 완료 (${d.mailbox}, msg …${String(d.messageId||'').slice(-8)})</span>`;
     document.getElementById('notifySendBtn').style.display = 'none';
+    // 분기점 발송 성공 → 로컬 이력 갱신(다음 §6 조회에 "발송됨" 반영, 추가 조회 없이)
+    if (_notifyStage && state.shipment && state.shipment.fields) {
+      const cur = String(state.shipment.fields['통관알림이력']||'').split(',').map(x=>x.trim()).filter(Boolean);
+      if (!cur.includes(_notifyStage)) { cur.push(_notifyStage); state.shipment.fields['통관알림이력'] = cur.join(','); }
+    }
   } catch (e) {
     res.innerHTML = `<span style="color:#c0392b;">❌ 발송 실패: ${e.message}${e.detail?(' ('+e.detail+')'):''}</span>`;
   }
@@ -7828,10 +7838,41 @@ async function loadCustomsProgress(opts) {
     if (!r.ok || !d.ok) { resEl.innerHTML = `<div style="color:#c0392b; font-size:13px;">❌ ${d.error || ('HTTP ' + r.status)}${r.status === 401 ? ' (인증 확인)' : ''}</div>`; return; }
     if (d.ntce && d.tCnt <= 0) { resEl.innerHTML = `<div style="color:#a14a00; font-size:13px; padding:10px; background:#fff7e6; border-radius:8px;">ℹ️ ${d.ntce}</div>`; return; }
     if (!d.stagesCount) { resEl.innerHTML = `<div style="color:#a14a00; font-size:13px; padding:10px; background:#fff7e6; border-radius:8px;">처리단계가 아직 없습니다 (통관 진행 전이거나 BL/연도 확인).</div>`; return; }
-    resEl.innerHTML = renderCustomsTimeline(d, blNo);
+    resEl.innerHTML = renderBranchpointBanner(d) + renderCustomsTimeline(d, blNo);
   } catch (e) {
     resEl.innerHTML = `<div style="color:#c0392b; font-size:13px;">❌ ${e.message}</div>`;
   }
+}
+// [채널톡 반자동 v1] 최신 도달 분기점(반출>수입신고수리>null) + 검사 감지. 배너·목록(2단계) 공용.
+function detectBranchpoint(d) {
+  const stages = (d && d.stages) || [];
+  const inspected = stages.some(s => /검사|선별|검역/.test((s.진행상태||'')+(s.반출입내용||'')));
+  const c = (typeof selectCore6==='function') ? selectCore6(stages) : {};
+  const branchpoint = c.반출 ? '반출' : (c.수입신고수리 ? '수입신고수리' : null);   // ★최신 1개
+  return { branchpoint, inspected };
+}
+const BRANCHPOINT_LABEL = { '수입신고수리': '통관완료', '반출': '출고' };
+// §6 배너: 검사경고 / 분기점 미발송→발송버튼 / 발송됨→비활성 / 없음→공백
+function renderBranchpointBanner(d) {
+  const bp = detectBranchpoint(d);
+  if (bp.inspected) return `<div style="background:#fff3cd; border:1px solid #E8A800; border-radius:8px; padding:9px 12px; margin-bottom:8px; font-size:13px; color:#856404;">⚠️ 검사 의심 (검사·선별·검역 단계) — <strong>개별 확인 필요</strong>. 통관완료 알림 자동발송 금지, 직원이 직접 판단하세요.</div>`;
+  if (!bp.branchpoint) return '';
+  const label = BRANCHPOINT_LABEL[bp.branchpoint] || bp.branchpoint;
+  const hist = (state.shipment && state.shipment.fields && String(state.shipment.fields['통관알림이력']||'').split(',').map(x=>x.trim())) || [];
+  if (hist.includes(bp.branchpoint)) return `<div style="background:#f3f3f3; border:1px solid #ddd; border-radius:8px; padding:9px 12px; margin-bottom:8px; font-size:13px; color:#888;">✓ [${label}] 알림 발송됨</div>`;
+  return `<div style="background:#e8f7ef; border:1px solid #2BB673; border-radius:8px; padding:9px 12px; margin-bottom:8px; font-size:13px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+    <span style="color:#1B2A3B;">📨 <strong>${label}</strong> 단계 도달 — 고객 알림 보낼까요?</span>
+    <button class="primary small" onclick="openBranchpointNotify('${bp.branchpoint}')" style="background:#0a7b40; padding:4px 12px;">📨 ${label} 알림 보내기</button>
+  </div>`;
+}
+let _notifyStage = '';   // 분기점 모드 표식(빈값=수동/자유)
+function openBranchpointNotify(stage) {
+  if (!state.shipment) { (typeof toastWarn==='function'?toastWarn:alert)('사서함을 먼저 불러오세요'); return; }
+  _notifyStage = stage;
+  openNotifyModal(true);   // fromBranchpoint=true → _notifyStage 보존
+  document.getElementById('notifyKind').value = '통관단계';
+  onNotifyKindChange();
+  document.getElementById('notifyText').value = stage;   // 표시용(메시지는 분기점 템플릿 사용)
 }
 
 async function agentInvite() {
