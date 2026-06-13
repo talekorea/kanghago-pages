@@ -12,7 +12,8 @@ const TABLES = {
   Boxes: 'tblw6kU2k8ZwUHPvC',
   Products: 'tblwvS4CJgQsDmt1O',
   BoxAssignments: 'tbljU43lgCs55moqU',
-  CostItems: 'tblDvZbBHrcFfbEAv'
+  CostItems: 'tblDvZbBHrcFfbEAv',
+  Customers: 'tblsNuJ0aDyAga2oa'   // 누락돼 있어 TABLES.Customers=undefined→/undefined 403 (notify·파일허브 customer·booking_summary 고객명 깨짐) 수정
 };
 
 async function atRequest(method, path, body) {
