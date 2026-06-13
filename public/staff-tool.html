@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.57</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.58</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.57</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.58</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1514,9 +1514,34 @@
       <input id="cpBlYear" placeholder="2026" style="padding:7px 10px; border:1px solid #ccc; border-radius:6px; width:80px;">
     </div>
     <button class="primary" onclick="loadCustomsProgress()" style="background:#1B5E9A;">🔎 통관 진행 조회</button>
+    <button class="primary" onclick="openNotifyModal()" style="background:#0a7b40;">📨 고객 알림 발송</button>
     <span style="font-size:11px; color:#999;">관리자 토큰 필요 (👥 관세사 관리에서 설정한 토큰)</span>
   </div>
   <div id="cpResult"></div>
+</div>
+
+<!-- [채널톡 발송 v1] 고객 알림 미리보기·발송 모달 -->
+<div id="notifyModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.6); z-index:9999; padding:20px; overflow-y:auto;">
+  <div style="max-width:520px; margin:40px auto; background:#fff; border-radius:12px; padding:20px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0; color:#1B2A3B;">📨 고객 알림 발송 <span style="font-size:12px; color:#888;">(채널톡 1:1)</span></h3>
+      <button class="secondary small" onclick="closeNotifyModal()">✕</button>
+    </div>
+    <div style="font-size:12px; color:#666; margin-bottom:6px;">사서함: <strong id="notifyMailbox">-</strong> (현재 사서함 기준, base 매칭)</div>
+    <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">알림 종류</label>
+    <select id="notifyKind" onchange="onNotifyKindChange()" style="width:100%; padding:7px; border:1px solid #ccc; border-radius:6px; margin-bottom:8px;">
+      <option value="통관단계">통관 단계 안내</option>
+      <option value="면허">면허(수입신고필증) 발급</option>
+      <option value="자유">자유 메시지</option>
+    </select>
+    <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;" id="notifyFieldLabel">진행상태</label>
+    <input id="notifyText" placeholder="예: 수입신고수리 완료" style="width:100%; padding:7px; border:1px solid #ccc; border-radius:6px; margin-bottom:8px;">
+    <div style="display:flex; gap:8px;">
+      <button class="primary small" onclick="notifyPreview()" style="background:#1B5E9A;">🔎 미리보기 (발송 안 함)</button>
+      <button class="primary small" id="notifySendBtn" onclick="notifySend()" style="background:#0a7b40; display:none;">📨 이대로 발송</button>
+    </div>
+    <div id="notifyResult" style="margin-top:10px; font-size:13px;"></div>
+  </div>
 </div>
 
 <!-- v3.2.0: ═══ 8. 배차/발송 ═══ (★ 트리거 4 — 입금 확인 → 유니패스 보세창고 → 배차/발송 정보 → 직원·기사) -->
@@ -7702,6 +7727,72 @@ function renderCustomsTimeline(d, blNo) {
      <div id="cpFullStages" style="display:none;background:#fafafa;border:1px solid #eee;border-radius:10px;padding:14px;margin-top:4px;">${fullHtml}</div>
      <div style="font-size:10px;color:#aaa;margin-top:6px;">조회 ${d.queriedAt || ''} · 서울 중계 경유 · 핵심 6 / 전체 ${n}단계 · MRN ${s.cargMtNo || '-'}</div>`;
 }
+// [채널톡 발송 v1] 고객 알림 — dryRun 미리보기 → 직원 확인 → 실발송. 자동발송 없음.
+function openNotifyModal() {
+  if (!state.shipment) { (typeof toastWarn==='function'?toastWarn:alert)('사서함을 먼저 불러오세요'); return; }
+  const mb = (state.shipment.fields||{})['고객사서함'] || String((state.shipment.fields||{})['사서함']||'').replace(/-\d{6}$/,'').split(' ')[0] || '';
+  document.getElementById('notifyMailbox').textContent = mb || '-';
+  document.getElementById('notifyResult').innerHTML = '';
+  document.getElementById('notifySendBtn').style.display = 'none';
+  document.getElementById('notifyModal').style.display = 'block';
+  onNotifyKindChange();
+}
+function closeNotifyModal() { document.getElementById('notifyModal').style.display = 'none'; }
+function onNotifyKindChange() {
+  const k = document.getElementById('notifyKind').value;
+  const lbl = document.getElementById('notifyFieldLabel'); const inp = document.getElementById('notifyText');
+  if (k==='통관단계') { lbl.textContent='진행상태'; inp.placeholder='예: 수입신고수리 완료'; }
+  else if (k==='면허') { lbl.textContent='면허 다운로드 URL (Shipments.면허파일)'; inp.placeholder='https://… (비우면 URL 없이 발송)'; }
+  else { lbl.textContent='메시지 전문'; inp.placeholder='고객에게 보낼 내용'; }
+  document.getElementById('notifySendBtn').style.display = 'none';   // 종류 바뀌면 재미리보기 요구
+}
+function _notifyPayload() {
+  const k = document.getElementById('notifyKind').value;
+  const t = (document.getElementById('notifyText').value||'').trim();
+  if (k==='통관단계') return { kind:k, payload:{ 진행상태: t } };
+  if (k==='면허') return { kind:k, payload:{ url: t } };
+  return { kind:k, payload:{ text: t } };
+}
+async function _notifyCall(dryRun) {
+  const auth = (typeof customsAuthHeader==='function') ? customsAuthHeader() : null;
+  if (!auth) throw new Error('로그인 또는 관리자 토큰 필요');
+  const p = _notifyPayload();
+  const r = await fetch(AGENT_API_BASE, {
+    method:'POST', headers:{ 'Authorization': auth, 'Content-Type':'application/json' },
+    body: JSON.stringify({ op:'notify_customer', shipmentId: state.shipment.id, dryRun: dryRun?1:undefined, kind:p.kind, payload:p.payload }),
+  });
+  const d = await r.json().catch(()=>({}));
+  if (!r.ok || !d.ok) { const e=new Error(d.error||('HTTP '+r.status)); e.detail=d.detail; throw e; }
+  return d;
+}
+async function notifyPreview() {
+  const res = document.getElementById('notifyResult');
+  res.innerHTML = '<span style="color:#888;">🔎 미리보기 중…</span>';
+  try {
+    const d = await _notifyCall(true);
+    res.innerHTML = `<div style="background:#f0f7ff; border:1px solid #1B5E9A; border-radius:8px; padding:10px;">
+      <div style="font-size:11px; color:#666;">받는 고객: ${d.mailbox} · 채널톡 userId …${String(d.userId).slice(-8)}</div>
+      <div style="margin-top:6px; white-space:pre-wrap; font-size:13px; color:#1B2A3B;">${(d.message||'').replace(/</g,'&lt;')}</div>
+    </div><div style="font-size:11px; color:#0a7b40; margin-top:5px;">↑ 이 내용으로 발송됩니다. 확인 후 [📨 이대로 발송].</div>`;
+    document.getElementById('notifySendBtn').style.display = '';
+  } catch (e) {
+    res.innerHTML = `<span style="color:#c0392b;">❌ ${e.message}${e.detail?(' ('+e.detail+')'):''}</span>`;
+    document.getElementById('notifySendBtn').style.display = 'none';
+  }
+}
+async function notifySend() {
+  const res = document.getElementById('notifyResult');
+  if (!confirm('이 고객의 채널톡으로 실제 발송합니다. 진행할까요?')) return;
+  res.innerHTML = '<span style="color:#888;">📨 발송 중…</span>';
+  try {
+    const d = await _notifyCall(false);
+    res.innerHTML = `<span style="color:#0a7b40;">✓ 발송 완료 (${d.mailbox}, msg …${String(d.messageId||'').slice(-8)})</span>`;
+    document.getElementById('notifySendBtn').style.display = 'none';
+  } catch (e) {
+    res.innerHTML = `<span style="color:#c0392b;">❌ 발송 실패: ${e.message}${e.detail?(' ('+e.detail+')'):''}</span>`;
+  }
+}
+
 async function loadCustomsProgress(opts) {
   const auto = !!(opts && opts.auto);
   const blEl = document.getElementById('cpBlNo'), yrEl = document.getElementById('cpBlYear');

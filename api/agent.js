@@ -94,6 +94,70 @@ async function handleCustomsProgress(req, res) {
   if (req.query.debug === '1') out._rawSample = String(rr.xml || '').slice(0, 1500);
   return res.json(out);
 }
+
+// [채널톡 발송 v1] api.channel.io 공개 :443 직접 호출(중계 불필요). 키는 Vercel env에서만.
+function callChannel(method, path, payload, key, secret) {
+  return new Promise((resolve, reject) => {
+    const data = payload != null ? Buffer.from(JSON.stringify(payload), 'utf8') : null;
+    const r = https.request({
+      hostname: 'api.channel.io', port: 443, path, method,
+      headers: Object.assign({ 'x-access-key': key, 'x-access-secret': secret, 'Content-Type': 'application/json' },
+        data ? { 'Content-Length': data.length } : {}),
+      timeout: 15000,
+    }, (resp) => {
+      let b = ''; resp.on('data', c => b += c);
+      resp.on('end', () => {
+        let j; try { j = b ? JSON.parse(b) : {}; } catch (e) { return reject(new Error('channel non-JSON: ' + b.slice(0, 120))); }
+        if (resp.statusCode >= 400) return reject(new Error('channel HTTP ' + resp.statusCode + ': ' + (j.message || b.slice(0, 120))));
+        resolve(j);
+      });
+    });
+    r.on('error', reject);
+    r.on('timeout', () => r.destroy(new Error('channel timeout')));
+    if (data) r.write(data); r.end();
+  });
+}
+// 메시지 템플릿(상수 분리) — 통관단계 / 면허 / 자유. 면허는 URL 링크(직접 첨부 아님).
+function buildNotifyMessage(kind, payload, mailbox) {
+  payload = payload || {};
+  if (kind === '통관단계') return `[강하고] ${mailbox} 통관 안내\n현재: ${payload.진행상태 || payload.stage || '-'}${payload.note ? '\n' + payload.note : ''}`;
+  if (kind === '면허') return `[강하고] ${mailbox} 수입신고필증(면허)이 발급되었습니다.${payload.url ? '\n다운로드: ' + payload.url : ''}`;
+  return `[강하고] ${mailbox}\n${payload.text || ''}`.trim();
+}
+// [채널톡 발송 v1] 사서함 → Customers.채널톡userId → user-chats(조회/생성) → 메시지. dryRun이면 발송 X.
+async function handleNotifyCustomer(req, res, body, actor) {
+  const kind = body.kind || '자유';
+  let mailbox = String(body['사서함'] || body.mailbox || '').trim();
+  const shipmentId = body.shipmentId || null;
+  if (!mailbox && shipmentId) {
+    try { const sh = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`); mailbox = sh.fields['고객사서함'] || sh.fields['사서함'] || ''; } catch (e) {}
+  }
+  const base = String(mailbox).replace(/-\d{6}$/, '').split(' ')[0];
+  if (!base) return res.status(400).json({ ok: false, error: '사서함 누락' });
+  const cs = await atListAll(`/${TABLES.Customers}?filterByFormula=${encodeURIComponent(`{사서함번호}='${base}'`)}&maxRecords=1`);
+  const userId = cs.length ? String(cs[0].fields['채널톡userId'] || '').trim() : '';
+  if (!userId) return res.status(400).json({ ok: false, error: '채널톡 미연결(채널톡userId 없음) — 수동 안내 필요', mailbox: base });
+  const text = buildNotifyMessage(kind, body.payload, base);
+  if (body.dryRun) return res.json({ ok: true, dryRun: true, mailbox: base, userId, message: text });
+  const KEY = process.env.CHANNELTALK_ACCESS_KEY, SECRET = process.env.CHANNELTALK_ACCESS_SECRET;
+  if (!KEY || !SECRET) return res.status(503).json({ ok: false, error: '채널톡 키 미설정(CHANNELTALK_ACCESS_KEY/SECRET)' });
+  try {
+    const list = await callChannel('GET', `/open/v5/users/${userId}/user-chats`, null, KEY, SECRET);
+    const chats = (list && (list.userChats || list)) || [];
+    let chatId = Array.isArray(chats) ? ((chats.find(c => c.state === 'opened') || chats[0] || {}).id) : null;
+    if (!chatId) {
+      const created = await callChannel('POST', `/open/v5/users/${userId}/user-chats`, {}, KEY, SECRET);
+      chatId = created && (created.userChat ? created.userChat.id : created.id);
+    }
+    if (!chatId) return res.status(502).json({ ok: false, error: 'user-chat 생성/조회 실패' });
+    const sent = await callChannel('POST', `/open/v5/user-chats/${chatId}/messages?botName=${encodeURIComponent('강하고')}`, { plainText: text }, KEY, SECRET);
+    const messageId = sent && (sent.message ? sent.message.id : sent.id);
+    await logAction(actor, shipmentId, null, {}, { 채널톡발송: messageId, kind, mailbox: base });
+    return res.json({ ok: true, mailbox: base, userId, chatId, messageId });
+  } catch (e) {
+    return res.status(502).json({ ok: false, error: '채널톡 발송 실패', detail: String(e.message || e).slice(0, 200) });
+  }
+}
 // [Phase2 판정 단일함수] 박스입력 완료 = 박스≥1 AND 모든 박스 무게KG·가로cm·세로cm·높이cm > 0.
 //   ★도구(인보이스 도구) isBoxInputComplete와 동일 로직 유지(중복 구현 금지 — 두 곳 동기).
 function isBoxInputComplete(boxes) {
@@ -539,6 +603,8 @@ module.exports = async (req, res) => {
       }
       if (req.method === 'POST') {
         const body = await readBody(req);
+        // [채널톡 발송 v1] 도구(Admin 토큰) — 공용 핸들러 호출.
+        if (body.op === 'notify_customer') return await handleNotifyCustomer(req, res, body, { id: null, email: 'admin' });
         // 직원 관리 op (v3.2.42) — 같은 ADMIN_INVITE_TOKEN, role='staff' 고정 발급
         if (body.op === 'staff_admin_create') {
           const { email, name, password } = body;
@@ -625,6 +691,12 @@ module.exports = async (req, res) => {
     // [통관 진행상황 v1] 로그인(staff/관세사 공통)만 통과하면 사용 — 중계 호출.
     if (req.method === 'GET' && req.query.op === 'customs_progress') {
       return await handleCustomsProgress(req, res);
+    }
+    // [채널톡 발송 v1] staff/관세사 JWT 허용 — loadAgent 전에 처리(staff는 customs_agents 아님). body 1회 읽어 재사용.
+    let _postBody = null;
+    if (req.method === 'POST') {
+      _postBody = await readBody(req);
+      if (_postBody.op === 'notify_customer') return await handleNotifyCustomer(req, res, _postBody, { id: user.id, email: user.email });
     }
 
     // ===== 관세사 op (Authorization: Bearer <Supabase JWT>) =====
@@ -784,7 +856,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === 'POST') {
-      const body = await readBody(req);
+      const body = _postBody || await readBody(req);   // [채널톡] notify 분기에서 이미 읽었으면 재사용(이중 read 방지)
       const op = body.op;
 
       if (op === 'bump_usage') {
