@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.60</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.61</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.60</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.61</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -474,6 +474,8 @@
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openAgentAdmin()">👥 관세사 관리</button>
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openMemberAdmin()">🏢 회원 관리</button>
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#e8f7ef; border:1px solid #2BB673;" onclick="openNotifyModal()" title="채널톡 고객 알림 — 사서함 직접 입력 가능(주문 없어도)">📨 채널톡 알림</button>
+    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="bulkFillRates('shipdate')" title="현재 사서함의 선적일 그룹 중 빈/0 환율을 현재 고시환율로 채움(정상값 보존)">🔄 환율채움(선적일)</button>
+    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="bulkFillRates('all')" title="전체 Shipments의 빈/0 환율을 현재 고시환율로 채움(정상값 보존)">🔄 환율채움(전체빈)</button>
     <!-- v3.2.42: 직원 관리 (admin만, 관세사 패턴 미러) -->
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#eef5ff; color:#1B2A3B; border:1px solid #1B5E9A;" onclick="openStaffAdmin()" title="직원 계정 발급·관리 (ADMIN_INVITE_TOKEN 필요)">🧑‍💼 직원 관리</button>
     <!-- v3.2.41 (2026-06-05): 선적일별 부킹 요약 — 그날 사서함 박스 무게·CBM 합산 → 위챗 복사 -->
@@ -9090,6 +9092,44 @@ async function refreshOfficialRates(forceOverwrite, dateStrArg) {
   }
 }
 
+// [v3.2.61] 환율 일괄 재조회·저장 — 빈/0인 Shipments 환율을 현재 LIVE 고시환율로 통일.
+//   LIVE 실패 시 저장 금지(0/빈 덮어쓰기 차단), 정상값(3필드>0) 건은 건너뜀. 새 함수 0(getOfficialRates·apiPaged·api 재활용).
+async function _liveRatesOrNull() {
+  try { await refreshOfficialRates(false); } catch (e) {}
+  if (!_officialRatesCache) return null;   // LIVE 캐시 없으면(Mock/실패) → null = 저장 금지
+  const r = getOfficialRates().rates;
+  if (!(r && r.USD > 0 && r.CNY > 0)) return null;
+  return { USD_KRW: +(+r.USD).toFixed(2), CNY_KRW: +(+r.CNY).toFixed(2), CNY_USD: +(r.CNY / r.USD).toFixed(4) };
+}
+function _rateNeedsFill(f) {
+  const g = k => parseFloat((f || {})[k]) || 0;
+  return !(g('환율USD_KRW') > 0 && g('환율CNY_KRW') > 0 && g('환율CNY_USD') > 0);   // 하나라도 빈/0이면 대상
+}
+async function bulkFillRates(scope) {
+  const live = await _liveRatesOrNull();
+  if (!live) { alert('⚠ 환율 조회 실패 — 재시도 필요. (0/빈값으로 덮어쓰지 않음)'); return; }
+  let formula = '';
+  if (scope === 'shipdate') {
+    const sd = (state.shipment && state.shipment.fields && String(state.shipment.fields['선적일'] || '').slice(0, 10)) || '';
+    if (!sd) { alert('사서함을 먼저 불러오세요(선적일 기준).'); return; }
+    formula = `IS_SAME({선적일},'${sd}','day')`;
+  }
+  const path = `/${TABLES.Shipments}?` + (formula ? `filterByFormula=${encodeURIComponent(formula)}&` : '') +
+    `fields[]=사서함&fields[]=선적일&fields[]=환율USD_KRW&fields[]=환율CNY_KRW&fields[]=환율CNY_USD`;
+  const recs = await apiPaged(path);
+  const targets = recs.filter(r => _rateNeedsFill(r.fields));
+  if (!targets.length) { alert('채울 빈/0 환율 건이 없습니다 (모두 정상).'); return; }
+  if (!confirm(`${targets.length}건의 빈/0 환율을 현재 고시환율(USD ${live.USD_KRW} / CNY ${live.CNY_KRW})로 채웁니다.\n정상값(3필드 충족) 건은 건너뜁니다.\n진행할까요?`)) return;
+  let ok = 0, fail = 0;
+  for (const r of targets) {
+    try {
+      await api('PATCH', `/${TABLES.Shipments}/${r.id}`, { fields: { '환율USD_KRW': live.USD_KRW, '환율CNY_KRW': live.CNY_KRW, '환율CNY_USD': live.CNY_USD }, typecast: true });
+      ok++;
+    } catch (e) { fail++; console.warn('[환율채움] 실패', r.id, e.message); }
+  }
+  alert(`✓ 환율 채움: ${ok}/${targets.length}건 (USD ${live.USD_KRW} / CNY ${live.CNY_KRW})${fail ? ` · 실패 ${fail}` : ''}`);
+}
+
 function showRateSource() {
   const r = getOfficialRates();
   const live = !!_officialRatesCache;
@@ -9251,11 +9291,11 @@ async function saveAll(skipReload) {
       const blNumber = (document.getElementById('blNumber')?.value || '').trim();
       const blIssueDate = (document.getElementById('blIssueDate')?.value || '').trim();
 
-      const shipFields = {
-        '환율CNY_KRW': rateCnyKrw,
-        '환율CNY_USD': rateCnyUsd,
-        '환율USD_KRW': rateUsdKrw
-      };
+      // [v3.2.61] 0/빈 환율은 PATCH에서 제외 — 빈칸→||0이 기존 환율을 0으로 덮던 버그 차단(LIVE 캐시 없거나 값 0이면 기존값 보존)
+      const shipFields = {};
+      if (rateCnyKrw > 0) shipFields['환율CNY_KRW'] = rateCnyKrw;
+      if (rateCnyUsd > 0) shipFields['환율CNY_USD'] = rateCnyUsd;
+      if (rateUsdKrw > 0) shipFields['환율USD_KRW'] = rateUsdKrw;
       if (blNumber) shipFields['BL번호'] = blNumber;
       if (blIssueDate) shipFields['BL발급일'] = blIssueDate;
       // v3.0.7 [Phase C.2]: BL/CO 파일 첨부 — 업로드된 파일이 있을 때만 PATCH (없으면 기존값 보존을 위해 미포함)
