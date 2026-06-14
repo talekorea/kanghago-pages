@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.65</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.66</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.65</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.66</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -10538,6 +10538,26 @@ async function downloadInvoiceExcel(opts) {
     return;
   }
 
+  // [B v3.2.66] 대행유형 양식 분기 판정 — Orders.대행종류 distinct. ★혼재/미상은 경고만(자동처리 없음, 사장님 방침: 과설계 금지).
+  //   구매대행 → 수입자=TALE KOREA / 배송·결제대행 → 수입자=고객(영문). writeFormHeader(클로저)·납세의무자 블록이 _isCustImporter로 분기.
+  const _agentTypes = [...new Set((state.orders || []).map(o => (o.fields || {})['대행종류']).filter(Boolean))];
+  const _isMixed = _agentTypes.length > 1;
+  const _agentType = (_agentTypes.length === 1) ? _agentTypes[0] : '구매대행';   // 혼재·빈값 → 구매대행 양식 폴백(차단 없음)
+  const _isCustImporter = (_agentType === '배송대행' || _agentType === '결제대행');
+  if (_isMixed) toastWarn(`이 사서함에 대행유형이 섞여 있습니다(${_agentTypes.join(' + ')}) — 수입자가 다릅니다. 확인 후 진행하세요. (구매대행 양식으로 발행)`, { title: '⚠ 대행유형 혼재' });
+  else if (!_agentTypes.length) toastWarn('대행유형 미상(Orders.대행종류 빈값) — 구매대행 양식으로 발행합니다.', { title: '대행유형 미상' });
+
+  // [B v3.2.66] ★배송/결제대행 영문정보 차단 게이트 — 고객이 수입자라 영문 회사명·주소 필수(통관 불가 방지). 구매대행은 차단 없음(TALE KOREA 수입자).
+  if (_isCustImporter) {
+    const _ecf = (state.customer && state.customer.fields) || {};
+    const _enCo = String(_ecf['영문회사명'] || '').trim();
+    const _enAddr = String(_ecf['영문주소'] || '').trim();
+    if (!_enCo || !_enAddr) {
+      alert('🚫 발행 차단 — 통관 불가\n\n이 고객(' + (_ecf['회원명'] || '') + ')은 ' + _agentType + '인데 영문정보가 없습니다.\n• 영문회사명: ' + (_enCo || '(비어있음)') + '\n• 영문주소: ' + (_enAddr || '(비어있음)') + '\n\n배송/결제대행은 고객이 수입자라 영문 회사명·주소가 인보이스 2) For account 칸에 들어가야 통관됩니다.\n→ §2.5 고객정보에서 영문회사명·영문주소를 먼저 입력·저장 후 다시 받으세요.');
+      return;
+    }
+  }
+
   // [CO 게이트 완화] 최종 + CO파일 없음 → 소프트 확인(기본세율 분기). 취소 시 중단. CO 있으면 무확인 진행(CO발행 분기).
   if (stage === 'final' && !(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length)) {
     if (!confirm('CO 파일이 없습니다.\nCO 미발행(기본세율) 건으로 최종 발행할까요?')) return;
@@ -10616,11 +10636,20 @@ async function downloadInvoiceExcel(opts) {
         { text: '   ' + INVOICE_SHIPPER[1] + ' ' + INVOICE_SHIPPER[2] },
         { text: '   ' + INVOICE_SHIPPER[3] },
         { text: '   ' + INVOICE_SHIPPER[4] },
-        { label: '2) For account & Risk of Messrs.', section: true },
-        { text: '   ' + INVOICE_ACCOUNT[0] },
-        { text: '   ' + INVOICE_ACCOUNT[1] + ' ' + INVOICE_ACCOUNT[2] },
-        { text: '   ' + INVOICE_ACCOUNT[3] },
-        { label: '3) NOTIFY PARTY:  Same as consignee', section: true },
+        // [B v3.2.66] 2)For account·3)Notify 대행유형 분기. 배송/결제대행 → 수입자=고객(영문), Notify=TALE KOREA. 구매대행 → 현행(TALE KOREA 수입자, Same as consignee).
+        ...(_isCustImporter ? [
+          { label: '2) For account & Risk of Messrs.', section: true },
+          { text: '   ' + ((cf['영문회사명'] || '') + (cf['사업자번호'] ? '  (' + cf['사업자번호'] + ')' : '')) },
+          { text: '   ' + (cf['영문주소'] || '') },
+          { text: '   ' + (cf['연락처'] || '') },
+          { label: '3) NOTIFY PARTY:  ' + INVOICE_ACCOUNT[0], section: true },
+        ] : [
+          { label: '2) For account & Risk of Messrs.', section: true },
+          { text: '   ' + INVOICE_ACCOUNT[0] },
+          { text: '   ' + INVOICE_ACCOUNT[1] + ' ' + INVOICE_ACCOUNT[2] },
+          { text: '   ' + INVOICE_ACCOUNT[3] },
+          { label: '3) NOTIFY PARTY:  Same as consignee', section: true },
+        ]),
         // v3.2.49 [Phase 1-G]: 선적항·선명·BL번호 반영 (진실원=직원 입력, 폴백 유지). ★ 중량·CBM은 박스 데이터만 — 미변경.
         { label: '4) Port of loading:  ' + (f['선적항'] || 'Weihai, China'), section: true },
         { label: '5) Final destination:  INCHON, KOREA', section: true },
@@ -10634,12 +10663,15 @@ async function downloadInvoiceExcel(opts) {
         { label: '10) L/C issuing bank:', section: true },
         { label: '11) Remarks', section: true },
         { rich: ['country of origin:', remarks[0].replace('country of origin: ', '')] },
-        { rich: ['납세의무자:', remarks[1].replace('납세의무자: ', '')] },
-        { rich: ['사업자번호:', remarks[2].replace('사업자번호: ', '')] },
-        // v3.2.12 #11: 통관고유부호 행 추가
-        { rich: ['통관고유부호:', remarks[3].replace('통관고유부호: ', '')] },
-        { rich: ['Tel:', remarks[4].replace('Tel: ', '')] },
-        { rich: ['Mail:', remarks[5].replace('Mail: ', '')] },
+        // [B v3.2.66] 납세의무자 블록 = 구매대행만(실화주=고객). 배송/결제대행은 고객이 수입자(2번 칸)라 납세의무자 블록 제거.
+        ...(_isCustImporter ? [] : [
+          { rich: ['납세의무자:', remarks[1].replace('납세의무자: ', '')] },
+          { rich: ['사업자번호:', remarks[2].replace('사업자번호: ', '')] },
+          // v3.2.12 #11: 통관고유부호 행 추가
+          { rich: ['통관고유부호:', remarks[3].replace('통관고유부호: ', '')] },
+          { rich: ['Tel:', remarks[4].replace('Tel: ', '')] },
+          { rich: ['Mail:', remarks[5].replace('Mail: ', '')] },
+        ]),
         // 작업6: 적용 FTA 라벨 (Applied FTA: 한중/아태/일반)
         { rich: ['Applied FTA:', (remarks[6] || 'Applied FTA: 미선택').replace('Applied FTA: ', '')] },
       ];
