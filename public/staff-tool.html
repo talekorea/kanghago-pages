@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.61</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.62</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.61</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.62</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -9326,9 +9326,39 @@ async function saveAll(skipReload) {
         if (sf['대조확인상태']) gFields['대조확인상태'] = sf['대조확인상태'];
         // [F v3.2.49] 직원이 §1에서 명시 입력한 선적일(shipDateOverride)을 Shipments.선적일에 영속화 →
         //   리로드·다운로드([A])에서 동일 날짜 사용(세션 한정 → 영구). 출고요청일 폴백값은 저장 안 함(실제 선적일 오염 방지).
-        if (state.shipDateOverride) gFields['선적일'] = String(state.shipDateOverride).slice(0, 10);
+        // [B v3.2.62] 선적일이 실제로 바뀌면: ① 미발행 CI 순번 무효화(0) ② 다음 줄에서 Orders.실제출고요청일 동기화.
+        //   발행됨(CO/BL/청구서) 건은 차단 X — 경고만(업로드 서류 번호와 어긋날 수 있음, 실무상 드묾).
+        let _ordersSyncTo = '';
+        if (state.shipDateOverride) {
+          const newSd = String(state.shipDateOverride).slice(0, 10);
+          const oldSd = String(sf['선적일'] || '').slice(0, 10);
+          gFields['선적일'] = newSd;
+          _ordersSyncTo = newSd;   // 항상 동기화(부분 split-brain 방지) — 변경분만 PATCH
+          if (newSd !== oldSd) {
+            const seq = parseInt(sf['인보이스순번']) || 0;
+            if (seq > 0) {
+              const published = (Array.isArray(sf['CO파일']) && sf['CO파일'].length)
+                || (Array.isArray(sf['BL파일']) && sf['BL파일'].length) || !!sf['청구서발행일시'];
+              if (published) {
+                toastWarn('발행된 건의 선적일 변경 — 업로드된 서류 번호와 달라질 수 있으니 재확인', { title: '⚠ 발행건 변경' });
+              } else {
+                gFields['인보이스순번'] = 0; sf['인보이스순번'] = 0;   // 미발행 → 무효화. 다음 최종 다운로드가 바뀐 그룹에서 max+1 재부여
+                if (typeof toastInfo === 'function') toastInfo('선적일 변경 — 인보이스 순번 무효화. 다음 최종 다운로드 때 새 그룹에서 재부여');
+              }
+            }
+          }
+        }
         await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: gFields, typecast: true });
-      } catch (ge) { console.warn('[Phase1-G] 선적항/선명/대조 저장 실패(필드 미생성 가능 — Airtable에 5필드 수동추가 필요):', ge.message); }
+        // [B v3.2.62] Orders.실제출고요청일 = Shipments.선적일 동기화(정본 일치). 연결된 전체 주문 중 다른 날짜만 PATCH.
+        if (_ordersSyncTo) {
+          const toFix = (state.orders || []).filter(o => String((o.fields || {})['실제출고요청일'] || '').slice(0, 10) !== _ordersSyncTo);
+          for (const o of toFix) {
+            await api('PATCH', `/${TABLES.Orders}/${o.id}`, { fields: { '실제출고요청일': _ordersSyncTo }, typecast: true });
+            o.fields['실제출고요청일'] = _ordersSyncTo;
+          }
+          if (toFix.length) log(`✓ Orders 실제출고요청일 ${toFix.length}건 → ${_ordersSyncTo} 동기화(부킹·정산 일치)`, 'ok');
+        }
+      } catch (ge) { console.warn('[Phase1-G] 선적항/선명/대조/Orders동기화 저장 실패(필드 미생성 가능 — Airtable에 5필드 수동추가 필요):', ge.message); }
     }
 
     // 2. Products 업데이트 (적용FTA, 박스번호, 단가USD/합계USD — 직원 권한 필드만)
@@ -14158,17 +14188,35 @@ function onForwarderChange() {
   if (!state.shipment) return;
   const sel = document.querySelector('input[name="forwarder"]:checked');
   const val = sel ? sel.value : '';
+  const f = state.shipment.fields || {};
+  // [B v3.2.62] 포워딩사가 실제로 바뀌면 CI 순번 그룹키가 달라짐 → 미발행이면 무효화(0), 발행이면 경고만(차단 X).
+  const oldFwd = String(f['포워딩사'] || '').trim();
+  let invalidateSeq = false;
+  if (val !== oldFwd) {
+    const seq = parseInt(f['인보이스순번']) || 0;
+    if (seq > 0) {
+      const published = (Array.isArray(f['CO파일']) && f['CO파일'].length)
+        || (Array.isArray(f['BL파일']) && f['BL파일'].length) || !!f['청구서발행일시'];
+      if (published) {
+        toastWarn('발행된 건의 포워딩사 변경 — 업로드된 서류 번호와 달라질 수 있으니 재확인', { title: '⚠ 발행건 변경' });
+      } else {
+        invalidateSeq = true;
+        if (typeof toastInfo === 'function') toastInfo('포워딩사 변경 — 인보이스 순번 무효화. 다음 최종 다운로드 때 새 그룹에서 재부여');
+      }
+    }
+  }
   clearTimeout(_forwarderSaveTimer);
   const statusEl = document.getElementById('forwarderSaveStatus');
   if (statusEl) statusEl.textContent = '⏳ 저장 대기...';
   refreshInvoiceNoPreview();
   _forwarderSaveTimer = setTimeout(async () => {
     try {
-      await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, {
-        fields: { '포워딩사': val }, typecast: true,
-      });
+      const fields = { '포워딩사': val };
+      if (invalidateSeq) fields['인보이스순번'] = 0;
+      await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields, typecast: true });
       state.shipment.fields['포워딩사'] = val;
-      if (statusEl) { statusEl.textContent = '✓ 저장됨 — 인보이스 번호 갱신'; setTimeout(() => { statusEl.textContent = ''; }, 1500); }
+      if (invalidateSeq) state.shipment.fields['인보이스순번'] = 0;
+      if (statusEl) { statusEl.textContent = invalidateSeq ? '✓ 저장됨 — 순번 무효화·번호 갱신' : '✓ 저장됨 — 인보이스 번호 갱신'; setTimeout(() => { statusEl.textContent = ''; }, 1500); }
       refreshInvoiceNoPreview();
     } catch (e) {
       if (statusEl) statusEl.textContent = '✗ 저장 실패: ' + (e.message || '').substring(0, 60);
