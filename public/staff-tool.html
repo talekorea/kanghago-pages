@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.64</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.65</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -398,6 +398,10 @@
 
   /* role 기반 UI 숨김 — staff 모드는 .admin-only 통째 숨김 */
   body.mode-staff .admin-only { display: none !important; }
+  /* v3.2.65: ⚙️ 관리 드롭다운(<details>) 기본 삼각형 마커 제거 (텍스트 ▾ 사용) */
+  details.mgmt-menu > summary { list-style: none; }
+  details.mgmt-menu > summary::-webkit-details-marker { display: none; }
+  details.mgmt-menu[open] > summary { background: #ececec; }
 
   /* 로그아웃 버튼 (헤더 우측, 인증 통과 시만 표시) */
   #staffLogoutBtn { display:none; position:fixed; top:10px; right:14px; z-index:9998;
@@ -436,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.64</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.65</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -466,21 +470,26 @@
   <div id="shipProgressWidget"></div>
   <input id="shipmentSearch" placeholder="🔍 사서함 번호 검색" oninput="renderShipmentOptions()"
     style="margin-top:8px; width:100%; box-sizing:border-box; padding:7px 10px; font-size:13px; border:1px solid #ccc; border-radius:6px;" />
-  <div style="margin-top:10px; display:flex; gap:8px; align-items:center; font-size:12px; color:var(--text-dim);">
-    <!-- v3.2.42 (2026-06-06): admin-only — 직원(staff) 모드에선 CSS로 숨김 -->
-    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openCustomerImport()" data-i18n="btn.bulk_import">📋 회원 일괄 등록</button>
-    <!-- v3.2.0 (2026-05-30): §1B 엑셀 업로드 트랙 — 알리피드 7/8 종료 대체 + 1688 직거래 + 샘플·테스트 -->
-    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#fff7e6; color:#1B2A3B; border:1px solid var(--gold);" onclick="openExcelUploadModal()" title="표준 양식 엑셀로 사서함 데이터 업로드 — 알리피드 대체 트랙">📂 엑셀 업로드</button>
-    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openAgentAdmin()">👥 관세사 관리</button>
-    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openMemberAdmin()">🏢 회원 관리</button>
-    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#e8f7ef; border:1px solid #2BB673;" onclick="openNotifyModal()" title="채널톡 고객 알림 — 사서함 직접 입력 가능(주문 없어도)">📨 채널톡 알림</button>
-    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="bulkFillRates('shipdate')" title="현재 사서함의 선적일 그룹 중 빈/0 환율을 현재 고시환율로 채움(정상값 보존)">🔄 환율채움(선적일)</button>
-    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="bulkFillRates('all')" title="전체 Shipments의 빈/0 환율을 현재 고시환율로 채움(정상값 보존)">🔄 환율채움(전체빈)</button>
-    <!-- v3.2.42: 직원 관리 (admin만, 관세사 패턴 미러) -->
-    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#eef5ff; color:#1B2A3B; border:1px solid #1B5E9A;" onclick="openStaffAdmin()" title="직원 계정 발급·관리 (ADMIN_INVITE_TOKEN 필요)">🧑‍💼 직원 관리</button>
-    <!-- v3.2.41 (2026-06-05): 선적일별 부킹 요약 — 그날 사서함 박스 무게·CBM 합산 → 위챗 복사 -->
+  <!-- v3.2.65 (2026-06-14): 상단 정리 — 일상 3개 노출 + 관리 6개를 "⚙️ 관리" 드롭다운(<details> 네이티브, JS 핸들러 0).
+       admin-only·onclick 전부 그대로(권한·기능 무변경, 위치만 정리). 채널톡·관세사관리는 현 상태(admin-only) 유지. -->
+  <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12px; color:var(--text-dim);">
+    <!-- 일상용 — 노출 유지 -->
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#e8f7ef; color:#1B2A3B; border:1px solid #2BB673;" onclick="openBookingSummary()" title="선적일 선택 → 그날 사서함 박스 무게·CBM 합계 → 위챗 복사">📦 선적일별 부킹 요약</button>
-    <span data-i18n="bulk_import.hint">알리피드 회원관리 페이지에서 50명씩 복사해서 일괄 등록</span>
+    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#e8f7ef; border:1px solid #2BB673;" onclick="openNotifyModal()" title="채널톡 고객 알림 — 사서함 직접 입력 가능(주문 없어도)">📨 채널톡 알림</button>
+    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openAgentAdmin()">👥 관세사 관리</button>
+    <!-- 관리/설정 6개 → ⚙️ 관리 드롭다운(admin-only) -->
+    <details class="admin-only mgmt-menu" style="position:relative; display:inline-block;">
+      <summary style="list-style:none; cursor:pointer; padding:6px 12px; font-size:12px; border:1px solid #ccc; border-radius:6px; background:#f5f5f5; color:#1B2A3B; user-select:none;">⚙️ 관리 ▾</summary>
+      <div style="position:absolute; z-index:60; margin-top:4px; background:#fff; border:1px solid #ccc; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.14); padding:8px; display:flex; flex-direction:column; gap:6px; min-width:190px;">
+        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left;" onclick="openCustomerImport()" data-i18n="btn.bulk_import">📋 회원 일괄 등록</button>
+        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left; background:#fff7e6; color:#1B2A3B; border:1px solid var(--gold);" onclick="openExcelUploadModal()" title="표준 양식 엑셀로 사서함 데이터 업로드 — 알리피드 대체 트랙">📂 엑셀 업로드</button>
+        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left;" onclick="openMemberAdmin()">🏢 회원 관리</button>
+        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left; background:#eef5ff; color:#1B2A3B; border:1px solid #1B5E9A;" onclick="openStaffAdmin()" title="직원 계정 발급·관리 (ADMIN_INVITE_TOKEN 필요)">🧑‍💼 직원 관리</button>
+        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left;" onclick="bulkFillRates('shipdate')" title="현재 사서함의 선적일 그룹 중 빈/0 환율을 현재 고시환율로 채움(정상값 보존)">🔄 환율채움(선적일)</button>
+        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left;" onclick="bulkFillRates('all')" title="전체 Shipments의 빈/0 환율을 현재 고시환율로 채움(정상값 보존)">🔄 환율채움(전체빈)</button>
+        <span data-i18n="bulk_import.hint" style="font-size:11px; color:#888;">알리피드 회원관리 페이지에서 50명씩 복사해서 일괄 등록</span>
+      </div>
+    </details>
   </div>
 </div>
 
@@ -1260,31 +1269,56 @@
     <div id="customerResponseInfo"></div>
   </div>
 
-  <!-- v3.0.7 [Phase C.2]: BL/CO 파일 업로드 (Airtable Shipments 첨부 필드) -->
+  <!-- v3.0.7 [Phase C.2] → v3.2.65: BL/CO 업로드 + 서류 진행 4단계 통합 (포워딩 전달 → BL → CO 발급 → CO).
+       다운로드 버튼은 기존 downloadInvoiceExcel 재사용(stage). 위챗은 다운로드만(자동발송 X). 3️⃣은 BL 업로드 후 활성. -->
   <div style="background:#f0f7ff; padding:14px 16px; border-radius:8px; margin-bottom:14px; border:1px solid #c7dcf3;">
-    <div style="font-weight:600; margin-bottom:10px; color:#1B2A3B;">📎 BL · CO 파일 업로드</div>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-      <div>
-        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">
-          📋 BL 파일 (선하증권)
-          <span id="blFileStatus" style="font-size:11px; margin-left:6px;"></span>
-        </label>
-        <input type="file" id="blFileInput" accept=".pdf,.jpg,.jpeg,.png" style="width:100%; padding:6px; border:1px solid #c7dcf3; border-radius:4px; font-size:11px; background:#fff;" />
+    <div style="font-weight:600; margin-bottom:12px; color:#1B2A3B;">📋 서류 진행 <span style="font-size:11px; font-weight:400; color:#666;">(포워딩 전달 → BL → CO 발급 → CO · 위챗은 파일 다운로드 후 직접 전달)</span></div>
+
+    <!-- 1️⃣ 포워딩 전달 -->
+    <div style="display:flex; align-items:center; gap:12px; padding:9px 0;">
+      <span style="flex:none; width:26px; height:26px; line-height:26px; text-align:center; border-radius:50%; background:#C9973A; color:#fff; font-size:12px; font-weight:700;">1</span>
+      <div style="flex:1; min-width:0;"><strong style="color:#1B2A3B;">포워딩 전달</strong> <span style="font-size:11px; color:#888;">인보이스+패킹 1파일 → 선사 부킹용</span></div>
+      <button onclick="downloadInvoiceExcel({stage:'first'})" style="flex:none; padding:8px 14px; background:#C9973A; color:#fff; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">📦 IP 다운로드</button>
+    </div>
+    <div style="border-top:1px solid #dbe8f5;"></div>
+
+    <!-- 2️⃣ BL 업로드 (기존 blFileInput/blFileList/blAutoExtract/blFileStatus 보존) -->
+    <div style="padding:9px 0;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="flex:none; width:26px; height:26px; line-height:26px; text-align:center; border-radius:50%; background:#1B5E9A; color:#fff; font-size:12px; font-weight:700;">2</span>
+        <div style="flex:1;"><strong style="color:#1B2A3B;">BL 업로드</strong> <span style="font-size:11px; color:#888;">선하증권</span> <span id="blFileStatus" style="font-size:11px; margin-left:4px;"></span></div>
+      </div>
+      <div style="margin-left:38px; margin-top:6px;">
+        <input type="file" id="blFileInput" accept=".pdf,.jpg,.jpeg,.png" style="width:100%; max-width:420px; padding:6px; border:1px solid #c7dcf3; border-radius:4px; font-size:11px; background:#fff;" />
         <div id="blFileList" style="font-size:11px; color:#666; margin-top:4px;"></div>
         <!-- [v3.2.54] BL 텍스트PDF → BL번호 자동추출 결과/확정 (자동저장 X, 직원 확정 게이트) -->
         <div id="blAutoExtract" style="font-size:11px; margin-top:5px;"></div>
       </div>
-      <div>
-        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">
-          🏷️ CO 파일 (원산지증명서)
-          <span id="coFileStatus" style="font-size:11px; margin-left:6px;"></span>
-        </label>
-        <input type="file" id="coFileInput" accept=".pdf,.jpg,.jpeg,.png" multiple style="width:100%; padding:6px; border:1px solid #c7dcf3; border-radius:4px; font-size:11px; background:#fff;" />
+    </div>
+    <div style="border-top:1px solid #dbe8f5;"></div>
+
+    <!-- 3️⃣ CO 전달 (관세사) — BL 업로드 후 활성(btnCoDeliver, renderBlCoFiles에서 토글) -->
+    <div style="display:flex; align-items:center; gap:10px; padding:9px 0; flex-wrap:wrap;">
+      <span style="flex:none; width:26px; height:26px; line-height:26px; text-align:center; border-radius:50%; background:#1B2A3B; color:#fff; font-size:12px; font-weight:700;">3</span>
+      <div style="flex:1; min-width:160px;"><strong style="color:#1B2A3B;">CO 전달 (관세사)</strong> <span style="font-size:11px; color:#888;">CO 발급용 묶음 · 🔒 BL 업로드 후 활성</span></div>
+      <button id="btnCoDeliver" onclick="downloadInvoiceExcel({stage:'final'})" disabled style="flex:none; padding:8px 14px; background:#ccc; color:#fff; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:not-allowed;">📋 IP 다운로드</button>
+      <button onclick="var u=(state.shipment&amp;&amp;state.shipment.fields&amp;&amp;state.shipment.fields['BL파일']||[])[0]; u&amp;&amp;u.url ? window.open(u.url,'_blank','noopener') : (typeof toastWarn==='function'&amp;&amp;toastWarn('업로드된 BL 파일이 없습니다'));" style="flex:none; padding:8px 14px; background:#eef5ff; color:#1B5E9A; border:1px solid #1B5E9A; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">📎 BL 열기</button>
+    </div>
+    <div style="border-top:1px solid #dbe8f5;"></div>
+
+    <!-- 4️⃣ CO 업로드 (기존 coFileInput/coFileList/coFileStatus 보존) -->
+    <div style="padding:9px 0;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="flex:none; width:26px; height:26px; line-height:26px; text-align:center; border-radius:50%; background:#0a7b40; color:#fff; font-size:12px; font-weight:700;">4</span>
+        <div style="flex:1;"><strong style="color:#1B2A3B;">CO 업로드</strong> <span style="font-size:11px; color:#888;">원산지증명서</span> <span id="coFileStatus" style="font-size:11px; margin-left:4px;"></span></div>
+      </div>
+      <div style="margin-left:38px; margin-top:6px;">
+        <input type="file" id="coFileInput" accept=".pdf,.jpg,.jpeg,.png" multiple style="width:100%; max-width:420px; padding:6px; border:1px solid #c7dcf3; border-radius:4px; font-size:11px; background:#fff;" />
         <div id="coFileList" style="font-size:11px; color:#666; margin-top:4px;"></div>
       </div>
     </div>
-    <div style="font-size:11px; color:#888; margin-top:8px;">
-      💡 BL과 CO 파일을 업로드하면 최종 인보이스/패킹 다운로드가 활성화됩니다. (PDF·JPG·PNG 가능)
+    <div style="font-size:11px; color:#888; margin-top:10px;">
+      💡 BL·CO 업로드 후 아래 [대조 확인 완료]를 눌러야 3️⃣ 최종(통관) 다운로드가 활성화됩니다. (PDF·JPG·PNG)
     </div>
     <!-- v3.2.49 [Phase 1-G]: BL/CO 대조 확인 배지 (휴먼에러 방지 — 사람이 눈으로 대조 후 확인) -->
     <div id="docMatchBox" style="margin-top:12px; padding:10px 14px; border-radius:8px; background:#fff3e0; border:1px solid #e0a040;">
@@ -1299,11 +1333,11 @@
     </div>
   </div>
 
-  <!-- C6: 인보이스/패킹 엑셀 발행 안내 -->
+  <!-- C6 → v3.2.65: 다운로드는 위 "📋 서류 진행" 4단계로 통합. 안내만 갱신. -->
   <div style="margin-top:14px; padding:12px 14px; background:#1B2A3B; border-radius:8px; text-align:center; color:#fff;">
-    <div style="font-size:13px; font-weight:600;">📊 다운로드는 상단 § "다음 단계" 패널의 게이트 버튼으로 진행</div>
+    <div style="font-size:13px; font-weight:600;">📊 인보이스/패킹 다운로드 = 위 "📋 서류 진행" 4단계에서 진행</div>
     <div style="font-size:11px; color:#bbb; margin-top:6px;">
-      1차 (작업비+박스 완료) → 포워딩 전달 · 최종 (BL·CO 완료) → 관세사 전달 + 결제창
+      1️⃣ 포워딩 전달(작업비+박스) · 3️⃣ CO 전달(BL 업로드 후) · 최종 확정+결제창은 §최종확인 패널
     </div>
   </div>
 </div>
@@ -5838,6 +5872,15 @@ function renderBlCoFiles() {
   if (coStatus) coStatus.textContent = (f['CO파일'] && f['CO파일'].length) ? `✓ ${f['CO파일'].length}장 업로드됨` : '미업로드';
   if (blStatus) blStatus.style.color = (f['BL파일'] && f['BL파일'].length) ? '#0a7b40' : '#c0392b';
   if (coStatus) coStatus.style.color = (f['CO파일'] && f['CO파일'].length) ? '#0a7b40' : '#c0392b';
+  // [B v3.2.65] 서류 4단계 3️⃣ CO 전달 잠금 — BL 업로드(blFileOk) 후 활성. (downloadInvoiceExcel가 CO/대조 최종 게이트는 별도 enforce)
+  const _coBtn = document.getElementById('btnCoDeliver');
+  if (_coBtn) {
+    const blOk = !!(f['BL파일'] && f['BL파일'].length);
+    _coBtn.disabled = !blOk;
+    _coBtn.style.background = blOk ? '#1B2A3B' : '#ccc';
+    _coBtn.style.cursor = blOk ? 'pointer' : 'not-allowed';
+    _coBtn.title = blOk ? 'CO 발급용 묶음 다운로드(최종)' : 'BL을 먼저 업로드하세요';
+  }
   renderDocMatchBadge();
 }
 
@@ -9880,10 +9923,8 @@ function renderFinalConfirm() {
       <div style="margin-top:4px; font-size:11px; color:var(--text-dim);">
         포워딩사에 전달해 선사 스페이스 부킹용. BL·CO 없어도 다운로드됩니다.
       </div>
-      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-        <button onclick="downloadInvoiceExcel({stage:'first'})" ${firstReady ? '' : 'disabled'}
-          style="padding:9px 18px; background:${firstReady ? '#C9973A' : '#ccc'}; color:#fff; border:none; border-radius:6px; cursor:${firstReady ? 'pointer' : 'not-allowed'}; font-weight:700;">📦 1차 인보이스/패킹 다운로드</button>
-      </div>
+      <!-- v3.2.65: 다운로드 버튼은 §7 서류 진행 1️⃣로 이동. 여기는 진행 정보만. -->
+      <div style="margin-top:8px; font-size:11px; color:#1B5E9A;">⬇ 다운로드는 <strong>§7 서류 진행 → 1️⃣ 포워딩 전달</strong>에서 진행합니다.</div>
     </div>
     <div style="margin-top:10px; padding:12px; background:${finalReady ? '#e3f2fd' : '#f5f5f5'}; border:1px solid ${finalReady ? '#1B5E9A' : '#bbb'}; border-radius:8px;">
       <strong style="color:${finalReady ? '#1B5E9A' : '#777'};">
@@ -9892,9 +9933,9 @@ function renderFinalConfirm() {
       <div style="margin-top:4px; font-size:11px; color:var(--text-dim);">
         BL·CO 파일이 업로드되면 같은 엑셀을 BL/CO 정보 포함해 재다운로드합니다.
       </div>
+      <!-- v3.2.65: 최종 다운로드 버튼은 §7 서류 진행 3️⃣로 이동. [최종 확정 + 결제창]은 여기 유지. -->
+      <div style="margin-top:8px; font-size:11px; color:#1B5E9A;">⬇ 최종 다운로드는 <strong>§7 서류 진행 → 3️⃣ CO 전달</strong>에서 진행합니다 (BL 업로드 후 활성).</div>
       <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-        <button onclick="downloadInvoiceExcel({stage:'final'})" ${finalReady ? '' : 'disabled'}
-          style="padding:9px 18px; background:${finalReady ? '#1B2A3B' : '#ccc'}; color:#fff; border:none; border-radius:6px; cursor:${finalReady ? 'pointer' : 'not-allowed'}; font-weight:700;">📋 최종 인보이스/패킹 재다운로드</button>
         <button onclick="confirmFinalPublish()" ${finalReady ? '' : 'disabled'}
           style="padding:9px 18px; background:${finalReady ? '#1B5E9A' : '#ccc'}; color:#fff; border:none; border-radius:6px; cursor:${finalReady ? 'pointer' : 'not-allowed'}; font-weight:700;">🔒 최종 확정 + 결제창 생성</button>
       </div>
@@ -10175,16 +10216,19 @@ function resolveIssueDate(inputStr) {
   return { date: date, yymmdd: date.slice(2).replace(/-/g, '') };
 }
 
-function getInvoiceFilename() {
+// [B v3.2.65] 파일명 = {선적일YYMMDD}_{사서함base}_{회원명}_{용도}.xlsx
+//   purpose: 'IP'(1차 포워딩 전달) | 'IP+BL(CO용)'(3차 CO 전달). 미지정 시 'IP'.
+//   고객명 폴백 체인(빈칸 방지): 회원명 → 수취_수취인 → '회원'. 사서함은 baseMailbox로 접미(-YYMMDD) 제거.
+function getInvoiceFilename(purpose) {
   const f = (state.shipment && state.shipment.fields) || {};
   const cf = (state.customer && state.customer.fields) || {};
   // [F v3.2.49] 파일명 날짜도 [A]와 동일 소스: 선적일 → 화면 선적일(getShipDate) → 출고요청일.
   const _sd = (f['선적일'] || (typeof getShipDate === 'function' ? (getShipDate() || '') : '') || f['출고요청일'] || '');
   const yymmdd = (_sd.slice(2, 10).replace(/-/g, '')) || resolveIssueDate('').yymmdd;   // 선적일 기준
   const member = cf['회원명'] || f['수취_수취인'] || '회원';
-  const mailbox = f['사서함'] || '';
-  const company = cf['회사명'] || '';
-  return `${yymmdd}-${member}(${mailbox})(${company}).xlsx`;
+  const mailbox = baseMailbox(f['사서함'] || '');
+  const use = purpose || 'IP';
+  return `${yymmdd}_${mailbox}_${member}_${use}.xlsx`;
 }
 
 // v3.2.12 #11: Remarks 납세의무자/사업자번호 = §2.5 고객 정보에서 자동 채움
@@ -10939,7 +10983,7 @@ async function downloadInvoiceExcel(opts) {
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = getInvoiceFilename();
+    a.download = getInvoiceFilename(stage === 'first' ? 'IP' : 'IP+BL(CO용)');   // [B v3.2.65] 1차=IP / 최종(CO 전달)=IP+BL(CO용)
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toastSuccess('인보이스/패킹 엑셀 다운로드 완료', { title: '📊 발행', subtitle: a.download });
