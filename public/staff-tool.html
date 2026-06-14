@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.66</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.67</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.66</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.67</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -10538,14 +10538,18 @@ async function downloadInvoiceExcel(opts) {
     return;
   }
 
-  // [B v3.2.66] 대행유형 양식 분기 판정 — Orders.대행종류 distinct. ★혼재/미상은 경고만(자동처리 없음, 사장님 방침: 과설계 금지).
+  // [B v3.2.67] 대행유형 양식 분기 판정 — Orders.대행종류 distinct. ★혼재(2종+)=무조건 차단(사장님 방침: 도구에 우회 없음).
   //   구매대행 → 수입자=TALE KOREA / 배송·결제대행 → 수입자=고객(영문). writeFormHeader(클로저)·납세의무자 블록이 _isCustImporter로 분기.
+  //   빈값(전부)≠혼재 → 백필 전 레거시이므로 구매대행 폴백+경고(발행 막힘 방지). 1종=그 양식 정상.
   const _agentTypes = [...new Set((state.orders || []).map(o => (o.fields || {})['대행종류']).filter(Boolean))];
-  const _isMixed = _agentTypes.length > 1;
-  const _agentType = (_agentTypes.length === 1) ? _agentTypes[0] : '구매대행';   // 혼재·빈값 → 구매대행 양식 폴백(차단 없음)
+  // ★혼재 차단 — 2종 이상 섞이면 수입자가 달라 한 인보이스로 발행 불가. 자동 폴백/우회 절대 안 함. 해소는 사람이 Orders.대행종류 수동 통일.
+  if (_agentTypes.length > 1) {
+    alert('🚫 발행 차단 — 대행유형 혼재\n\n이 사서함에 ' + _agentTypes.join(' + ') + '이 섞여 있습니다.\n수입자가 달라 한 인보이스로 발행할 수 없습니다.\n\n→ 대행유형을 통일(Orders.대행종류 수동 변경)하거나, 유형별로 분리해 신고하세요.');
+    return;
+  }
+  const _agentType = (_agentTypes.length === 1) ? _agentTypes[0] : '구매대행';   // 1종=그 유형 / 빈값(레거시)=구매대행 폴백
   const _isCustImporter = (_agentType === '배송대행' || _agentType === '결제대행');
-  if (_isMixed) toastWarn(`이 사서함에 대행유형이 섞여 있습니다(${_agentTypes.join(' + ')}) — 수입자가 다릅니다. 확인 후 진행하세요. (구매대행 양식으로 발행)`, { title: '⚠ 대행유형 혼재' });
-  else if (!_agentTypes.length) toastWarn('대행유형 미상(Orders.대행종류 빈값) — 구매대행 양식으로 발행합니다.', { title: '대행유형 미상' });
+  if (!_agentTypes.length) toastWarn('대행유형 미상(Orders.대행종류 빈값) — 구매대행 양식으로 발행합니다.', { title: '대행유형 미상' });
 
   // [B v3.2.66] ★배송/결제대행 영문정보 차단 게이트 — 고객이 수입자라 영문 회사명·주소 필수(통관 불가 방지). 구매대행은 차단 없음(TALE KOREA 수입자).
   if (_isCustImporter) {
