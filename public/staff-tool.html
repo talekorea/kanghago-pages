@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.63</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.64</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.63</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.64</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -5636,6 +5636,55 @@ function setBoxStatus(productId, status, msg) {
   else if (status === 'error') { inp.style.borderColor = '#c0392b'; inp.title = '저장 실패: ' + (msg || ''); }
 }
 // Boxes 테이블 자동생성 — saveAll의 Boxes upsert(6546~)와 동일 규칙(state.boxes 기준). 박스 자동생성 유지.
+// [B v3.2.64] 박스 저장 안정화 — (Shipment id + 박스순번) 기준 수동 upsert.
+//   ★ 옛 방식(performUpsert 머지키=박스번호=`사서함명-순번`)은 사서함명(복합 ID `{AP번호}-{선적일YYMMDD}`, line 10131)
+//     변경 시 키 불일치로 중복 박스 + 고아 빈 박스를 만들었다(AP2783 사고). 매칭 축을 가변 이름 → (Shipment,순번)으로 이동.
+//   동작: 현 Shipment 링크 박스 전수 조회(링크가 현 이름으로 resolve → 옛 키 박스도 잡힘) → 순번별 매핑 →
+//        있으면 PATCH(값 갱신 + 박스번호를 현 사서함명으로 정규화, 레코드 id 보존 → CostItems/배정 링크 유지),
+//        없으면 CREATE → 현재 순번에 없는 기존 레코드 + 같은 순번 중복분 삭제(보존 1개: 현이름키 > 데이터있음 > 첫번째).
+//   boxRecords: [{ fields: { 박스번호, Shipment:[id], 박스순번, 무게KG, 부피CBM, 가로cm, 세로cm, 높이cm, 배송방식 } }]
+async function upsertBoxesByShipment(boxRecords) {
+  if (!state.shipment || !boxRecords || !boxRecords.length) return { patched: 0, created: 0, deleted: 0 };
+  const shipName = state.shipment.fields['사서함'] || '';
+  // 1. 현 Shipment 링크 박스 전수 조회
+  let existing = [];
+  try {
+    existing = await apiPaged(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${shipName}',ARRAYJOIN({Shipment}))`)}&fields[]=박스순번&fields[]=박스번호&fields[]=무게KG&fields[]=부피CBM&fields[]=CostItems`);
+  } catch (e) { console.warn('[박스 upsert] 기존 조회 실패 — 생성 위주 진행:', e.message); }
+  // 2. 순번별 기존 그룹 (중복 대비 배열)
+  const bySeq = {};
+  existing.forEach(r => { const s = parseInt((r.fields || {})['박스순번']); if (!isNaN(s)) (bySeq[s] = bySeq[s] || []).push(r); });
+  // 보존 우선순위: 현이름 키 일치 > 데이터(무게>0 or CostItems) 있음 > 첫번째
+  const pickKeep = (group, seq) => group.find(r => (r.fields || {})['박스번호'] === `${shipName}-${seq}`)
+    || group.find(r => (parseFloat((r.fields || {})['무게KG']) || 0) > 0 || (((r.fields || {})['CostItems'] || []).length))
+    || group[0];
+  const wantSeqs = new Set();
+  const toPatch = [], toCreate = [], toDelete = [];
+  // 3. 화면 박스 → PATCH(기존)/CREATE(신규), 같은 순번 중복분 삭제 예약
+  boxRecords.forEach(rec => {
+    const seq = parseInt(rec.fields['박스순번']);
+    wantSeqs.add(seq);
+    const group = bySeq[seq] || [];
+    if (group.length) {
+      const keep = pickKeep(group, seq);
+      toPatch.push({ id: keep.id, fields: rec.fields });   // 박스번호=현 사서함명-순번 정규화 포함
+      group.forEach(r => { if (r.id !== keep.id) toDelete.push(r.id); });
+    } else {
+      toCreate.push({ fields: rec.fields });
+    }
+  });
+  // 4. 현재 순번에 없는 기존 레코드 삭제(고아/감소분)
+  existing.forEach(r => { const s = parseInt((r.fields || {})['박스순번']); if (!wantSeqs.has(s)) toDelete.push(r.id); });
+  // 5. 실행 (10개씩 배치). 삭제 id는 patch 대상과 절대 겹치지 않게 가드.
+  const patchIds = new Set(toPatch.map(p => p.id));
+  const delIds = [...new Set(toDelete)].filter(id => !patchIds.has(id));
+  const chunk = (a, n) => { const o = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
+  for (const b of chunk(toPatch, 10)) { await api('PATCH', `/${TABLES.Boxes}`, { records: b, typecast: true }); await sleep(220); }
+  for (const b of chunk(toCreate, 10)) { await api('POST', `/${TABLES.Boxes}`, { records: b, typecast: true }); await sleep(220); }
+  for (const b of chunk(delIds, 10)) { await api('DELETE', `/${TABLES.Boxes}?` + b.map(id => `records[]=${encodeURIComponent(id)}`).join('&')); await sleep(220); }
+  return { patched: toPatch.length, created: toCreate.length, deleted: delIds.length };
+}
+
 async function saveBoxesTableAuto() {
   if (!state.shipment) return;
   const shipmentName = state.shipment.fields['사서함'];
@@ -5650,10 +5699,7 @@ async function saveBoxesTableAuto() {
       '배송방식': b.shipType || '화물',
     } };
   });
-  for (let i = 0; i < boxRecords.length; i += 10) {
-    await api('PATCH', `/${TABLES.Boxes}`, { performUpsert: { fieldsToMergeOn: ['박스번호'] }, typecast: true, records: boxRecords.slice(i, i + 10) });
-    await sleep(220);
-  }
+  await upsertBoxesByShipment(boxRecords);   // [B v3.2.64] (Shipment,순번) 안정키 — 이름 변경 중복/고아 방지
 }
 // 박스번호만 자동 저장: 해당 제품 Products.박스번호 PATCH(다른 필드 안 건드림) + Boxes 자동생성 1회
 async function autoSaveBox(productIds) {
@@ -9562,16 +9608,8 @@ async function saveAll(skipReload) {
           }
         };
       });
-      for (let i = 0; i < boxRecords.length; i += 10) {
-        const batch = boxRecords.slice(i, i + 10);
-        await api('PATCH', `/${TABLES.Boxes}`, {
-          performUpsert: { fieldsToMergeOn: ['박스번호'] },
-          typecast: true,
-          records: batch
-        });
-        await sleep(220);
-      }
-      log(`✓ Boxes ${boxNums.length}건 저장됨`, 'ok');
+      const _bx = await upsertBoxesByShipment(boxRecords);   // [B v3.2.64] (Shipment,순번) 안정키 — 이름 변경 중복/고아 방지·자가정리
+      log(`✓ Boxes 저장됨 (갱신 ${_bx.patched}·생성 ${_bx.created}·정리 ${_bx.deleted})`, 'ok');
     }
 
     // 6. 부대비용 CostItems 추가 (v3.0.6: 자동 고정값, "OVERHEAD" prefix로 식별)
