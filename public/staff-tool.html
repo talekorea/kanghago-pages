@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.62</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.63</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -436,7 +436,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.62</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.63</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -10371,8 +10371,11 @@ function getProductUnitUsd(p) {
   if (usdInp && usdInp.value) {
     const v = parseFloat(String(usdInp.value).replace(/[^0-9.]/g, ''));
     if (!isNaN(v) && v > 0) {
-      // input.usd = 라인합계 → per-unit 단가로 환산(÷수량). 수량은 라인합계 계산 때와 동일 소스(p.fields['수량']). qty=0 방어(1).
-      const qty = parseFloat((p.fields || {})['수량']) || 0;
+      // input.usd = 라인합계(전체수량 기준) → per-unit 단가로 환산(÷수량). 분자(라인합계)와 분모(수량)는 같은 전체수량이어야 한다.
+      // [v3.2.63 통관 10배 버그 fix] 패킹 시트2는 box.products 가상사본(수량=박스분배값, 같은 id로 input.usd는 전체 라인합계)을
+      //   넘기므로 분모가 박스수량(예 500)이면 전체라인합계÷박스수량 = 정확값×박스개수(10박스→×10) 과대.
+      //   renderBoxes가 보존한 _원본수량(전체 5000)을 우선 분모로 → 정확한 per-unit 복원. 원본·인보이스(시트1)는 _원본수량 없어 무변화.
+      const qty = parseFloat((p.fields || {})['_원본수량'] || (p.fields || {})['수량']) || 0;
       return v / (qty > 0 ? qty : 1);
     }
   }
