@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.67</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.68</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.67</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.68</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1351,6 +1351,10 @@
   <h2>🚛 5. 운임 계산기 <span class="small-dim">(선택한 배송방식 기준 — 도착지·거리 입력 → 화물/밀크런 요금 산출)</span></h2>
   <div style="font-size:12px; color:#666; margin-bottom:10px; padding:7px 11px; background:var(--ivory); border-radius:6px; display:inline-block;">
     🏭 출발지: <strong style="color:var(--navy);">인천 신항</strong> <span style="font-size:11px; color:#888;">(인천광역시 연수구, 37.3825 / 126.6356 — 고정)</span>
+  </div>
+  <!-- v3.2.68: 고객 신청 배송지 read-only 상시 표시 (도착지 input 자동입력과 별개로 항상 노출) -->
+  <div style="font-size:12px; color:#666; margin-bottom:10px; margin-left:8px; padding:7px 11px; background:#eef4fb; border:1px solid #cfe0f3; border-radius:6px; display:inline-block;">
+    📍 고객 신청 배송지: <strong id="shipDestDisplay" style="color:var(--navy);">—</strong>
   </div>
   <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px;">
     <div>
@@ -14391,6 +14395,15 @@ function applyShipMethodVisibility() {
   }
   // [§6 도착지] autofill 먼저(입력칸에 도착지 채움) → 그 다음 배차폼 렌더가 채워진 값을 읽음 (타이밍 fix)
   if (typeof autofillShipDestinationFromOrders === 'function') autofillShipDestinationFromOrders();
+  // [v3.2.68] §11 출발지 옆 "고객 신청 배송지" read-only 상시 표시 — 도착지 input과 별개. 데이터 소스(수취_주소>Orders.수취인주소>Customers.주소)만 읽음. 빈값이면 "배송지 정보 없음".
+  const _destDisp = document.getElementById('shipDestDisplay');
+  if (_destDisp) {
+    let _da = String(f['수취_주소'] || '').trim();
+    if (!_da && state.orders) { for (const o of state.orders) { const x = String((o.fields || {})['수취인주소'] || '').trim(); if (x) { _da = x; break; } } }
+    if (!_da) { const _cf = (state.customer && state.customer.fields) || {}; _da = String(_cf['주소'] || '').trim(); }
+    _destDisp.textContent = _da || '배송지 정보 없음';
+    _destDisp.style.color = _da ? 'var(--navy)' : '#c0392b';
+  }
   // v3.2.14 #68: 박스별 송장번호/화물 정보 동적 렌더 (getRequestedDestAddr: 입력 > 수취_주소 > 수취인주소 > 주소)
   renderParcelInfoSection();
   // v3.2.38: §10 라디오 UI 동기화
