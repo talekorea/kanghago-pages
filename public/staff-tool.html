@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.68</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.69</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.68</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.69</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -15182,6 +15182,7 @@ async function fetchBookingSummary(mode) {
       const boxCount = boxes.length;
       const isReady = boxCount > 0 && !missingMeasure;
       return {
+        id: s.id,   // [v3.2.69] 운송사/택배사 양식에서 Shipments 추가필드 재조회용
         mailbox, shipDate, status,
         member: cust.회원명 || '', company: cust.회사명 || '',
         boxCount, kgSum, cbmSum, missingMeasure, isReady,
@@ -15196,6 +15197,7 @@ async function fetchBookingSummary(mode) {
 
     bookingState.rows = rows;
     bookingState.dateLabel = dateLabel;
+    bookingState.days = days;   // [v3.2.69] 운송사/택배사 양식 Orders 재조회용(IS_SAME 선적일)
     renderBookingTable(rows, dateLabel);
     loading.textContent = `✓ ${rows.length}개 사서함 (Orders ${orders.length}건 기반)`;
   } catch (e) {
@@ -15277,7 +15279,138 @@ function renderBookingTable(rows, dateLabel) {
   }
   html += `</div>`;
 
+  // [v3.2.69] 운송사/택배사 배차 manifest 양식 (ExcelJS, 클라이언트 — 새 API 0). 박스 배송방식별 필터.
+  html += `<div style="margin-top:10px; padding:12px; background:#eef4fb; border:1px solid #cfe0f3; border-radius:6px;">
+    <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">🚚 배차 양식 다운로드 <span style="font-weight:400; color:#888;">(박스 배송방식별 — 화물=운송사 / 택배=택배사. 혼재 사서함은 양쪽에 출현)</span></div>
+    <button onclick="downloadTransportExcel(false)" style="padding:8px 16px; margin-right:8px; background:#1B2A3B; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">🚚 운송사 양식</button>
+    <button onclick="downloadTransportExcel(true)" style="padding:8px 16px; background:#0a7b40; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">📦 택배사 양식</button>
+  </div>`;
+
   document.getElementById('bookingResultBox').innerHTML = html;
+}
+
+// [v3.2.69] 마킹 = {고객사서함}-{박스순번 범위} (연속이면 1~N, 끊기면 콤마). 예 AP2783-1~4 / AP2783-1~2,4
+function _transportMarkRange(base, seqs) {
+  if (!seqs || !seqs.length) return base;
+  const parts = []; let start = seqs[0], prev = seqs[0];
+  for (let i = 1; i <= seqs.length; i++) {
+    if (i < seqs.length && seqs[i] === prev + 1) { prev = seqs[i]; continue; }
+    parts.push(start === prev ? `${start}` : `${start}~${prev}`);
+    if (i < seqs.length) { start = seqs[i]; prev = seqs[i]; }
+  }
+  return `${base}-${parts.join(',')}`;
+}
+
+// [v3.2.69] 운송사/택배사 배차 manifest 다운로드 (공용 함수 + forCourier 플래그 — 필터·평균행만 차이).
+//   데이터: 부킹 조회 결과(bookingState) 재활용 + Shipments/Orders/Boxes 추가필드만 재조회. 전부 기존 필드. 새 API 0.
+async function downloadTransportExcel(forCourier) {
+  if (typeof ExcelJS === 'undefined') { toastError('ExcelJS 로딩 실패 — 새로고침'); return; }
+  if (!bookingState.rows || !bookingState.rows.length) { toastWarn('먼저 [선적일별 부킹 요약]을 조회하세요'); return; }
+  const method = forCourier ? '택배' : '화물';
+  const label = forCourier ? '택배사' : '운송사';
+  const _carrierInp = prompt(`${label}명 입력 — 전체 행의 '운송사' 칸에 동일 적용합니다.\n(비워도 됨: 빈칸으로 발행 → 나중에 손기입)`);
+  if (_carrierInp === null) return;   // 취소 시 중단 (빈 문자열은 진행=빈칸 허용)
+  const carrier = _carrierInp.trim();
+  const WAREHOUSE = '조양 보세창고';   // 창고 상수
+  try {
+    toastInfo && toastInfo(`📋 ${label} 양식 생성 중...`);
+    const shipIds = bookingState.rows.map(r => r.id).filter(Boolean);
+    if (!shipIds.length) { toastWarn('사서함 정보 없음'); return; }
+    // (1) Shipments 추가필드: 고객사서함·BL번호·테이프색상 (50개씩)
+    const shipChunks = chunkArray(shipIds, 50);
+    const shipRes = await Promise.all(shipChunks.map(c => {
+      const f = `OR(${c.map(id => `RECORD_ID()='${id}'`).join(',')})`;
+      return apiPaged(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=고객사서함&fields[]=BL번호&fields[]=테이프색상`);
+    }));
+    const ships = shipRes.flat();
+    // (2) Orders(선적일)에서 수취인이름·연락처·수취인주소·배송요청사항 → shipId별 첫 비어있지 않은 값
+    const days = bookingState.days || [];
+    const recvByShip = {};
+    if (days.length) {
+      const oF = `OR(${days.map(d => `IS_SAME({실제출고요청일},'${d}','day')`).join(',')})`;
+      const ords = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&fields[]=Shipment&fields[]=수취인이름&fields[]=연락처&fields[]=수취인주소&fields[]=배송요청사항`);
+      ords.forEach(o => {
+        const of = o.fields || {};
+        (of.Shipment || []).forEach(sid => {
+          const r = recvByShip[sid] = recvByShip[sid] || { 수취인이름: '', 연락처: '', 수취인주소: '', 배송요청사항: '' };
+          ['수취인이름', '연락처', '수취인주소', '배송요청사항'].forEach(k => { if (!r[k] && String(of[k] || '').trim()) r[k] = String(of[k]).trim(); });
+        });
+      });
+    }
+    // (3) 사서함별 Boxes(배송방식 필터) — 박스순번·배송방식·무게KG·부피CBM
+    const rows = [];
+    for (const s of ships) {
+      const sf = s.fields || {}; const mailbox = sf['사서함'] || '';
+      let boxes = [];
+      try { boxes = await apiPaged(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=박스순번&fields[]=배송방식&fields[]=무게KG&fields[]=부피CBM`); } catch (e) {}
+      const mine = boxes.filter(b => String((b.fields || {})['배송방식'] || '').trim() === method);
+      if (!mine.length) continue;   // 이 사서함엔 해당 방식 박스 없음 → 양식에서 제외
+      const seqs = mine.map(b => parseInt((b.fields || {})['박스순번']) || 0).filter(n => n > 0).sort((a, b) => a - b);
+      const kg = mine.reduce((t, b) => t + (parseFloat((b.fields || {})['무게KG']) || 0), 0);
+      const cbm = mine.reduce((t, b) => t + (parseFloat((b.fields || {})['부피CBM']) || 0), 0);
+      const recv = recvByShip[s.id] || {};
+      const base = baseMailbox(sf['고객사서함'] || mailbox);
+      rows.push({
+        carrier, warehouse: WAREHOUSE,
+        화주: recv.수취인이름 || '', bl: sf['BL번호'] || '', tape: sf['테이프색상'] || '',
+        마킹: _transportMarkRange(base, seqs), 박스수: mine.length, cbm, kg,
+        연락처: recv.연락처 || '', 주소: recv.수취인주소 || '', 선착불: '선불', 비고: recv.배송요청사항 || '',
+      });
+    }
+    if (!rows.length) { toastWarn(`${method} 박스가 있는 사서함이 없습니다 (배송방식 미지정/다른 방식)`); return; }
+    rows.sort((a, b) => a.마킹.localeCompare(b.마킹));
+
+    // (4) ExcelJS — 상단 헤더 + 컬럼 + 행 + 합계(+운송사만 평균)
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(label + '배차');
+    const FONT = { name: '맑은 고딕' };
+    const THIN = { style: 'thin' };
+    const border = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+    const COLS = ['NO', '운송사', '창고', '화주명', 'BL', '테이프색상', '마킹', '박스수', 'CBM', 'KG', '연락처', '주소', '선/착불', '비고'];
+    ws.columns = [8, 14, 14, 14, 16, 12, 18, 8, 10, 10, 16, 30, 9, 20].map(w => ({ width: w }));
+    const lastL = ws.getColumn(COLS.length).letter;
+    // 상단 헤더 3행
+    ws.mergeCells('A1:' + lastL + '1'); ws.getCell('A1').value = '강하고  배차 양식 (' + label + ')';
+    ws.getCell('A1').font = { ...FONT, bold: true, size: 16, color: { argb: 'FF1B2A3B' } };
+    ws.getCell('A1').alignment = { horizontal: 'center' }; ws.getRow(1).height = 26;
+    ws.mergeCells('A2:' + lastL + '2'); ws.getCell('A2').value = '담당자 강지훈  ·  010-6622-4788  ·  선적일 ' + (bookingState.dateLabel || '');
+    ws.getCell('A2').font = { ...FONT, size: 11 }; ws.getCell('A2').alignment = { horizontal: 'center' };
+    // 컬럼 헤더 (3행)
+    const head = ws.addRow(COLS); head.font = { ...FONT, bold: true, size: 11 };
+    head.alignment = { horizontal: 'center', vertical: 'middle' }; head.height = 22;
+    for (let c = 1; c <= COLS.length; c++) { const cell = head.getCell(c); cell.border = border; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E2D5' } }; }
+    // 데이터 행
+    let tBox = 0, tCbm = 0, tKg = 0;
+    rows.forEach((r, i) => {
+      const row = ws.addRow([i + 1, r.carrier, r.warehouse, r.화주, r.bl, r.tape, r.마킹, r.박스수, Number(r.cbm.toFixed(4)), Number(r.kg.toFixed(1)), r.연락처, r.주소, r.선착불, r.비고]);
+      row.font = { ...FONT, size: 10 };
+      for (let c = 1; c <= COLS.length; c++) row.getCell(c).border = border;
+      tBox += r.박스수; tCbm += r.cbm; tKg += r.kg;
+    });
+    // 합계 행
+    const sum = ws.addRow(['합계', '', '', '', '', '', '', tBox, Number(tCbm.toFixed(4)), Number(tKg.toFixed(1)), '', '', '', '']);
+    sum.font = { ...FONT, bold: true, size: 11 };
+    for (let c = 1; c <= COLS.length; c++) sum.getCell(c).border = border;
+    // 운송사 양식만 평균행 (배차 판단용)
+    if (!forCourier && tBox > 0) {
+      const avg = ws.addRow(['박스당 평균', '', '', '', '', '', '', '', Number((tCbm / tBox).toFixed(4)), Number((tKg / tBox).toFixed(2)), '', '', '', '']);
+      avg.font = { ...FONT, italic: true, size: 10, color: { argb: 'FF666666' } };
+      for (let c = 1; c <= COLS.length; c++) avg.getCell(c).border = border;
+    }
+    // 다운로드
+    const buf = await wb.xlsx.writeBuffer();
+    const _d = (days[0] || '').slice(2, 10).replace(/-/g, '');
+    const _dr = (days.length > 1) ? _d + '-' + (days[days.length - 1] || '').slice(2, 10).replace(/-/g, '') : _d;
+    const fname = `${_dr || '선적'}_${label}양식.xlsx`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toastSuccess && toastSuccess(`✓ ${label} 양식 다운로드 — ${rows.length}개 사서함 / 박스 ${tBox} (${fname})`);
+  } catch (e) {
+    console.error('[운송사 양식]', e);
+    toastError && toastError('양식 생성 실패: ' + (e.message || e));
+  }
 }
 
 async function copyBookingText() {
