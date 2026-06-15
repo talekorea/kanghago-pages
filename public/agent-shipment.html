@@ -461,9 +461,12 @@
     if (file.size > 5 * 1024 * 1024 && !confirm(`파일이 ${Math.round(file.size/1024/1024)}MB입니다. 계속할까요?`)) { inp.value = ''; return; }
     if (msg) { msg.textContent = '업로드 중…'; msg.style.color = '#888'; }
     try {
+      // [v3.2.73] content endpoint용 base64 전송 (data:URL을 attachment.url에 넣던 방식 폐기 — 422 해소)
       const dataUrl = await _fileToDataURL(file);
-      const r = await api('POST', '', { op: 'upload_license', shipmentId: shipment.id, file: { url: dataUrl, filename: file.name } });
-      shipment.fields['면허파일'] = [{ url: dataUrl, filename: file.name }];   // 로컬 반영(다음 로드 시 Airtable URL)
+      const base64 = String(dataUrl).split(',')[1] || '';
+      const contentType = (String(dataUrl).match(/^data:([^;,]+)[;,]/) || [])[1] || file.type || 'application/pdf';
+      const r = await api('POST', '', { op: 'upload_license', shipmentId: shipment.id, file: { base64, filename: file.name, contentType } });
+      shipment.fields['면허파일'] = [{ filename: file.name }];   // 로컬 표시(다음 로드 시 Airtable URL)
       renderDocsHub();
       if (msg) { msg.textContent = '✓ 면허 업로드 완료 (' + (r.filename || file.name) + ')'; msg.style.color = '#0a7b40'; }
     } catch (e) {

@@ -972,17 +972,24 @@ module.exports = async (req, res) => {
         return res.json({ ok: true, 대조확인일시: today });
       }
 
-      // [파일허브] 면허(수입신고필증) 업로드 — 관세사 JWT. Shipments.면허파일만 PATCH(1장 replace).
+      // [파일허브] 면허(수입신고필증) 업로드 — 관세사 JWT. Shipments.면허파일 1장 replace.
+      // [v3.2.73] ★content endpoint(uploadAttachment)로 전환 — base64 직접 업로드. data:URL을 attachment.url에 넣던 방식(422 INVALID_ATTACHMENT_OBJECT) 폐기.
       if (op === 'upload_license') {
         const { shipmentId, file } = body;
         if (!shipmentId) return res.status(400).json({ error: 'shipmentId 누락' });
-        if (!file || !file.url) return res.status(400).json({ error: '파일(file.url) 누락' });
-        const att = [{ url: String(file.url), filename: String(file.filename || '면허.pdf') }];
-        await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, {
-          fields: { '면허파일': att }, typecast: true,   // 1장 replace
+        if (!file || !file.base64) return res.status(400).json({ error: '파일(file.base64) 누락' });
+        const LICENSE_FIELD = 'fldYmUhtUuJG5RP0R';   // Shipments.면허파일 (필드 ID — 한글명 인코딩 사고 방지)
+        await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, { fields: { '면허파일': [] }, typecast: true });   // 1장 replace → 비움
+        const up = await fetch(`https://content.airtable.com/v0/${BASE_ID}/${shipmentId}/${LICENSE_FIELD}/uploadAttachment`, {
+          method: 'POST', headers: { 'Authorization': `Bearer ${AIRTABLE_PAT}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contentType: String(file.contentType || 'application/pdf'), filename: String(file.filename || '면허.pdf'), file: String(file.base64) }),
         });
-        await logAction(agent, shipmentId, null, { '면허파일': '(이전)' }, { '면허파일': att[0].filename });
-        return res.json({ ok: true, filename: att[0].filename });
+        if (!up.ok) { const t = await up.text(); return res.status(502).json({ error: `면허 업로드 실패 ${up.status}: ${t.slice(0, 160)}` }); }
+        const uj = await up.json();
+        const atts = (uj.fields && uj.fields[LICENSE_FIELD]) || [];
+        const fname = (atts[0] && atts[0].filename) || String(file.filename || '면허.pdf');
+        await logAction(agent, shipmentId, null, { '면허파일': '(이전)' }, { '면허파일': fname });
+        return res.json({ ok: true, filename: fname });
       }
 
       return res.status(400).json({ error: 'Unknown op' });

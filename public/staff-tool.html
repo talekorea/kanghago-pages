@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.72</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.73</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.72</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.73</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -5889,18 +5889,25 @@ function renderBlCoFiles() {
 }
 
 // v3.2.49 [Phase 1-G]: 첨부 개별 삭제 (다중 CO). 삭제도 BL/CO 변경이므로 대조확인 리셋.
-function deleteBlCoFile(kind, idx) {
+// [v3.2.73] saveAll이 BL/CO 첨부를 더 이상 PATCH하지 않으므로 여기서 직접 PATCH(남은 첨부 {id}로 replace).
+async function deleteBlCoFile(kind, idx) {
   if (!state.shipment || !state.shipment.fields) return;
   const fieldName = (kind === 'bl') ? 'BL파일' : 'CO파일';
   const arr = Array.isArray(state.shipment.fields[fieldName]) ? state.shipment.fields[fieldName].slice() : [];
   if (idx < 0 || idx >= arr.length) return;
   if (!confirm(`${fieldName} ${idx + 1}번 첨부를 삭제할까요?`)) return;
   arr.splice(idx, 1);
-  state.shipment.fields[fieldName] = arr;
-  state.shipmentDirty = true;
-  resetDocMatch();   // 첨부 변경 → 대조 대기
-  renderBlCoFiles();
-  if (typeof saveAll === 'function') saveAll({ silent: true }).catch(() => {});
+  try {
+    // 남은 첨부는 Airtable 호스팅({id} 보유) → {id}만 보내 replace(삭제분 제거). 빈 배열이면 전체 해제.
+    const remain = arr.map(a => (a && a.id) ? { id: a.id } : a).filter(Boolean);
+    await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: { [fieldName]: remain }, typecast: true });
+    state.shipment.fields[fieldName] = arr;
+    resetDocMatch();
+    renderBlCoFiles();
+    if (typeof saveAll === 'function') saveAll({ silent: true }).catch(() => {});
+  } catch (e) {
+    if (typeof toastError === 'function') toastError('첨부 삭제 실패: ' + (e.message || e));
+  }
 }
 
 // v3.2.49: 대조확인 배지 렌더 (대조확인상태: 대조대기|확인완료). BL/CO 있을 때만 의미.
@@ -5972,36 +5979,62 @@ function fileToDataURL(file) {
   });
 }
 
+// [v3.2.73] 첨부 필드 ID (URL에 한글 필드명 대신 ID — 인코딩 사고 방지)
+const ATTACH_FIELD_IDS = {
+  'BL파일': 'fldIduUraSKlNagTI', 'CO파일': 'fldWsl4lpHtY6dhAT',
+  'PI파일': 'fldvGTfavZZOjj5rT', '면허파일': 'fldYmUhtUuJG5RP0R',
+};
+// [v3.2.73] ★Airtable 첨부 업로드 단일 헬퍼 — content endpoint(uploadAttachment). data:URL 직접 PATCH(422 INVALID_ATTACHMENT_OBJECT) 폐기.
+//   recordId의 fieldId 필드에 base64 1건 append. 응답 result.fields[fieldId] = 갱신된 첨부 목록. ★표시·저장 분리(본 PATCH와 독립).
+async function uploadAirtableAttachment(recordId, fieldId, file, filenameOverride) {
+  const size = file && file.size || 0;
+  if (size > 5 * 1024 * 1024) throw new Error(`파일이 5MB를 초과합니다 (${Math.round(size / 1024 / 1024)}MB) — 압축/분할 후 다시 올리세요. (통관 BL/CO는 보통 5MB 미만)`);
+  const dataUrl = await fileToDataURL(file);
+  const base64 = String(dataUrl).split(',')[1] || '';
+  const contentType = (String(dataUrl).match(/^data:([^;,]+)[;,]/) || [])[1] || (file && file.type) || 'application/octet-stream';
+  const filename = filenameOverride || (file && file.name) || 'file';
+  const pat = airtablePat();
+  const res = await fetch(`https://content.airtable.com/v0/${BASE_ID}/${recordId}/${fieldId}/uploadAttachment`, {
+    method: 'POST', headers: { 'Authorization': `Bearer ${pat}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contentType, filename, file: base64 }),
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error(`첨부 업로드 실패 ${res.status}: ${t.slice(0, 160)}`); }
+  return res.json();   // { id, createdTime, fields: { <fieldId>: [att...] } }
+}
+
 async function handleBlCoFileUpload(kind, fileInput) {
   if (!state.shipment) { toastWarn && toastWarn('사서함 먼저 불러오세요'); return; }
   if (!fileInput.files || !fileInput.files.length) return;
   const fieldName = (kind === 'bl') ? 'BL파일' : 'CO파일';
+  const fieldId = ATTACH_FIELD_IDS[fieldName];
   const files = Array.from(fileInput.files);   // v3.2.49: 다중 선택 지원 (CO 2~5장 한 번에)
+  if (!state.shipment.fields) state.shipment.fields = {};
   try {
-    if (!state.shipment.fields) state.shipment.fields = {};
-    // v3.2.49: BL은 1장 정책 → replace(기존 비우고 1장). CO는 다중 → append.
-    let arr = (kind === 'bl') ? [] : (Array.isArray(state.shipment.fields[fieldName]) ? state.shipment.fields[fieldName].slice() : []);
+    // [v3.2.73] ★content endpoint(uploadAttachment)로 업로드 — base64 data:URL 직접 PATCH(422) 폐기.
+    //   BL은 1장 replace(기존 비우고 1장), CO는 다중 append. 첨부는 본 저장(환율·BL번호)과 분리 영속화.
+    if (kind === 'bl' && Array.isArray(state.shipment.fields[fieldName]) && state.shipment.fields[fieldName].length) {
+      await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: { [fieldName]: [] }, typecast: true });
+      state.shipment.fields[fieldName] = [];
+    }
+    let last = null, n = 0;
     for (const file of files) {
-      if (file.size > 5 * 1024 * 1024) {
-        if (!confirm(`'${file.name}'이(가) 5MB를 넘습니다 (${Math.round(file.size/1024/1024)}MB). 계속할까요?`)) continue;
-      }
-      const dataUrl = await fileToDataURL(file);
-      // Airtable 첨부 형식: { url, filename } — base64 data URL을 Airtable이 흡수해 저장 URL로 교체
-      arr.push({ url: dataUrl, filename: file.name });
+      last = await uploadAirtableAttachment(state.shipment.id, fieldId, file);
+      n++;
       if (kind === 'bl') break;   // BL은 1장만
     }
-    state.shipment.fields[fieldName] = arr;
-    state.shipmentDirty = true;
+    if (last && last.fields) state.shipment.fields[fieldName] = last.fields[fieldId] || state.shipment.fields[fieldName] || [];
     resetDocMatch();   // v3.2.49: BL/CO 변경 → 대조 대기 리셋 (재확인 강제)
     renderBlCoFiles();
-    if (typeof log === 'function') log(`✓ ${kind.toUpperCase()} 파일 ${arr.length}장 업로드 준비 (저장 시 Airtable 업로드) — 대조 확인 필요`, 'ok');
+    if (typeof log === 'function') log(`✓ ${fieldName} ${n}장 Airtable 업로드 완료 — 대조 확인 필요`, 'ok');
+    if (typeof toastSuccess === 'function') toastSuccess(`✓ ${fieldName} ${n}장 업로드`);
+    // 첨부는 이미 영속화 → saveAll은 대조리셋 등 다른 필드만(실패해도 첨부 영향 0). BL/CO 첨부는 saveAll에서 PATCH 안 함.
     if (typeof saveAll === 'function') { try { await saveAll({ silent: true }); } catch (e) {} }
-    // [v3.2.54] BL PDF면 saveAll 이후 추출 시작 → blNumber는 미저장 채우기(확정 버튼 전까지 저장 안 됨)
+    // [v3.2.54] BL PDF면 BL번호 자동추출 (미저장 채우기 — 확정 버튼 전까지 저장 안 됨)
     if (kind === 'bl' && files[0]) { try { extractBlNumberFromFile(files[0]); } catch (e) {} }
     if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();
   } catch (e) {
     console.error(e);
-    if (typeof toastError === 'function') toastError('파일 업로드 실패: ' + e.message);
+    if (typeof toastError === 'function') toastError('첨부 업로드 실패: ' + (e.message || e));
   }
   fileInput.value = '';   // 같은 파일 다시 선택 가능하도록 초기화
 }
@@ -9391,13 +9424,8 @@ async function saveAll(skipReload) {
       if (rateUsdKrw > 0) shipFields['환율USD_KRW'] = rateUsdKrw;
       if (blNumber) shipFields['BL번호'] = blNumber;
       if (blIssueDate) shipFields['BL발급일'] = blIssueDate;
-      // v3.0.7 [Phase C.2]: BL/CO 파일 첨부 — 업로드된 파일이 있을 때만 PATCH (없으면 기존값 보존을 위해 미포함)
-      if (state.shipment.fields && Array.isArray(state.shipment.fields['BL파일']) && state.shipment.fields['BL파일'].length) {
-        shipFields['BL파일'] = state.shipment.fields['BL파일'];
-      }
-      if (state.shipment.fields && Array.isArray(state.shipment.fields['CO파일']) && state.shipment.fields['CO파일'].length) {
-        shipFields['CO파일'] = state.shipment.fields['CO파일'];
-      }
+      // [v3.2.73] ★BL/CO 첨부는 saveAll에서 PATCH 안 함 — uploadAttachment(content endpoint, handleBlCoFileUpload)가 즉시 영속화.
+      //   여기서 PATCH하면 data:URL 422 또는 첨부 객체 형식 충돌로 환율·BL번호 저장 전체가 막힘 → 분리(저장 체인 견고화).
       // v3.0.5: 테이프 색상 저장 (사서함 단위, 패킹리스트 자료).
       //   singleSelect라 빈 문자열은 거부될 수 있어, 미선택이면 null로 보내 값 해제.
       shipFields['테이프색상'] = (state.shipment.fields && state.shipment.fields['테이프색상']) || null;
@@ -12671,10 +12699,14 @@ async function savePaymentInvoiceForAgent() {
   if (!confirm('이 PI를 관세사에게 공개되는 "제출용"으로 저장합니다.\n기존 제출본이 있으면 덮어씁니다(최신 1장).\n\n테스트·미리보기가 아니라 확정 PI가 맞습니까?')) return;
   try {
     const { pdf, d } = await _buildPaymentInvoicePdf();
-    const att = [{ url: pdf.output('datauristring'), filename: `${d.invoiceNo}-PI.pdf` }];
-    await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: { 'PI파일': att }, typecast: true });
+    // [v3.2.73] PI도 content endpoint로 업로드(data:URL 422 폐기). 1장 replace → 기존 비우고 blob 업로드.
+    const blob = pdf.output('blob');
+    if (Array.isArray(state.shipment.fields && state.shipment.fields['PI파일']) && state.shipment.fields['PI파일'].length) {
+      await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: { 'PI파일': [] }, typecast: true });
+    }
+    const r = await uploadAirtableAttachment(state.shipment.id, ATTACH_FIELD_IDS['PI파일'], blob, `${d.invoiceNo}-PI.pdf`);
     if (!state.shipment.fields) state.shipment.fields = {};
-    state.shipment.fields['PI파일'] = att;
+    state.shipment.fields['PI파일'] = (r && r.fields && r.fields[ATTACH_FIELD_IDS['PI파일']]) || state.shipment.fields['PI파일'] || [];
     if (typeof toastSuccess === 'function') toastSuccess('관세사 제출용 PI 저장 완료 — 관세사 페이지에 노출됩니다', { title: '📤 PI' });
   } catch (e) {
     if (typeof toastError === 'function') toastError('PI 저장 실패: ' + (e.message || e));
