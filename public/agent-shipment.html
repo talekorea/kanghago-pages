@@ -425,27 +425,73 @@
   window.loadCustomsProgressAgent = loadCustomsProgressAgent;
 
   // [파일허브 v3.2.56] 통관 서류 다운로드 5종 + 면허 업로드 (관세사 JWT)
-  function _docRow(label, atts) {
+  // [v3.2.84] 새 탭 "열림" → 실제 "다운로드". Airtable usercontent는 CORS 허용(ACAO:*)이므로
+  //   client-side fetch→blob→objectURL→<a download>(downloadAttachment 위임 핸들러)로 디스크 저장.
+  //   파일명 = {코드}_{사서함}[_n].{확장자} (예 BL_AP1520.pdf, CO_AP1520_2.pdf). data-dlname에 실어 보냄.
+  function _attExt(a) {
+    const fn = (a && a.filename) || '';
+    const m = fn.match(/\.([a-zA-Z0-9]{1,5})$/);
+    if (m) return m[1].toLowerCase();
+    const t = ((a && a.type) || '').toLowerCase();
+    if (t.includes('pdf')) return 'pdf';
+    if (t.includes('png')) return 'png';
+    if (t.includes('jpeg') || t.includes('jpg')) return 'jpg';
+    if (t.includes('webp')) return 'webp';
+    return 'pdf';
+  }
+  function _docRow(label, atts, code) {
     const arr = Array.isArray(atts) ? atts.filter(a => a && a.url) : [];
     let right;
     if (!arr.length) { right = '<span style="color:#bbb;">미등록</span>'; }
     else {
-      right = arr.map((a, i) => `<a href="${a.url}" target="_blank" rel="noopener" style="color:#1B5E9A; text-decoration:none; margin-left:6px;">⬇ 다운로드${arr.length > 1 ? ' ' + (i + 1) : ''}</a>`).join('');
+      const mailbox = (shipment && shipment.fields && shipment.fields['사서함']) || 'AP';
+      const safeBox = String(mailbox).replace(/[^A-Za-z0-9_-]/g, '');
+      right = arr.map((a, i) => {
+        const suffix = arr.length > 1 ? '_' + (i + 1) : '';
+        const fname = `${code || 'DOC'}_${safeBox}${suffix}.${_attExt(a)}`;
+        return `<a href="${escapeAttr(a.url)}" data-dlname="${escapeAttr(fname)}" download="${escapeAttr(fname)}" target="_blank" rel="noopener" title="${escapeAttr(fname)}" style="color:#1B5E9A; text-decoration:none; margin-left:6px;">⬇ 다운로드${arr.length > 1 ? ' ' + (i + 1) : ''}</a>`;
+      }).join('');
     }
     return `<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #f0f0f0;"><span style="color:#333;">${label}</span><span>${right}</span></div>`;
   }
+  // [v3.2.84] 다운로드 위임 핸들러 — data-dlname 링크 클릭 시 fetch→blob→objectURL→download.
+  //   CORS/네트워크 실패 시 새 탭 폴백(기존 동작). 도구·고객 페이지 무영향(이 페이지 전용).
+  async function downloadAttachment(e) {
+    const a = e.target && e.target.closest && e.target.closest('a[data-dlname]');
+    if (!a) return;
+    e.preventDefault();
+    const url = a.getAttribute('href');
+    const name = a.getAttribute('data-dlname') || 'download';
+    const orig = a.innerHTML;
+    a.innerHTML = '⏳ 받는 중…';
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const blob = await r.blob();
+      const obj = URL.createObjectURL(blob);
+      const tmp = document.createElement('a');
+      tmp.href = obj; tmp.download = name;
+      document.body.appendChild(tmp); tmp.click(); tmp.remove();
+      setTimeout(() => URL.revokeObjectURL(obj), 4000);
+      a.innerHTML = orig;
+    } catch (err) {
+      a.innerHTML = orig;
+      window.open(url, '_blank', 'noopener');   // 폴백: 새 탭 열림(최소한 접근 보장)
+    }
+  }
+  document.addEventListener('click', downloadAttachment);
   function renderDocsHub() {
     const dl = document.getElementById('docsHubDownload');
     const up = document.getElementById('docsHubUpload');
     const sf = (shipment && shipment.fields) || {};
     const cf = (customer && customer.fields) || {};
     if (dl) dl.innerHTML =
-      _docRow('PI (결제 인보이스)', sf['PI파일']) +
-      _docRow('CO (원산지증명서)', sf['CO파일']) +
-      _docRow('BL (선하증권)', sf['BL파일']) +
-      _docRow('위임장', cf['위임장']) +
-      _docRow('사업자등록증', cf['사업자등록증']);
-    if (up) up.innerHTML = _docRow('면허 (수입신고필증)', sf['면허파일']);
+      _docRow('PI (결제 인보이스)', sf['PI파일'], 'PI') +
+      _docRow('CO (원산지증명서)', sf['CO파일'], 'CO') +
+      _docRow('BL (선하증권)', sf['BL파일'], 'BL') +
+      _docRow('위임장', cf['위임장'], '위임장') +
+      _docRow('사업자등록증', cf['사업자등록증'], '사업자등록증');
+    if (up) up.innerHTML = _docRow('면허 (수입신고필증)', sf['면허파일'], '면허');
     // 면허 현재 상태 배지
     const ls = document.getElementById('licenseStatus');
     if (ls) { const has = Array.isArray(sf['면허파일']) && sf['면허파일'].length; ls.textContent = has ? '✓ 업로드됨' : '미업로드'; ls.style.color = has ? '#0a7b40' : '#c0392b'; }
