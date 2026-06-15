@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.78</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.79</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.78</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.79</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -15482,6 +15482,17 @@ function _guessDocType(name, content) {
   if (/BILL\s*OF\s*LADING|(^|[^A-Z])B\/?L([^A-Z]|$)|[_\-]BL[_\-.]|(^|[^A-Z])WY\d{2,}/.test(s)) return 'bl';
   return '';
 }
+// [v3.2.79] 마스터BL 판별 — 파일명 'MBL'·'TALE{날짜}A##' or 내용 'MASTER B/L'·Marks 'N/M'. (option1=하우스만 저장, 마스터는 감지·건너뜀)
+function _isMasterBl(name, content) {
+  const s = (String(name || '') + ' ' + String(content || '')).toUpperCase();
+  return /(^|[^A-Z])MBL([^A-Z]|$)|MASTER\s*B\/?L|TALE\d{4,6}A\d|(^|[^A-Z])N\/M([^A-Z]|$)/.test(s);
+}
+// [v3.2.79] 파일명에서 BL번호 후보(접두 XWK/WY/SITC 등 + 영숫자). 내용 추출 실패 시 폴백.
+function _blNoFromName(name) {
+  // (?:^|[^A-Z]) — _WY3567은 잡고 HWY(고속도로)는 제외. 접두 뒤 숫자 1자 강제(BL번호 패턴).
+  const m = String(name || '').toUpperCase().match(/(?:^|[^A-Z])((?:XWK|WY|SITC|HBL|MBL|TALE)\d[A-Z0-9-]{2,})/);
+  return m ? m[1].replace(/[^A-Z0-9-]/g, '') : '';
+}
 
 async function handleBatchDocFiles(fileList) {
   let files = Array.from(fileList || []);
@@ -15522,27 +15533,36 @@ async function handleBatchDocFiles(fileList) {
       const matchedRow = base && rowByBase[base] ? rowByBase[base] : null;
       const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
       const isImg = /\.(jpe?g|png)$/i.test(file.name) || (file.type || '').startsWith('image/');
-      let contentAp = '', contentType = '';
+      let contentAp = '', contentType = '', pdfText = '';
       if (isPdf) {
         try {
-          const text = await extractBlTextFromPdf(file);
-          const cm = String(text || '').toUpperCase().match(/AP\d{2,}(?:-\d{6})?/);
+          pdfText = await extractBlTextFromPdf(file);
+          const cm = String(pdfText || '').toUpperCase().match(/AP\d{2,}(?:-\d{6})?/);
           contentAp = cm ? cm[0] : '';
-          contentType = _guessDocType(file.name, text);
+          contentType = _guessDocType(file.name, pdfText);
         } catch (e) { /* PDF 파싱 실패 → 파일명 기준 (이 파일만 영향, 다른 파일 무관) */ }
       }
       // [v3.2.78] 썸네일 — 이미지는 objectURL 미리보기(워터마크 CO 눈으로 보고 지정), PDF는 아이콘.
       let thumbUrl = '';
       if (isImg) { try { thumbUrl = URL.createObjectURL(file); } catch (e) {} }
-      const docType = _guessDocType(file.name, '') || contentType || '';
+      // [v3.2.79] 마스터BL 판별 — 독립적으로 먼저(MBL은 _guessDocType이 'bl' 미인식하므로 게이트 두면 안 됨). 마스터면 docType=bl(마스터, option1 저장 건너뜀).
+      const isMaster = _isMasterBl(file.name, pdfText);
+      const docType = isMaster ? 'bl' : (_guessDocType(file.name, '') || contentType || '');
+      // [v3.2.79] 하우스BL이면 BL번호 추출: 내용("B/L No." 후보) 우선 → 파일명 폴백.
+      let blNumber = '';
+      if (docType === 'bl' && !isMaster) {
+        if (pdfText) { const c = extractBlCandidates(pdfText); blNumber = (c[0] && c[0].value) || ''; }
+        if (!blNumber) blNumber = _blNoFromName(file.name);
+      }
       let conf;
-      if (!matchedRow) conf = 'red';            // 사서함 미매칭(위챗 이미지 등 — 정상, 드롭다운 지정)
+      if (isMaster) conf = 'amber';             // 마스터BL — 사서함 매칭 안 함(N/M), 현재 건너뜀
+      else if (!matchedRow) conf = 'red';       // 사서함 미매칭(위챗 이미지 등 — 정상, 드롭다운 지정)
       else if (isPdf && contentAp) conf = (_apBase(contentAp) === base) ? 'green' : 'red';   // 내용 AP 대조
       else conf = 'amber';                       // 이미지 또는 내용 AP 미발견 → 사람 확인
-      items.push({ file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '', docType, conf, contentAp, isPdf, isImg, thumbUrl });
+      items.push({ file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '', docType, conf, contentAp, isPdf, isImg, thumbUrl, isMaster, blNumber });
     } catch (e) {
       console.warn('[일괄업로드] 파일 분석 실패(격리):', file && file.name, e.message);
-      items.push({ file, filename: (file && file.name) || '(이름없음)', mailbox: '', shipId: '', docType: '', conf: 'red', contentAp: '', isPdf: false, isImg: false, thumbUrl: '' });
+      items.push({ file, filename: (file && file.name) || '(이름없음)', mailbox: '', shipId: '', docType: '', conf: 'red', contentAp: '', isPdf: false, isImg: false, thumbUrl: '', isMaster: false, blNumber: '' });
     }
   }
   batchDocState.items = items;
@@ -15575,8 +15595,8 @@ function renderBatchDocTable() {
       : `<span style="font-size:22px;" title="${it.isPdf ? 'PDF' : '파일'}">${it.isPdf ? '📄' : '🗎'}</span>`;
     h += `<tr style="border-bottom:1px solid #eee;">
       <td style="padding:5px 6px; text-align:center;">${thumb}</td>
-      <td style="padding:5px 6px; font-family:ui-monospace,monospace; font-size:11px;">${it.filename}${it.isPdf && it.contentAp ? `<br><span style="color:#888;">내용 AP: ${it.contentAp}</span>` : ''}</td>
-      <td style="padding:5px 6px;"><select onchange="setBatchDocField(${i},'mailbox',this.value)" style="font-size:11px; padding:3px;"><option value="">(미선택)</option>${mboxOpts(it.mailbox)}</select></td>
+      <td style="padding:5px 6px; font-family:ui-monospace,monospace; font-size:11px;">${it.filename}${it.isPdf && it.contentAp ? `<br><span style="color:#888;">내용 AP: ${it.contentAp}</span>` : ''}${it.isMaster ? `<br><span style="color:#1B5E9A; font-weight:700;">📦 마스터BL (필드 추가 후 저장 — 현재 건너뜀)</span>` : ''}${it.blNumber ? `<br><span style="color:#0a7b40;">BL No: ${it.blNumber}</span>` : ''}</td>
+      <td style="padding:5px 6px;"><select onchange="setBatchDocField(${i},'mailbox',this.value)" style="font-size:11px; padding:3px;"${it.isMaster ? ' disabled' : ''}><option value="">(미선택)</option>${mboxOpts(it.mailbox)}</select></td>
       <td style="padding:5px 6px;"><select onchange="setBatchDocField(${i},'docType',this.value)" style="font-size:11px; padding:3px;"><option value="">(미선택)</option><option value="bl"${it.docType === 'bl' ? ' selected' : ''}>BL</option><option value="co"${it.docType === 'co' ? ' selected' : ''}>CO</option></select></td>
       <td style="padding:5px 6px; text-align:center; color:${cColor[it.conf]}; font-weight:700;">${cLabel[it.conf]}</td></tr>`;
   });
@@ -15616,11 +15636,12 @@ async function saveBatchDocs() {
     if (!confirm(`⚠ ${bad.length}건이 미매칭/미선택/불일치(빨강)입니다.\n통관 오매칭 방지를 위해 한 번 더 확인합니다.\n\n매칭된 건만 저장하고 진행할까요? (미매칭 건은 건너뜀)`)) return;
   }
   const el = document.getElementById('batchDocResult');
-  let saved = 0, skipped = 0, failed = 0;
+  let saved = 0, skipped = 0, failed = 0, masterSkip = 0, blNoUpdated = 0;
   // BL replace는 사서함별 1회만 비우도록 — 같은 사서함 BL 여러 파일이면 마지막만 남음(정책상 BL 1장)
   const blClearedShip = new Set();
   for (let i = 0; i < rows.length; i++) {
     const it = rows[i];
+    if (it.isMaster) { masterSkip++; continue; }   // [v3.2.79] 마스터BL = 필드 신설 후 별도(option1 건너뜀)
     if (!it.mailbox || !it.shipId || !it.docType) { skipped++; continue; }
     if (it.conf === 'red' && (!it.mailbox || !it.shipId)) { skipped++; continue; }
     const fieldName = it.docType === 'bl' ? 'BL파일' : 'CO파일';
@@ -15632,11 +15653,21 @@ async function saveBatchDocs() {
       }
       await uploadAirtableAttachment(it.shipId, fieldId, it.file);
       saved++;
+      // [v3.2.79] 하우스BL 번호 갱신 — 빈값이면 바로, 기존값 다르면 ★확인 게이트. (통관이 Shipments.BL번호 읽음 — 자동연결)
+      if (it.docType === 'bl' && it.blNumber) {
+        const row = bookingState.rows.find(x => x.id === it.shipId);
+        let cur = '';
+        try { const rec = await api('GET', `/${TABLES.Shipments}/${it.shipId}`); cur = String((rec.fields || {})['BL번호'] || '').trim(); } catch (e) {}
+        let doUpdate = false;
+        if (!cur) doUpdate = true;   // 빈값 → 바로
+        else if (cur !== it.blNumber) doUpdate = confirm(`[${it.mailbox}] BL번호 대체 확인\n\n기존: ${cur}\n추출: ${it.blNumber}\n\n추출값으로 대체할까요? (통관 조회가 이 번호를 사용합니다)`);
+        if (doUpdate) { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { 'BL번호': it.blNumber }, typecast: true }); blNoUpdated++; if (row) row && (it._blSaved = it.blNumber); }
+      }
       if (el) el.querySelectorAll('tbody tr')[i] && (el.querySelectorAll('tbody tr')[i].style.background = '#e8f5e9');
     } catch (e) { failed++; console.warn('[일괄저장]', it.filename, e.message); }
   }
-  if (typeof toastSuccess === 'function') toastSuccess(`✓ 일괄 저장 완료 — 저장 ${saved} / 미매칭 건너뜀 ${skipped} / 실패 ${failed}`, { title: '📁 서류' });
-  if (el) el.innerHTML += `<div style="margin-top:8px; padding:8px; background:#f5f5f5; border-radius:5px; font-size:12px;">결과: 저장 <strong>${saved}</strong> · 미매칭 건너뜀 <strong>${skipped}</strong> · 실패 <strong>${failed}</strong>. (BL은 사서함당 1장 replace, CO는 append)</div>`;
+  if (typeof toastSuccess === 'function') toastSuccess(`✓ 일괄 저장 — 저장 ${saved} / BL번호 갱신 ${blNoUpdated} / 마스터 건너뜀 ${masterSkip} / 미매칭 ${skipped} / 실패 ${failed}`, { title: '📁 서류' });
+  if (el) el.innerHTML += `<div style="margin-top:8px; padding:8px; background:#f5f5f5; border-radius:5px; font-size:12px;">결과: 저장 <strong>${saved}</strong> · BL번호 갱신 <strong>${blNoUpdated}</strong> · 마스터BL 건너뜀 <strong>${masterSkip}</strong>(필드 신설 후) · 미매칭 <strong>${skipped}</strong> · 실패 <strong>${failed}</strong>. (BL=1장 replace, CO=append, BL번호→통관 자동연결)</div>`;
 }
 
 async function copyBookingText() {
