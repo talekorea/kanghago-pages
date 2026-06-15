@@ -100,6 +100,9 @@ async function handleGet(req, res) {
     console.log('Customer fetch skipped:', e.message);
   }
 
+  // [v3.2.80] ★마스터BL파일·면허파일 = 내부 전용 — 고객 응답에서 제외(비노출).
+  if (ship && ship.fields) { delete ship.fields['마스터BL파일']; }
+
   res.json({
     shipment: ship,
     products: products,

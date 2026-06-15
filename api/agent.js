@@ -812,6 +812,8 @@ module.exports = async (req, res) => {
             if (cs.length) customer = cs[0];
           }
         } catch (e) { /* 고객 없으면 null */ }
+        // [v3.2.80] ★마스터BL파일은 우리 내부 전용 — 관세사 응답에서 제외(UI·네트워크 양쪽 비노출).
+        if (ship && ship.fields) delete ship.fields['마스터BL파일'];
         return res.json({ shipment: ship, products, orders, customer });
       }
 
