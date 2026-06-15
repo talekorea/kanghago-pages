@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.82</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.83</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.82</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.83</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1750,25 +1750,30 @@ function findTariffLeafCandidates(hsRaw, maxCount = 10) {
 
 // ===== 최저세율 단일 선택 helper (세 화면 통일: 도구·staff-tool·agent-shipment) =====
 // rates: {A, C, CN, RC, E1} (각 % 숫자 또는 null/빈값). 후보 = 기본(A)/WTO(C)/한중(FCN1)/RCEP(FRCCN1)/APTA(E1).
-//   null/빈값 제외 → 최저 rate → [동률 tie-break] CO 불요(WTO·기본) 우선 → CO 필요(한중>RCEP>아태).
-//     세율이 다르면 최저가 항상 우선(pr 무관). 동률일 때만 CO 없는 쪽 선택 → 불필요한 CO 발급 회피.
-//   반환 { rate, code, fta, needRcepCO } | null(후보 0개).  fta = 적용FTA 필드값('없음'|'WTO'|'한중'|'RCEP'|'아태').
+//   null/빈값 제외 → 최저 rate → [동률 tie-break] ★FTA 우선(세관 소급 리스크 회피): 한중>RCEP>아태>기본>WTO.
+//     세율이 다르면 최저가 항상 우선(pr 무관). 동률이면 FTA(CO로 세번 보호) > 기본(무신고) > WTO(양허, 소급 위험).
+//   [v3.2.83] WTO 우선 폐기 — WTO 양허세율은 세번(HS) 변경 시 기존 수입분까지 소급 관세 위험. FTA는 CO로 세율 보호.
+//     · FTA==WTO(0%==0% 포함) → FTA.   · FTA<WTO → FTA(최저).
+//     · WTO<FTA(엄격히 낮음) → WTO 선택하되 wtoRisk=true(경고 "세번 변경 시 소급 부과 위험, FTA 전환 검토").
+//       자동으로 더 비싼 FTA 강제 안 함 — WTO가 엄격히 최저일 때만 WTO.
+//   반환 { rate, code, fta, needRcepCO, wtoRisk } | null(후보 0개). fta = 적용FTA 필드값('없음'|'WTO'|'한중'|'RCEP'|'아태').
 //   CO 절세 = (기본 − best). best.fta==='RCEP'이면 needRcepCO=true (원산지기준·CO 서식 한중과 상이). WTO·기본 = CO 불요.
 function pickBestTariff(rates) {
   rates = rates || {};
   const num = v => (v == null || v === '') ? null : (isNaN(parseFloat(v)) ? null : parseFloat(v));
   const cands = [
-    // pr 작을수록 동률 우선. CO 불요(WTO 1·기본 2) > CO 필요(한중 3 > RCEP 4 > 아태 5).
-    { fta: 'WTO',  code: 'C',      rate: num(rates.C),  pr: 1 },
-    { fta: '없음', code: 'A',      rate: num(rates.A),  pr: 2 },
-    { fta: '한중', code: 'FCN1',   rate: num(rates.CN), pr: 3 },
-    { fta: 'RCEP', code: 'FRCCN1', rate: num(rates.RC), pr: 4 },
-    { fta: '아태', code: 'E1',     rate: num(rates.E1), pr: 5 },
+    // pr 작을수록 동률 우선. ★FTA(소급 보호) 우선: 한중 1 > RCEP 2 > 아태 3 > 기본 4 > WTO 5(소급 위험 → 최후).
+    //   한중 CO가 가장 익숙 → FTA 내부 한중>RCEP>아태. 기본(무신고) > WTO(양허): 동률이면 무위험 기본을 WTO보다 우선.
+    { fta: '한중', code: 'FCN1',   rate: num(rates.CN), pr: 1 },
+    { fta: 'RCEP', code: 'FRCCN1', rate: num(rates.RC), pr: 2 },
+    { fta: '아태', code: 'E1',     rate: num(rates.E1), pr: 3 },
+    { fta: '없음', code: 'A',      rate: num(rates.A),  pr: 4 },
+    { fta: 'WTO',  code: 'C',      rate: num(rates.C),  pr: 5 },
   ].filter(c => c.rate != null);
   if (!cands.length) return null;
   cands.sort((a, b) => (a.rate !== b.rate) ? a.rate - b.rate : a.pr - b.pr);
   const best = cands[0];
-  return { rate: best.rate, code: best.code, fta: best.fta, needRcepCO: best.fta === 'RCEP' };
+  return { rate: best.rate, code: best.code, fta: best.fta, needRcepCO: best.fta === 'RCEP', wtoRisk: best.fta === 'WTO' };
 }
 if (typeof window !== 'undefined') window.pickBestTariff = pickBestTariff;
 
@@ -4956,7 +4961,10 @@ function renderProducts() {
     _chipTr.className = 'prod-chip-row';
     _chipTr.dataset.group = _gk;
     _chipTr.style.display = 'none';
-    const _coBadge = (fta === 'WTO' || fta === '없음')
+    const _coBadge = (fta === 'WTO')
+      ? '<span style="font-size:10px; color:#0a7b40; font-weight:700; margin-left:10px; white-space:nowrap;">🟢 CO 불요</span>'
+        + '<span style="font-size:10px; color:#b23a00; font-weight:700; margin-left:8px; white-space:nowrap;" title="WTO 양허세율은 세번(HS) 변경 시 기존 수입분까지 소급 관세 위험. CO 가능한 FTA로 전환 검토 권장.">⚠ 세번 변경 시 소급 위험 — FTA 전환 검토</span>'
+      : (fta === '없음')
       ? '<span style="font-size:10px; color:#0a7b40; font-weight:700; margin-left:10px; white-space:nowrap;">🟢 CO 불요</span>'
       : '<span style="font-size:10px; color:#b26a00; font-weight:700; margin-left:10px; white-space:nowrap;">🟡 CO 필요</span>';
     _chipTr.innerHTML = `<td colspan="15" style="padding:3px 12px 7px 42px; border-top:none; background:#fcfaf5;">`
@@ -6813,20 +6821,22 @@ function showCustomerUrlModal(url, payload, copied) {
 }
 
 // ========== v3.0.0 → v3.2.43: 가장 유리한 FTA 자동 선택 ==========
-// 각 제품의 기본(A)/한중(FCN1)/RCEP(FRCCN1)/APTA(E1) 중 최저 세율로 적용FTA 설정 (pickBestTariff 단일 helper).
-// 세율 동률 시 우선순위: 한중 > RCEP > APTA > 기본. (FTA가 사후 검증 부담 적고, 한중 CO가 가장 익숙)
+// 각 제품의 한중/RCEP/아태/기본/WTO 중 최저 세율로 적용FTA 설정 (pickBestTariff 단일 helper).
+// [v3.2.83] 세율 동률 시 우선순위: 한중 > RCEP > 아태 > 기본 > WTO. (WTO 우선 폐기 — 세번 변경 소급 리스크 회피, FTA는 CO로 보호)
 // 모든 제품에 일괄 적용 + 변경 카운트 표시. 사장님 수동 override 그대로 가능.
+// ★[회귀] 관세사확정 제품은 건너뜀 — 확정/신고완료 건의 scenario 소급 변경 금지(신규·미확정만).
 function autoSelectBestFta() {
   if (!state.products || state.products.length === 0) {
     toastWarn('제품이 없습니다');
     return;
   }
 
-  let changed = 0;
+  let changed = 0, skippedConfirmed = 0, wtoRiskCount = 0;
   const reasons = [];
 
   state.products.forEach(p => {
     const f = p.fields;
+    if (f['관세사확정'] === true) { skippedConfirmed++; return; }   // [회귀] 확정값 보호 — 소급 변경 금지
     // v3.2.43: HS코드로 새 관세표 우선 조회 (Products.fields 폴백) → pickBestTariff 단일 helper.
     //   후보 기본(A)/한중(CN)/RCEP(RC)/APTA(E1), null 제외, 최저+동률 한중>RCEP>APTA>기본.
     const hs = f['HS코드'];
@@ -6842,18 +6852,20 @@ function autoSelectBestFta() {
     const best = pickBestTariff(rates);
     if (!best) return;
 
+    if (best.wtoRisk) wtoRiskCount++;   // [v3.2.83] WTO가 엄격히 최저 → 소급 위험 경고 집계
     const current = f['적용FTA'] || '없음';
     if (current !== best.fta) {
-      const curRate = current === '한중' ? rates.CN : current === 'RCEP' ? rates.RC : current === '아태' ? rates.E1 : rates.A;
+      const curRate = current === '한중' ? rates.CN : current === 'RCEP' ? rates.RC : current === '아태' ? rates.E1 : current === 'WTO' ? rates.C : rates.A;
       f['적용FTA'] = best.fta;
       state.modifiedProducts.add(p.id);
       changed++;
-      reasons.push(`${f['Description'] || f['상품ID'] || p.id}: ${current}(${curRate != null ? curRate + '%' : '—'}) → ${best.fta}(${best.rate}%)`);
+      const riskTag = best.wtoRisk ? ' ⚠WTO 소급 위험' : '';
+      reasons.push(`${f['Description'] || f['상품ID'] || p.id}: ${current}(${curRate != null ? curRate + '%' : '—'}) → ${best.fta}(${best.rate}%)${riskTag}`);
     }
   });
 
   if (changed === 0) {
-    toastInfo('이미 가장 유리한 FTA가 적용되어 있습니다', {
+    toastInfo(`이미 가장 유리한 FTA가 적용되어 있습니다${skippedConfirmed ? ` (관세사확정 ${skippedConfirmed}건 보호·제외)` : ''}`, {
       title: '🎯 변경 사항 없음',
     });
     return;
@@ -6863,12 +6875,12 @@ function autoSelectBestFta() {
   renderProducts();
   recalculate();
 
-  toastSuccess(`${changed}개 제품 자동 선택 완료`, {
+  toastSuccess(`${changed}개 제품 자동 선택 완료${skippedConfirmed ? ` · 확정 ${skippedConfirmed}건 제외` : ''}`, {
     title: '🎯 가장 유리한 FTA 적용',
-    subtitle: `세율 최저 기준 + 동률 시 한중 > RCEP > 아태 > 기본`,
-    duration: 5000,
+    subtitle: `최저 세율 + 동률 시 한중 > RCEP > 아태 > 기본 > WTO` + (wtoRiskCount ? ` · ⚠ WTO 최저 ${wtoRiskCount}건: 세번 변경 시 소급 부과 위험 — FTA 전환 검토` : ''),
+    duration: wtoRiskCount ? 8000 : 5000,
   });
-  console.log('[autoSelectBestFta] 변경 내역:\n' + reasons.join('\n'));
+  console.log('[autoSelectBestFta] 변경 내역:\n' + reasons.join('\n') + (wtoRiskCount ? `\n⚠ WTO 최저 ${wtoRiskCount}건 — 세번 변경 시 소급 관세 위험. CO 가능한 FTA 전환 검토 권장.` : '') + (skippedConfirmed ? `\n🔒 관세사확정 ${skippedConfirmed}건 — 소급 변경 금지로 제외.` : ''));
 }
 
 // ========== v2.9.7: 박스 라벨 출력 ==========

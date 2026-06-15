@@ -482,21 +482,22 @@
   // 작업2: 셋 중 가장 낮은 세율 자동 추천
   // ===== 최저세율 단일 선택 helper (세 화면 통일: 도구·staff-tool·agent-shipment) =====
   // rates {A,C,CN,RC,E1} → 후보 기본/WTO(C)/한중(FCN1)/RCEP(FRCCN1)/APTA(E1). null 제외, 최저 rate.
-  //   [동률 tie-break] CO 불요(WTO·기본) 우선 → CO 필요(한중>RCEP>아태). 세율 다르면 최저 우선. 본체 도구와 동일 로직.
+  //   [v3.2.83 동률 tie-break] ★FTA 우선(세관 소급 리스크 회피): 한중>RCEP>아태>기본>WTO. 세율 다르면 최저 우선. 본체 도구와 동일 로직.
+  //   WTO 양허는 세번 변경 시 소급 관세 위험 → 엄격히 최저일 때만 선택(wtoRisk=true), 동률이면 FTA(CO 보호) 우선.
   function pickBestTariff(rates) {
     rates = rates || {};
     const num = v => (v == null || v === '') ? null : (isNaN(parseFloat(v)) ? null : parseFloat(v));
     const cands = [
-      { fta: 'WTO',  code: 'C',      rate: num(rates.C),  pr: 1 },
-      { fta: '없음', code: 'A',      rate: num(rates.A),  pr: 2 },
-      { fta: '한중', code: 'FCN1',   rate: num(rates.CN), pr: 3 },
-      { fta: 'RCEP', code: 'FRCCN1', rate: num(rates.RC), pr: 4 },
-      { fta: '아태', code: 'E1',     rate: num(rates.E1), pr: 5 },
+      { fta: '한중', code: 'FCN1',   rate: num(rates.CN), pr: 1 },
+      { fta: 'RCEP', code: 'FRCCN1', rate: num(rates.RC), pr: 2 },
+      { fta: '아태', code: 'E1',     rate: num(rates.E1), pr: 3 },
+      { fta: '없음', code: 'A',      rate: num(rates.A),  pr: 4 },
+      { fta: 'WTO',  code: 'C',      rate: num(rates.C),  pr: 5 },
     ].filter(c => c.rate != null);
     if (!cands.length) return null;
     cands.sort((a, b) => (a.rate !== b.rate) ? a.rate - b.rate : a.pr - b.pr);
     const b = cands[0];
-    return { rate: b.rate, code: b.code, fta: b.fta, needRcepCO: b.fta === 'RCEP' };
+    return { rate: b.rate, code: b.code, fta: b.fta, needRcepCO: b.fta === 'RCEP', wtoRisk: b.fta === 'WTO' };
   }
   function recommendFta(baseR, kcR, rcepR, aptaR, wtoR) {
     const best = pickBestTariff({ A: baseR, C: wtoR, CN: kcR, RC: rcepR, E1: aptaR });
@@ -1110,12 +1111,12 @@
       const recoReason = recommended === '한중' ? `한중 FTA가 ${rateLabel(kcR)}로 가장 저렴하여 추천됩니다`
         : recommended === 'RCEP' ? `RCEP가 ${rateLabel(rcepR)}로 가장 저렴하여 추천됩니다 (원산지기준·CO 서식 한중과 상이 — 확정 필요)`
         : recommended === '아태' ? `아태협정(E1)이 ${rateLabel(aptaR)}로 가장 저렴하여 추천됩니다`
-        : recommended === 'WTO' ? `WTO 양허(${rateLabel(wtoRtariff)})가 최저 — C/O 불요 자동 적용`
+        : recommended === 'WTO' ? `⚠ WTO 양허(${rateLabel(wtoRtariff)})가 엄격히 최저 — 단, 세번(HS) 변경 시 기존 수입분 소급 관세 위험. CO 가능한 FTA 전환 검토 권장`
         : `일반 세율(${rateLabel(baseR)})이 최저이거나 FTA와 동률이라 일반을 추천합니다`;
       const coNoteFor = (fta) => fta === '한중' ? '* 한중 FTA C/O 필요 (없으면 일반 세율 적용)'
         : fta === 'RCEP' ? '* ⚠ RCEP CO 필요 — 원산지기준·서식 한중과 다름 (없으면 일반 세율)'
         : fta === '아태' ? '* 아태협정 C/O 필요 (없으면 일반 세율 적용)'
-        : fta === 'WTO' ? '* WTO 양허 — C/O 불요 (자동 적용)'
+        : fta === 'WTO' ? '* ⚠ WTO 양허 — C/O 불요이나 세번 변경 시 소급 관세 위험 (FTA 전환 검토)'
         : '* 일반 세율 — C/O 불요';
       // 작업1: 1688 상품 사진 + URL
       const imgUrl = (f['상품이미지'] && f['상품이미지'][0] && (f['상품이미지'][0].thumbnails?.large?.url || f['상품이미지'][0].url))
