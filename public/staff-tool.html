@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.70</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.71</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.70</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.71</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -15111,8 +15111,11 @@ async function fetchBookingSummary(mode) {
     //   ★ Airtable date 필드는 문자열 비교 불가 → IS_SAME(...,'day') 사용 (검증: 'YYYY-MM-DD' 직접 비교는 0건 반환)
     const orderFormula = `OR(${days.map(d => `IS_SAME({실제출고요청일},'${d}','day')`).join(',')})`;
     const orderUrl = `/${TABLES.Orders}?filterByFormula=${encodeURIComponent(orderFormula)}`
-                   + `&fields[]=Shipment&fields[]=실제출고요청일&fields[]=주문번호`;
+                   + `&fields[]=Shipment&fields[]=실제출고요청일&fields[]=주문번호&fields[]=회원명`;   // [v3.2.71] 회원명 — Customers 매칭 실패 시 폴백
     const orders = await apiPaged(orderUrl);
+    // [v3.2.71] shipId → Orders.회원명 (첫 비어있지 않은 값) — 모달 회원명 컬럼 폴백용
+    const memberByShip = {};
+    orders.forEach(o => { const of = o.fields || {}; const nm = String(of['회원명'] || '').trim(); if (nm) (of.Shipment || []).forEach(sid => { if (!memberByShip[sid]) memberByShip[sid] = nm; }); });
 
     if (!orders.length) {
       loading.textContent = '';
@@ -15162,7 +15165,8 @@ async function fetchBookingSummary(mode) {
       const mailbox = sf['사서함'] || '';
       const shipDate = shipDateMap[s.id] || '';   // ★ Orders.실제출고요청일 (Shipments.출고요청일 아님)
       const status = sf['상태'] || '';
-      const cust = (state.customerByPost && state.customerByPost[mailbox]) || { 회원명:'', 회사명:'' };
+      // [v3.2.71] Customers 조회 키 = base AP(고객사서함, -YYMMDD 제거) — 양식·§2.5와 동일. 복합명으로 조회해 매칭 실패하던 버그 fix.
+      const cust = (state.customerByPost && state.customerByPost[baseMailbox(mailbox)]) || { 회원명:'', 회사명:'' };
       let boxes = [];
       try {
         const url = `/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}`
@@ -15184,7 +15188,8 @@ async function fetchBookingSummary(mode) {
       return {
         id: s.id,   // [v3.2.69] 운송사/택배사 양식에서 Shipments 추가필드 재조회용
         mailbox, shipDate, status,
-        member: cust.회원명 || '', company: cust.회사명 || '',
+        member: cust.회원명 || memberByShip[s.id] || '',   // [v3.2.71] Customers 회원명 없으면 Orders.회원명 폴백
+        company: cust.회사명 || '',
         boxCount, kgSum, cbmSum, missingMeasure, isReady,
       };
     }));
@@ -15238,7 +15243,9 @@ function renderBookingTable(rows, dateLabel) {
   </tr></thead><tbody>`;
   rows.forEach(r => {
     const bg = r.isReady ? '#fff' : '#fff8e1';
-    const nameTag = r.company ? `${r.member}<span style="color:#888; font-size:11px;"> (${r.company})</span>` : (r.member || '<span style="color:#bbb;">(회원 매칭 없음)</span>');
+    // [v3.2.71] 회원명(회사명) — 둘 다 있으면 "회원명 (회사명)", 하나만 있으면 그것, 둘 다 없으면 "(정보 없음)"
+    const nameTag = (r.member && r.company) ? `${r.member}<span style="color:#888; font-size:11px;"> (${r.company})</span>`
+      : (r.member || r.company || '<span style="color:#bbb;">(정보 없음)</span>');
     const statusBadge = r.isReady
       ? '<span style="color:#0a7b40; font-weight:600;">✓ 완료</span>'
       : (r.boxCount === 0
@@ -15270,7 +15277,7 @@ function renderBookingTable(rows, dateLabel) {
     html += `<div style="font-size:13px; color:#9a7b2a; font-weight:600; margin-bottom:6px;">🔒 박스 미입력 사서함 ${notReady.length}건 — 위챗 복사 잠금</div>`;
     html += `<div style="font-size:12px; color:#7a5a1a;">`;
     notReady.forEach(r => {
-      const nameTag = r.company ? `${r.member}(${r.company})` : (r.member || '회원 매칭 없음');
+      const nameTag = (r.member && r.company) ? `${r.member}(${r.company})` : (r.member || r.company || '(정보 없음)');
       const reason = r.boxCount === 0 ? '박스 0개' : '박스 무게 또는 CBM 미입력';
       html += `&nbsp;&nbsp;・ <strong>${r.mailbox}</strong> ${nameTag} — ${reason}<br/>`;
     });
