@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.80</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.82</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.80</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.82</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -12812,6 +12812,29 @@ function buildInvoiceData() {
   const appliedFtaDisplay = FTA_DISPLAY[selectedFta] || selectedFta;
   const appliedFtaCode = FTA_APPLIED[selectedFta] || '일반';
 
+  // v3.2.82: 관부가세 비교(예상) — 도구 시나리오 계산(calcTariffForScenario) 단일 소스 재사용.
+  //   기본세율(base) vs 선택 FTA(current = 제품 적용FTA). ★재계산·별도공식 금지 — totalDutyKrw/VatKrw/Krw 그대로.
+  //   관부가세 = 고객 통관 비용(관세사 직접 청구) → 강하고 청구금액(BL·해상·CO)과 별개(섹션 라벨로 명시).
+  //   엣지: 적용 FTA 미선택/일반 또는 절감 없음 → 비교 무의미 → null(섹션 숨김, 청구서 안 깨짐).
+  let tariffCompare = null;
+  try {
+    if (typeof calcTariffForScenario === 'function' && appliedFtaCode && appliedFtaCode !== '일반') {
+      const _tb = calcTariffForScenario('base');     // 일반 세율
+      const _tc = calcTariffForScenario('current');  // 적용 FTA(제품 적용FTA)
+      if (_tb && _tc) {
+        const _saving = _tb.totalKrw - _tc.totalKrw;
+        if (_saving > 0) {
+          // 표시값 = formatKrw(=round) 미리 적용 → invoice-view URL 전달 시 도구와 1원 단위까지 동일.
+          tariffCompare = {
+            base: { duty: Math.round(_tb.totalDutyKrw), vat: Math.round(_tb.totalVatKrw), total: Math.round(_tb.totalKrw) },
+            fta:  { duty: Math.round(_tc.totalDutyKrw), vat: Math.round(_tc.totalVatKrw), total: Math.round(_tc.totalKrw), label: appliedFtaDisplay },
+            saving: Math.round(_saving),
+          };
+        }
+      }
+    }
+  } catch (e) { console.warn('[v3.2.82 관부가세 비교]', e.message); tariffCompare = null; }
+
   return {
     invoiceNo, date: _inv.date,
     mailbox, issuingEntity, entity, customer,
@@ -12819,7 +12842,7 @@ function buildInvoiceData() {
     zeroRateTotal, tax10Subtotal, vat, subtotal, total, depositTotal,
     paymentMethod,
     blNo: f['BL번호'] || '',
-    selectedFta, appliedFtaDisplay, appliedFtaCode,
+    selectedFta, appliedFtaDisplay, appliedFtaCode, tariffCompare,
     // v3.2.18 P0 → v3.2.38: invoice-view 물류비 청구서용 breakdown — 7항목 + pre-VAT + 최종
     breakdown: { bl: bd.bl, sea: bd.sea, co: bd.co, parcel: bd.parcel, freight: bd.freight, milkrun: bd.milkrun, coupang: bd.coupang, preVat: bd.preVat, vat: bd.vat, total: bd.totalKrw, shipMethod: bd.shipMethod },
     // v3.2.31: CO 절세 안내 — 절세 > 0이면 "FTA 적용 관세 ₩XXX 절감", 0이면 "CO 발급 불필요"
@@ -12932,6 +12955,46 @@ function recalcInvoiceTotals() {
     + (data.depositTotal > 0 ? ` · 예치금 차감 별도 ${formatKrw(data.depositTotal)}` : '');
 }
 
+// v3.2.82: 관부가세 비교 섹션 — 청구서(미리보기)·PDF 공용. ★기존 청구서 스타일 재사용:
+//   비교 박스 = 발행처/수신처 베이지 박스 톤(#FAF6EE·라운드), 절감 바 = "총 청구 금액" 골드 바 톤(#C9973A).
+//   placement: 'top'(헤더 직후, 기본) / 'bottom'(1줄 요약 — 추후 하단 전환용). tc 없으면 '' → 섹션 숨김.
+function buildTariffCompareHtml(tc, placement) {
+  if (!tc) return '';
+  const fmt = (typeof formatKrw === 'function') ? formatKrw : (n => '₩' + Math.round(parseFloat(n) || 0).toLocaleString());
+  if (placement === 'bottom') {
+    return `<div style="margin:14px 0 6px; padding:9px 14px; background:#FAF6EE; border-left:4px solid #C9973A; border-radius:6px; font-size:11px; color:#666;">
+      <strong style="color:#1B2A3B;">관부가세 비교 (예상)</strong> · ${tc.fta.label} 적용 → 기본세율 <span style="text-decoration:line-through; color:#999;">${fmt(tc.base.total)}</span> → <strong style="color:#C9973A;">${fmt(tc.fta.total)}</strong> · 절감 <strong style="color:#0a7b40;">${fmt(tc.saving)}</strong>
+      <div style="margin-top:3px; color:#999; font-size:10px;">※ 예상치 — 정확한 관세·부가세는 협력 관세사 검토 후 안내. 강하고 청구금액(BL·해상운임·CO)과 별개.</div>
+    </div>`;
+  }
+  return `
+    <div style="margin-bottom:18px;">
+      <div style="font-size:11px; color:#666; margin-bottom:6px;">관부가세 비교 <span style="color:#999;">(예상 · 고객 통관 비용 — 강하고 청구금액과 <strong>별개</strong>)</span></div>
+      <div style="display:flex; gap:20px; font-size:11px; align-items:stretch;">
+        <div style="flex:1; padding:10px 12px; background:#FAF6EE; border-radius:4px; opacity:.7;">
+          <div style="font-weight:700; color:#1B2A3B; font-size:12px; margin-bottom:6px;">기본세율 <span style="font-weight:400; color:#999;">(FTA 미적용)</span></div>
+          <div style="display:flex; justify-content:space-between; color:#888; text-decoration:line-through;"><span>관세</span><span style="font-family:monospace;">${fmt(tc.base.duty)}</span></div>
+          <div style="display:flex; justify-content:space-between; color:#888; text-decoration:line-through;"><span>부가세 10%</span><span style="font-family:monospace;">${fmt(tc.base.vat)}</span></div>
+          <div style="display:flex; justify-content:space-between; margin-top:4px; padding-top:4px; border-top:1px solid #e8e0d0; color:#888; text-decoration:line-through; font-weight:700;"><span>합계</span><span style="font-family:monospace;">${fmt(tc.base.total)}</span></div>
+        </div>
+        <div style="flex:1; padding:10px 12px; background:#FAF6EE; border:2px solid #C9973A; border-radius:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-weight:700; color:#1B2A3B; font-size:12px;">${tc.fta.label}</span>
+            <span style="background:#C9973A; color:#fff; font-size:9px; font-weight:700; padding:2px 8px; border-radius:10px; letter-spacing:.04em;">적용</span>
+          </div>
+          <div style="display:flex; justify-content:space-between;"><span>관세</span><span style="font-family:monospace;">${fmt(tc.fta.duty)}</span></div>
+          <div style="display:flex; justify-content:space-between;"><span>부가세 10%</span><span style="font-family:monospace;">${fmt(tc.fta.vat)}</span></div>
+          <div style="display:flex; justify-content:space-between; margin-top:4px; padding-top:4px; border-top:1px solid #e8e0d0; font-weight:700; color:#1B2A3B;"><span>합계</span><span style="font-family:monospace;">${fmt(tc.fta.total)}</span></div>
+        </div>
+      </div>
+      <div style="background:#C9973A; color:#fff; border-radius:4px; padding:9px 14px; margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:12px; font-weight:700;">FTA 적용 절감액 <span style="font-weight:400; opacity:.85;">(기본세율 − ${tc.fta.label})</span></span>
+        <span style="font-family:monospace; font-size:15px; font-weight:700;">− ${fmt(tc.saving)}</span>
+      </div>
+      <div style="font-size:10px; color:#999; margin-top:6px;">※ 표시 금액은 예상치이며, 정확한 관세·부가세는 협력 관세사 검토 후 안내됩니다.</div>
+    </div>`;
+}
+
 function renderInvoiceHTML(d) {
   const itemRow = (it) => `<tr>
     <td style="padding:6px 8px; border-bottom:1px solid #eee;">${it.label}</td>
@@ -12954,6 +13017,8 @@ function renderInvoiceHTML(d) {
         </div>
       </div>
     </div>
+
+    ${buildTariffCompareHtml(d.tariffCompare, 'top')}
 
     <div style="display:flex; gap:20px; margin-bottom:18px; font-size:11px;">
       <div style="flex:1; padding:10px 12px; background:#FAF6EE; border-radius:4px;">
@@ -13181,7 +13246,20 @@ async function shareInvoiceViewUrl() {
       catch (e) { toastWarn && toastWarn('페이앱 생성 실패: ' + e.message); }
     }
     // 2. 통합 청구서 URL 조립
-    const viewUrl = `${INVOICE_VIEW_BASE}?mailbox=${encodeURIComponent(mailbox)}`;
+    let viewUrl = `${INVOICE_VIEW_BASE}?mailbox=${encodeURIComponent(mailbox)}`;
+    // v3.2.82: 관부가세 비교(예상) 숫자를 URL 파라미터로 전달 → invoice-view가 도구와 동일 숫자 렌더(서버 재계산 없음).
+    //   단일 소스 = buildInvoiceData().tariffCompare(이미 round 적용). 미선택/절감0이면 파라미터 없음 → invoice-view 섹션 자동 숨김.
+    try {
+      const _tc = (buildInvoiceData() || {}).tariffCompare;
+      if (_tc) {
+        const qp = new URLSearchParams({
+          tcbd: _tc.base.duty, tcbv: _tc.base.vat, tcbt: _tc.base.total,
+          tcfd: _tc.fta.duty,  tcfv: _tc.fta.vat,  tcft: _tc.fta.total,
+          tcsv: _tc.saving,    tcfl: _tc.fta.label,
+        });
+        viewUrl += '&' + qp.toString();
+      }
+    } catch (e) { console.warn('[v3.2.82 관부가세 비교 param]', e.message); }
 
     // 3. 카톡 메시지 템플릿
     const customerName = cf['회원명'] || f['수취_수취인'] || '고객';

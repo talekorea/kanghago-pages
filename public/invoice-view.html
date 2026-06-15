@@ -115,6 +115,42 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// v3.2.82: 관부가세 비교(예상) — 도구가 URL 파라미터로 전달한 숫자를 그대로 렌더(서버 재계산 없음, 도구와 1원까지 동일).
+//   ★기존 청구서 스타일 재사용: 비교 박스 = 발행처/고객 카드 톤(--ivory·라운드), 절감 바 = --gold 바.
+//   파라미터 없음/불완전/절감0 → '' 반환 → 섹션 숨김(청구서 안 깨짐).
+function renderTariffCompare() {
+  const bd = parseFloat(params.get('tcbd')), bv = parseFloat(params.get('tcbv')), bt = parseFloat(params.get('tcbt'));
+  const fd = parseFloat(params.get('tcfd')), fv = parseFloat(params.get('tcfv')), ft = parseFloat(params.get('tcft'));
+  const sv = parseFloat(params.get('tcsv')); const fl = params.get('tcfl') || '선택 FTA';
+  if (![bd, bv, bt, fd, fv, ft, sv].every(n => !isNaN(n)) || sv <= 0) return '';
+  return `
+    <div style="margin-bottom:18px;">
+      <div style="font-size:11px; color:#888; margin-bottom:6px;">관부가세 비교 <span style="color:#aaa;">(예상 · 고객 통관 비용 — 강하고 청구금액과 <strong>별개</strong>)</span></div>
+      <div style="display:flex; gap:12px; align-items:stretch;">
+        <div style="flex:1; padding:11px 14px; background:var(--ivory); border-radius:8px; opacity:.7; font-size:12px;">
+          <div style="font-weight:700; color:var(--navy); margin-bottom:6px;">기본세율 <span style="font-weight:400; color:#aaa;">(FTA 미적용)</span></div>
+          <div style="display:flex; justify-content:space-between; color:#999; text-decoration:line-through;"><span>관세</span><span style="font-family:ui-monospace,monospace;">${fmtKrw(bd)}</span></div>
+          <div style="display:flex; justify-content:space-between; color:#999; text-decoration:line-through;"><span>부가세 10%</span><span style="font-family:ui-monospace,monospace;">${fmtKrw(bv)}</span></div>
+          <div style="display:flex; justify-content:space-between; margin-top:5px; padding-top:5px; border-top:1px solid var(--line); color:#999; text-decoration:line-through; font-weight:700;"><span>합계</span><span style="font-family:ui-monospace,monospace;">${fmtKrw(bt)}</span></div>
+        </div>
+        <div style="flex:1; padding:11px 14px; background:var(--ivory); border:2px solid var(--gold); border-radius:8px; font-size:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-weight:700; color:var(--navy);">${esc(fl)}</span>
+            <span style="background:var(--gold); color:#fff; font-size:9px; font-weight:700; padding:2px 9px; border-radius:10px; letter-spacing:.04em;">적용</span>
+          </div>
+          <div style="display:flex; justify-content:space-between;"><span>관세</span><span style="font-family:ui-monospace,monospace;">${fmtKrw(fd)}</span></div>
+          <div style="display:flex; justify-content:space-between;"><span>부가세 10%</span><span style="font-family:ui-monospace,monospace;">${fmtKrw(fv)}</span></div>
+          <div style="display:flex; justify-content:space-between; margin-top:5px; padding-top:5px; border-top:1px solid var(--line); font-weight:700; color:var(--navy);"><span>합계</span><span style="font-family:ui-monospace,monospace;">${fmtKrw(ft)}</span></div>
+        </div>
+      </div>
+      <div style="background:var(--gold); color:#fff; border-radius:8px; padding:11px 16px; margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:12px; font-weight:700;">FTA 적용 절감액 <span style="font-weight:400; opacity:.85;">(기본세율 − ${esc(fl)})</span></span>
+        <span style="font-family:ui-monospace,monospace; font-size:16px; font-weight:800;">− ${fmtKrw(sv)}</span>
+      </div>
+      <div style="font-size:10px; color:#aaa; margin-top:6px;">※ 표시 금액은 예상치이며, 정확한 관세·부가세는 협력 관세사 검토 후 안내됩니다.</div>
+    </div>`;
+}
+
 function render(d) {
   const root = document.getElementById('root');
   const s = d.shipment, c = d.customer, t = d.totals, bd = d.breakdown || {};
@@ -166,6 +202,8 @@ function render(d) {
         ${s.forwarder ? `<div><strong>포워딩</strong> ${esc(s.forwarder)}</div>` : ''}
       </div>
     </header>
+
+    ${renderTariffCompare()}
 
     <div class="info-grid">
       <div class="card">
