@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.69</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.70</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.69</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.70</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -15328,12 +15328,12 @@ async function downloadTransportExcel(forCourier) {
     const recvByShip = {};
     if (days.length) {
       const oF = `OR(${days.map(d => `IS_SAME({실제출고요청일},'${d}','day')`).join(',')})`;
-      const ords = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&fields[]=Shipment&fields[]=수취인이름&fields[]=연락처&fields[]=수취인주소&fields[]=배송요청사항`);
+      const ords = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&fields[]=Shipment&fields[]=수취인이름&fields[]=회원명&fields[]=연락처&fields[]=수취인주소&fields[]=배송요청사항`);
       ords.forEach(o => {
         const of = o.fields || {};
         (of.Shipment || []).forEach(sid => {
-          const r = recvByShip[sid] = recvByShip[sid] || { 수취인이름: '', 연락처: '', 수취인주소: '', 배송요청사항: '' };
-          ['수취인이름', '연락처', '수취인주소', '배송요청사항'].forEach(k => { if (!r[k] && String(of[k] || '').trim()) r[k] = String(of[k]).trim(); });
+          const r = recvByShip[sid] = recvByShip[sid] || { 수취인이름: '', 회원명: '', 연락처: '', 수취인주소: '', 배송요청사항: '' };
+          ['수취인이름', '회원명', '연락처', '수취인주소', '배송요청사항'].forEach(k => { if (!r[k] && String(of[k] || '').trim()) r[k] = String(of[k]).trim(); });
         });
       });
     }
@@ -15352,7 +15352,7 @@ async function downloadTransportExcel(forCourier) {
       const base = baseMailbox(sf['고객사서함'] || mailbox);
       rows.push({
         carrier, warehouse: WAREHOUSE,
-        화주: recv.수취인이름 || '', bl: sf['BL번호'] || '', tape: sf['테이프색상'] || '',
+        화주: recv.수취인이름 || recv.회원명 || '', bl: sf['BL번호'] || '', tape: sf['테이프색상'] || '',   // [v3.2.70] 수취인이름 없으면 회원명 폴백
         마킹: _transportMarkRange(base, seqs), 박스수: mine.length, cbm, kg,
         연락처: recv.연락처 || '', 주소: recv.수취인주소 || '', 선착불: '선불', 비고: recv.배송요청사항 || '',
       });
