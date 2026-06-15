@@ -812,8 +812,11 @@ module.exports = async (req, res) => {
             if (cs.length) customer = cs[0];
           }
         } catch (e) { /* 고객 없으면 null */ }
-        // [v3.2.80] ★마스터BL파일은 우리 내부 전용 — 관세사 응답에서 제외(UI·네트워크 양쪽 비노출).
-        if (ship && ship.fields) delete ship.fields['마스터BL파일'];
+        // [v3.2.81] ★응답 화이트리스트 — 관세사가 통관 작업에 쓰는 필드만 반환. 전체 덤프 폐기(신규 필드 자동 비노출).
+        //   ★제외: 고객토큰(보안)·청구금액/영세율/VAT/청구_*/해운비원가(마진)·발행주체/결제방식/외부거래ID/페이앱_*/입금완료일시·메모·도착지·마스터BL파일 등.
+        //   서버 로직(사서함·고객사서함)은 위에서 이미 full fields로 수행됨 — 여기선 응답만 큐레이트.
+        const AGENT_SHIP_WL = ['사서함', '고객사서함', '상태', '출고요청일', '선적일', 'BL번호', 'BL발급일', 'BL파일', 'CO파일', 'PI파일', '면허파일', '대조확인상태', '대조확인일시', '대조확인자', '선적항', '선명', '선택FTA', '적용FTA확정', '원산지증명서신청', '수취_수취인', '수취_회사', '출발지'];
+        if (ship && ship.fields) { const _o = {}; for (const k of AGENT_SHIP_WL) { if (ship.fields[k] !== undefined) _o[k] = ship.fields[k]; } ship.fields = _o; }
         return res.json({ shipment: ship, products, orders, customer });
       }
 

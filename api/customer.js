@@ -100,8 +100,11 @@ async function handleGet(req, res) {
     console.log('Customer fetch skipped:', e.message);
   }
 
-  // [v3.2.80] ★마스터BL파일·면허파일 = 내부 전용 — 고객 응답에서 제외(비노출).
-  if (ship && ship.fields) { delete ship.fields['마스터BL파일']; }
+  // [v3.2.81] ★응답 화이트리스트 — 고객 수취정보 확인/응답에 쓰는 필드만 반환. 전체 덤프 폐기(신규 필드 자동 비노출).
+  //   ★제외: 고객토큰(인증만 사용, 노출X)·청구금액/영세율/VAT/청구_*/해운비원가(마진 역산 차단)·발행주체/결제방식/외부거래ID/페이앱_*·BL/CO/PI/면허파일·통관단계·메모·마스터BL파일 등.
+  //   토큰 검증은 위에서 full fields로 이미 수행됨.
+  const CUST_SHIP_WL = ['사서함', '상태', '고객응답일시', '배송방식', '선택FTA', '원산지증명서신청', '특이사항', '수취_수취인', '수취_회사', '수취_전화', '수취_주소', '수취_우편번호', '수취_통관부호', '환율CNY_USD', '환율USD_KRW'];
+  if (ship && ship.fields) { const _o = {}; for (const k of CUST_SHIP_WL) { if (ship.fields[k] !== undefined) _o[k] = ship.fields[k]; } ship.fields = _o; }
 
   res.json({
     shipment: ship,
