@@ -62,8 +62,9 @@ function parseCargoProgress(xml) {
       shipNat: _xmlTag(b, 'shipNatNm'),         // 선적국
       etprDt: _xmlTag(b, 'etprDt'),             // 입항일
       csclPrgsStts: _xmlTag(b, 'csclPrgsStts'), // 통관진행상태
-      shedNm: _xmlTag(b, 'shedNm'),             // 장치장
+      shedNm: _xmlTag(b, 'shedNm'),             // 장치장(보세창고)
       관리대상검사여부: _xmlTag(b, 'mtTrgtCargYnNm'), // [검사] 예 '반입후검사'/'즉시검사' — 빈값/비검사면 미표시
+      frwrEntsConm: _xmlTag(b, 'frwrEntsConm'), // [v3.2.93] 한국 포워딩사(적하목록 제출 포워더업체상호)
     };
   }
   const dtlBlocks = xml.match(/<cargCsclPrgsInfoDtlQryVo>[\s\S]*?<\/cargCsclPrgsInfoDtlQryVo>/g) || [];

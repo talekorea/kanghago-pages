@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.92</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.93</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.92</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.93</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3512,13 +3512,17 @@ async function ensureSchema() {
         { name: '아태협정', color: 'tealLight2' },
         { name: 'RCEP협정', color: 'blueLight2' },   // [v3.2.90] 제품 RCEP 파생 매핑(라벨 100% 일치)
       ]}},
-      // [v3.2.92] 마스터 배차표 오른쪽 절반 — 배차 운영 데이터(부킹 요약 모달 입력). 마진·청구 연동은 Phase 2.
-      { name: '배대지', type: 'singleLineText' },                                   // UNIPASS '보세운송 반입' 보세창고 자동 프리필+수정
+      // [v3.2.93] 마스터 배차표 오른쪽 절반 — 배차 운영 데이터(부킹 요약 모달). 마진·청구 연동은 Phase 2.
+      { name: '보세창고', type: 'singleLineText' },                                  // UNIPASS shedNm 자동(빈값일 때만) + 수동 수정
+      { name: '입항일', type: 'date', options: { dateFormat: { name: 'iso' } } },     // UNIPASS etprDt 자동(항상 최신)
+      { name: '한국포워딩사', type: 'singleLineText' },                              // UNIPASS frwrEntsConm 자동(항상 최신)
       { name: '배차견적액', type: 'number', options: { precision: 0 } },             // 수동(자동견적 후속)
       { name: '실제배차비', type: 'number', options: { precision: 0 } },             // 운송사 실지급액
-      { name: '기사_송장', type: 'singleLineText' },                                 // 화물=기사연락처 / 택배=송장번호
+      { name: '차량번호', type: 'singleLineText' },                                  // 화물 배차
+      { name: '기사전화번호', type: 'singleLineText' },                              // 화물 배차
       { name: '배차완료일', type: 'date', options: { dateFormat: { name: 'iso' } } },
       { name: '배차상태', type: 'singleSelect', options: { choices: [ { name: '대기' }, { name: '완료' } ] } },
+      // 택배 송장은 Boxes.송장번호(박스별) — Boxes 스키마 참조.
       // v3.1.0 (2026-05-30): 페이앱 결제 1단계 — Shipments에 결제 URL/거래번호/상태 저장.
       //   1단계: 직원이 카톡/이메일 수동 발송, 결제완료 수동 확인.
       //   2단계: 웹훅 자동화 → 페이앱_결제상태 '결제완료' + Shipments.입금완료일시 자동.
@@ -8168,6 +8172,16 @@ async function loadCustomsProgress(opts) {
     if (d.ntce && d.tCnt <= 0) { resEl.innerHTML = `<div style="color:#a14a00; font-size:13px; padding:10px; background:#fff7e6; border-radius:8px;">ℹ️ ${d.ntce}</div>`; return; }
     if (!d.stagesCount) { resEl.innerHTML = `<div style="color:#a14a00; font-size:13px; padding:10px; background:#fff7e6; border-radius:8px;">처리단계가 아직 없습니다 (통관 진행 전이거나 BL/연도 확인).</div>`; return; }
     resEl.innerHTML = renderBranchpointBanner(d) + renderCustomsTimeline(d, blNo);
+    // [v3.2.93] 통관 조회 시 자동 필드 PATCH(같은 응답 재사용) — 한국포워딩사·입항일(항상)·보세창고(빈값일 때만). 새 함수·fetch 0.
+    try {
+      if (state.shipment && state.shipment.id) {
+        const sm = d.summary || {}; const f = state.shipment.fields || {}; const fields = {};
+        if (sm.frwrEntsConm && f['한국포워딩사'] !== sm.frwrEntsConm) fields['한국포워딩사'] = sm.frwrEntsConm;
+        if (sm.etprDt) { const e = String(sm.etprDt).replace(/\D/g, ''); if (e.length >= 8) { const dt = `${e.slice(0,4)}-${e.slice(4,6)}-${e.slice(6,8)}`; if (f['입항일'] !== dt) fields['입항일'] = dt; } }
+        if (sm.shedNm && !String(f['보세창고'] || '').trim()) fields['보세창고'] = sm.shedNm;   // ★빈값일 때만
+        if (Object.keys(fields).length) { await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields, typecast: true }); Object.assign(state.shipment.fields, fields); }
+      }
+    } catch (pe) { console.warn('[통관 자동필드 PATCH]', pe.message); }
   } catch (e) {
     resEl.innerHTML = `<div style="color:#c0392b; font-size:13px;">❌ ${e.message}</div>`;
   }
@@ -15530,7 +15544,7 @@ async function fetchBookingSummary(mode) {
     const shipChunks = chunkArray(shipIds, 50);
     // [v3.2.92] 배차 6필드도 함께 조회. 단 미생성 시 fields[]에 넣으면 422(UNKNOWN_FIELD)로 부킹 전체가 깨짐 →
     //   배차 필드 포함 쿼리 먼저 시도, 실패하면 기본 쿼리로 폴백(필드 추가 전까지 배차 입력만 빈칸, 부킹은 정상).
-    const _dispQ = ['배대지','배차견적액','실제배차비','기사_송장','배차완료일','배차상태'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');
+    const _dispQ = ['배송방식','포워딩사','보세창고','입항일','한국포워딩사','배차견적액','실제배차비','차량번호','기사전화번호','배차완료일','배차상태'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');
     const shipResults = await Promise.all(shipChunks.map(async chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
       const base = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}`
@@ -15554,7 +15568,7 @@ async function fetchBookingSummary(mode) {
       let boxes = [];
       try {
         const url = `/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}`
-                  + `&fields[]=박스순번&fields[]=무게KG&fields[]=부피CBM`;
+                  + `&fields[]=박스순번&fields[]=무게KG&fields[]=부피CBM&fields[]=배송방식&fields[]=송장번호`;   // [v3.2.93] 배송방식·송장번호(택배 일괄삽입)
         boxes = await apiPaged(url);
       } catch (e) {
         console.warn('[booking] Boxes 조회 실패:', mailbox, e.message);
@@ -15579,9 +15593,13 @@ async function fetchBookingSummary(mode) {
         blHasFile: Array.isArray(sf['BL파일']) && sf['BL파일'].length > 0,
         blNo: String(sf['BL번호'] || '').trim(),
         coHasFile: Array.isArray(sf['CO파일']) && sf['CO파일'].length > 0,
-        // [v3.2.92] 배차 운영 값(미생성 시 undefined → 빈칸)
-        배대지: sf['배대지'] || '', 배차견적액: sf['배차견적액'] ?? '', 실제배차비: sf['실제배차비'] ?? '',
-        기사송장: sf['기사_송장'] || '', 배차완료일: sf['배차완료일'] || '', 배차상태: sf['배차상태'] || '대기',
+        // [v3.2.93] 배차 운영 값 — 배송방식 분기 + 자동표시 + 화물/택배 입력
+        shipMethod: (function(){ const m = String(sf['배송방식']||'').trim(); if (m) return m; const set = new Set(boxes.map(b=>String((b.fields||{})['배송방식']||''))); return set.has('택배')||set.has('parcel') ? '택배' : (set.has('화물')||set.has('cargo') ? '화물' : ''); })(),
+        포워딩사: sf['포워딩사'] || '', 보세창고: sf['보세창고'] || '', 입항일: sf['입항일'] || '', 한국포워딩사: sf['한국포워딩사'] || '',
+        배차견적액: sf['배차견적액'] ?? '', 실제배차비: sf['실제배차비'] ?? '',
+        차량번호: sf['차량번호'] || '', 기사전화번호: sf['기사전화번호'] || '', 배차완료일: sf['배차완료일'] || '', 배차상태: sf['배차상태'] || '대기',
+        boxIds: boxes.map(b => b.id),
+        송장번호: (boxes.map(b => String((b.fields||{})['송장번호']||'').trim()).filter(Boolean)[0]) || '',   // 대표(첫 박스) 송장 표시
       };
     }));
 
@@ -15715,36 +15733,50 @@ function renderBookingTable(rows, dateLabel) {
     <div id="batchDocResult" style="margin-top:10px;"></div>
   </div>`;
 
-  // [v3.2.92] 배차 운영 입력 (마스터 배차표 오른쪽 절반) — 사서함별 배대지·견적·실제비·기사/송장·완료일·상태. 입력 즉시 자동저장(debounce). 마진·청구는 Phase 2.
+  // [v3.2.93] 배차 운영 입력 — 배송방식 분기(화물=차량번호·기사전화 / 택배=Boxes.송장번호 일괄삽입). 입력 즉시 자동저장(debounce).
+  //   자동표시(읽기): 보세창고(📍 UNIPASS)·입항일·한국포워딩사·중국포워딩(포워딩사)·배차견적액. 배차상태 자동(입력↔완료).
   html += `<div style="margin-top:10px; padding:12px; background:#f3f0ea; border:1px solid #d9cdb4; border-radius:6px;">
-    <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">🚚 배차 운영 입력 <span style="font-weight:400; color:#888;">(배대지·견적·실제비·기사/송장·완료일·상태 — 입력 즉시 자동 저장. 마진·청구는 후속)</span></div>
+    <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">🚚 배차 운영 입력 <span style="font-weight:400; color:#888;">(화물=차량번호·기사전화 / 택배=송장 일괄삽입. 자동표시: 보세창고·입항일·포워딩. 입력 즉시 저장)</span></div>
     <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px; white-space:nowrap;">
     <thead><tr style="background:#5a4a2a; color:#fff;">
-      <th style="padding:5px 7px; text-align:left;">사서함</th><th style="padding:5px 7px;">배대지(UNIPASS)</th><th style="padding:5px 7px;">견적액</th><th style="padding:5px 7px;">실제배차비</th><th style="padding:5px 7px;">기사/송장</th><th style="padding:5px 7px;">완료일</th><th style="padding:5px 7px;">상태</th><th style="padding:5px 7px;"></th>
+      <th style="padding:5px 7px; text-align:left;">사서함</th><th style="padding:5px 7px; text-align:left;">보세창고(📍UNIPASS)</th><th style="padding:5px 7px;">입항일</th><th style="padding:5px 7px;">한국FW</th><th style="padding:5px 7px;">중국FW</th><th style="padding:5px 7px;">견적액</th><th style="padding:5px 7px;">실제배차비</th><th style="padding:5px 7px; text-align:left;">배차(화물/택배)</th><th style="padding:5px 7px;">상태</th><th style="padding:5px 7px;"></th>
     </tr></thead><tbody>`;
   rows.forEach((r, i) => {
-    const sid = r.id, dst = 'dispSt_' + i, bid = 'baedaeji_' + i;
-    const numInp = (field, val, ph) => `<input value="${escAttr(val == null ? '' : val)}" placeholder="${ph}" inputmode="numeric" oninput="saveDispatch('${sid}','${field}',this.value,'${dst}')" style="width:82px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px; text-align:right;">`;
+    const sid = r.id, dst = 'dispSt_' + i, bid = 'bonded_' + i;
+    const ro = (v) => `<span style="color:#555;">${escAttr(v || '—')}</span>`;
+    const method = r.shipMethod || '';
+    const numInp = (field, val) => `<input value="${escAttr(val == null ? '' : val)}" placeholder="₩" inputmode="numeric" oninput="saveDispatch('${sid}','${field}',this.value,'${dst}')" style="width:78px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px; text-align:right;">`;
+    // 배차 입력 칸 — 배송방식 분기
+    let dispatchCell;
+    if (method === '택배') {
+      dispatchCell = `<input id="trk_${i}" value="${escAttr(r.송장번호 || '')}" placeholder="송장번호(전 박스 동일)" style="width:150px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><button type="button" title="이 사서함 전 박스(${r.boxCount})에 송장 일괄 삽입" onclick="bulkInsertTracking('${sid}', document.getElementById('trk_${i}').value, '${dst}')" style="margin-left:3px; padding:3px 7px; border:1px solid #0a7b40; background:#eafaf0; border-radius:4px; cursor:pointer; font-size:11px;">📦 일괄삽입</button> <span style="font-size:10px; color:#999;">택배 ${r.boxCount}박스</span>`;
+    } else if (method === '화물') {
+      dispatchCell = `<input value="${escAttr(r.차량번호 || '')}" placeholder="차량번호" oninput="saveDispatch('${sid}','차량번호',this.value,'${dst}')" style="width:100px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"> <input value="${escAttr(r.기사전화번호 || '')}" placeholder="기사전화" oninput="saveDispatch('${sid}','기사전화번호',this.value,'${dst}')" style="width:110px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;">`;
+    } else {
+      dispatchCell = `<span style="color:#b26a00; font-size:11px;">배송방식 미정 — §4에서 택배/화물 선택</span>`;
+    }
     html += `<tr style="border-bottom:1px solid #e6ddc8;">
-      <td style="padding:4px 7px; font-family:ui-monospace,monospace; font-weight:600;">${r.mailbox}</td>
-      <td style="padding:4px 7px;"><input id="${bid}" value="${escAttr(r.배대지 || '')}" placeholder="보세창고" oninput="saveDispatch('${sid}','배대지',this.value,'${dst}')" style="width:150px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><button type="button" title="UNIPASS '보세운송 반입' 보세창고 조회·프리필" onclick="fetchBaedaeji('${sid}','${escAttr(r.blNo || '')}','${escAttr(r.shipDate || '')}','${bid}','${dst}')" style="margin-left:3px; padding:3px 6px; border:1px solid #1B5E9A; background:#eef5ff; border-radius:4px; cursor:pointer; font-size:11px;">📍</button></td>
-      <td style="padding:4px 7px;">${numInp('배차견적액', r.배차견적액, '₩')}</td>
-      <td style="padding:4px 7px;">${numInp('실제배차비', r.실제배차비, '₩')}</td>
-      <td style="padding:4px 7px;"><input value="${escAttr(r.기사송장 || '')}" placeholder="기사연락처/송장" oninput="saveDispatch('${sid}','기사_송장',this.value,'${dst}')" style="width:130px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"></td>
-      <td style="padding:4px 7px;"><input type="date" value="${escAttr(r.배차완료일 || '')}" oninput="saveDispatch('${sid}','배차완료일',this.value,'${dst}')" style="padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"></td>
-      <td style="padding:4px 7px;"><select onchange="saveDispatch('${sid}','배차상태',this.value,'${dst}')" style="padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><option value="대기"${r.배차상태 !== '완료' ? ' selected' : ''}>대기</option><option value="완료"${r.배차상태 === '완료' ? ' selected' : ''}>완료</option></select></td>
+      <td style="padding:4px 7px; font-family:ui-monospace,monospace; font-weight:600;">${r.mailbox}<div style="font-size:10px; color:#888; font-weight:400;">${method || '미정'}</div></td>
+      <td style="padding:4px 7px;"><input id="${bid}" value="${escAttr(r.보세창고 || '')}" placeholder="보세창고" oninput="saveDispatch('${sid}','보세창고',this.value,'${dst}')" style="width:140px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><button type="button" title="UNIPASS 조회 → 보세창고·입항일·한국포워딩사 자동(보세창고는 빈값일 때만)" onclick="fetchCustomsAutoFields('${sid}','${escAttr(r.blNo || '')}','${escAttr(r.shipDate || '')}','${bid}','${dst}')" style="margin-left:3px; padding:3px 6px; border:1px solid #1B5E9A; background:#eef5ff; border-radius:4px; cursor:pointer; font-size:11px;">📍</button></td>
+      <td style="padding:4px 7px; text-align:center;">${ro(r.입항일)}</td>
+      <td style="padding:4px 7px;">${ro(r.한국포워딩사)}</td>
+      <td style="padding:4px 7px; text-align:center;">${ro(r.포워딩사)}</td>
+      <td style="padding:4px 7px; text-align:right;">${ro(r.배차견적액 === '' || r.배차견적액 == null ? '' : '₩' + Number(r.배차견적액).toLocaleString())}</td>
+      <td style="padding:4px 7px;">${numInp('실제배차비', r.실제배차비)}</td>
+      <td style="padding:4px 7px;">${dispatchCell}</td>
+      <td style="padding:4px 7px; text-align:center;"><select onchange="saveDispatch('${sid}','배차상태',this.value,'${dst}')" style="padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><option value="대기"${r.배차상태 !== '완료' ? ' selected' : ''}>대기</option><option value="완료"${r.배차상태 === '완료' ? ' selected' : ''}>완료</option></select></td>
       <td style="padding:4px 7px;"><span id="${dst}" style="font-size:11px; color:#888;"></span></td>
     </tr>`;
   });
   html += `</tbody></table></div>
-    <div style="font-size:11px; color:#999; margin-top:6px;">※ 배차 필드(배대지·배차견적액·실제배차비·기사_송장·배차완료일·배차상태) 미생성 시 저장 안 됨(경고 표시) — Airtable Shipments에 수동 추가 필요.</div>
+    <div style="font-size:11px; color:#999; margin-top:6px;">※ 자동표시(보세창고·입항일·한국FW)는 📍 UNIPASS 조회 시 갱신. 차량번호/송장 입력 시 배차상태=완료·완료일=오늘 자동(수동 변경 가능).</div>
   </div>`;
 
   document.getElementById('bookingResultBox').innerHTML = html;
 }
 
-// [v3.2.92] 배차 운영 저장 — Shipments PATCH(debounce 800ms). 기존 api() 직접 사용(새 함수 0).
-//   숫자필드는 빈값→null, 그 외 문자열. 필드 미생성 시 UNKNOWN_FIELD → 경고(부킹·다른 입력 안 깨짐).
+// [v3.2.93] 배차 운영 저장 — Shipments PATCH(debounce 800ms). 기존 api() 직접(새 함수 0).
+//   숫자(배차견적액·실제배차비)는 빈값→null. 차량번호 입력 시 배차상태=완료+완료일=오늘 자동(빈값↔대기).
 const _dispatchSaveTimers = {};
 function saveDispatch(shipId, field, value, statusElId) {
   if (!shipId) return;
@@ -15757,40 +15789,80 @@ function saveDispatch(shipId, field, value, statusElId) {
       let v = value;
       if (field === '배차견적액' || field === '실제배차비') v = (value === '' || value == null) ? null : (parseFloat(String(value).replace(/[^0-9.\-]/g, '')) || 0);
       else if (typeof v === 'string') v = v.trim();
-      await api('PATCH', `/${TABLES.Shipments}/${shipId}`, { fields: { [field]: v }, typecast: true });
-      // bookingState 동기(재렌더 없이 값 보존)
+      const fields = { [field]: v };
       const row = (bookingState.rows || []).find(x => x.id === shipId);
-      if (row) { const m = { '기사_송장': '기사송장' }; row[m[field] || field] = v; }
+      // 배차상태 자동 — 차량번호 채워지면 완료+완료일=오늘 / 비우면 대기(단 사용자가 직접 상태 바꾼 건 제외)
+      if (field === '차량번호' && row) {
+        if (v && row.배차상태 !== '완료') { fields['배차상태'] = '완료'; if (!row.배차완료일) fields['배차완료일'] = todayKSTStr(); }
+        else if (!v && row.배차상태 === '완료' && !String(row.송장번호 || '').trim()) { fields['배차상태'] = '대기'; }
+      }
+      await api('PATCH', `/${TABLES.Shipments}/${shipId}`, { fields, typecast: true });
+      if (row) { row[field] = v; if (fields['배차상태']) row.배차상태 = fields['배차상태']; if (fields['배차완료일']) row.배차완료일 = fields['배차완료일']; }
       if (st) { st.textContent = '✓ 저장'; st.style.color = '#0a7b40'; }
     } catch (e) {
       if (st) { st.textContent = '❌'; st.style.color = '#c0392b'; }
       console.warn('[배차 저장]', field, e.message);
-      if (typeof toastWarn === 'function' && /UNKNOWN_FIELD|Unknown field/i.test(e.message || '')) toastWarn(`배차 필드 "${field}" 미생성 — Airtable Shipments에 추가 필요(저장 안 됨)`, { title: '⚠ 배차 필드' });
+      if (typeof toastWarn === 'function' && /UNKNOWN_FIELD|Unknown field/i.test(e.message || '')) toastWarn(`배차 필드 "${field}" 미생성 — Airtable에 추가 필요(저장 안 됨)`, { title: '⚠ 배차 필드' });
     }
   }, 800);
 }
-// [v3.2.92] 배대지 자동 프리필 — UNIPASS '보세운송 반입' 보세창고(op=customs_progress, 새 함수 0). 수정 가능.
-async function fetchBaedaeji(shipId, blNo, shipDate, inputId, statusElId) {
+// [v3.2.93] 택배 송장 일괄삽입 — 그 사서함 전 Boxes.송장번호에 동일값 PATCH(박스별 개별 수정은 §5에서). 배차상태=완료 자동.
+async function bulkInsertTracking(shipId, value, statusElId) {
+  const st = statusElId ? document.getElementById(statusElId) : null;
+  const v = String(value || '').trim();
+  const row = (bookingState.rows || []).find(x => x.id === shipId);
+  if (!row || !row.boxIds || !row.boxIds.length) { toastWarn && toastWarn('박스가 없습니다 — 박스 입력 후 송장 삽입'); return; }
+  if (!v) { toastWarn && toastWarn('송장번호를 입력하세요'); return; }
+  if (st) { st.textContent = `⏳ ${row.boxIds.length}박스…`; st.style.color = '#888'; }
+  try {
+    // Boxes 일괄 PATCH(10개씩) — 기존 api(), 새 함수 0
+    for (let i = 0; i < row.boxIds.length; i += 10) {
+      const recs = row.boxIds.slice(i, i + 10).map(id => ({ id, fields: { '송장번호': v } }));
+      await api('PATCH', `/${TABLES.Boxes}`, { records: recs, typecast: true });
+    }
+    row.송장번호 = v;
+    // 송장 채워지면 배차상태=완료+완료일 자동(Shipments)
+    if (row.배차상태 !== '완료') { try { await api('PATCH', `/${TABLES.Shipments}/${shipId}`, { fields: { '배차상태': '완료', '배차완료일': row.배차완료일 || todayKSTStr() }, typecast: true }); row.배차상태 = '완료'; } catch (e2) {} }
+    if (st) { st.textContent = `✓ ${row.boxIds.length}박스 삽입`; st.style.color = '#0a7b40'; }
+    toastSuccess && toastSuccess(`송장 ${v} → ${row.boxIds.length}박스 일괄 저장`, { title: '📦 택배' });
+  } catch (e) {
+    if (st) { st.textContent = '❌ 실패'; st.style.color = '#c0392b'; }
+    console.warn('[송장 일괄삽입]', e.message);
+    if (typeof toastWarn === 'function' && /UNKNOWN_FIELD|Unknown field/i.test(e.message || '')) toastWarn('Boxes.송장번호 필드 미생성 — Airtable에 추가 필요', { title: '⚠ 송장 필드' });
+  }
+}
+// [v3.2.93] UNIPASS 자동 필드 — op=customs_progress(새 fetch·함수 0) 재파싱 → 보세창고(빈값일 때만)·입항일·한국포워딩사 자동 PATCH.
+async function fetchCustomsAutoFields(shipId, blNo, shipDate, inputId, statusElId) {
   const inp = inputId ? document.getElementById(inputId) : null;
   const st = statusElId ? document.getElementById(statusElId) : null;
   blNo = String(blNo || '').trim();
-  if (!blNo) { toastWarn && toastWarn('BL번호 없음 — BL 등록 후 조회', { title: '📍 배대지' }); return; }
+  if (!blNo) { toastWarn && toastWarn('BL번호 없음 — BL 등록 후 조회', { title: '📍 UNIPASS' }); return; }
   const auth = (typeof customsAuthHeader === 'function') ? customsAuthHeader() : null;
-  if (!auth) { toastWarn && toastWarn('관세사/관리자 토큰 필요 (👥 관세사 관리)', { title: '📍 배대지' }); return; }
+  if (!auth) { toastWarn && toastWarn('관세사/관리자 토큰 필요 (👥 관세사 관리)', { title: '📍 UNIPASS' }); return; }
   const yr = String(shipDate || '').slice(0, 4) || String(new Date().getFullYear());
   if (st) { st.textContent = '조회중…'; st.style.color = '#888'; }
   try {
     const r = await fetch(`${AGENT_API_BASE}?op=customs_progress&blNo=${encodeURIComponent(blNo)}&blYear=${yr}`, { headers: { Authorization: auth } });
     const d = await r.json().catch(() => ({}));
+    const sm = d.summary || {};
     const stages = d.stages || [];
-    // 배대지(기사 픽업 보세창고) 추출 체인 — 보세운송 반입 → 반입신고 → 반입 포함 → 최근 장치장 → summary.shedNm.
-    //   (BL마다 단계 명칭 상이: WY3567E604는 '반입신고 @ 선광신컨테이너터미널보세창고'가 실제 배대지.)
+    // 보세창고: 보세운송 반입 → 반입신고 → 반입 → 최근 장치장 → summary.shedNm (BL마다 단계명 상이)
     const _pick = (re) => stages.find(s => re.test((s.진행상태 || '') + ' ' + (s.반출입내용 || '')));
     const bonded = _pick(/보세운송\s*반입/) || _pick(/반입신고/) || _pick(/반입/) || [...stages].reverse().find(s => (s.장치장 || '').trim());
-    const name = (bonded && bonded.장치장) || (d.summary && d.summary.shedNm) || '';
-    if (name) { if (inp) inp.value = name; saveDispatch(shipId, '배대지', name, statusElId); }
-    else if (st) { st.textContent = '보세운송 반입 미발견(통관 진행 전?)'; st.style.color = '#a14a00'; }
-  } catch (e) { if (st) { st.textContent = '조회 실패'; st.style.color = '#c0392b'; } console.warn('[배대지 조회]', e.message); }
+    const shed = (bonded && bonded.장치장) || sm.shedNm || '';
+    const row = (bookingState.rows || []).find(x => x.id === shipId);
+    const fields = {};
+    if (sm.frwrEntsConm) fields['한국포워딩사'] = sm.frwrEntsConm;                 // 항상 최신
+    if (sm.etprDt) { const e = String(sm.etprDt).replace(/\D/g, ''); if (e.length >= 8) fields['입항일'] = `${e.slice(0,4)}-${e.slice(4,6)}-${e.slice(6,8)}`; }   // 항상 최신
+    const curBonded = (row && String(row.보세창고 || '').trim()) || (inp && String(inp.value || '').trim());
+    if (shed && !curBonded) fields['보세창고'] = shed;                            // ★빈값일 때만(수동 보존)
+    if (!Object.keys(fields).length) { if (st) { st.textContent = '갱신값 없음(통관 진행 전?)'; st.style.color = '#a14a00'; } return; }
+    await api('PATCH', `/${TABLES.Shipments}/${shipId}`, { fields, typecast: true });
+    if (row) Object.assign(row, fields);
+    if (inp && fields['보세창고']) inp.value = fields['보세창고'];
+    if (st) { st.textContent = '✓ ' + Object.keys(fields).join('·') + ' 갱신'; st.style.color = '#0a7b40'; }
+    // 자동표시 칸(입항일·한국FW) 갱신 위해 부킹 테이블 재렌더(입력 포커스 없을 때만 안전 — 상태표시로 대체)
+  } catch (e) { if (st) { st.textContent = '조회 실패'; st.style.color = '#c0392b'; } console.warn('[UNIPASS 자동필드]', e.message); }
 }
 
 // [v3.2.69] 마킹 = {고객사서함}-{박스순번 범위} (연속이면 1~N, 끊기면 콤마). 예 AP2783-1~4 / AP2783-1~2,4
