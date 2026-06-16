@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.89</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.90</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.89</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.90</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -4068,6 +4068,8 @@ async function loadShipment() {
       return orderLinks.some(id => orderIds.has(id));
     });
     log(`✓ ${state.products.length}개 상품`, 'ok');
+    // [v3.2.90 B] 관세사확정 제품 적용FTA 빈값 자동 채움(미선택 차단) — 렌더·청구서 파생 전에 1회.
+    if (typeof autoFillConfirmedProductFta === 'function') autoFillConfirmedProductFta();
 
     // v3.2.14 P0 진단: 관세사 확정값 도착 여부 — 첫 5개 제품의 세율 4종 + 적용FTA + 관세사확정 콘솔 덤프
     const tariffDump = state.products.slice(0, 5).map(p => {
@@ -7007,6 +7009,36 @@ function autoSelectBestFta() {
     duration: wtoRiskCount ? 8000 : 5000,
   });
   console.log('[autoSelectBestFta] 변경 내역:\n' + reasons.join('\n') + (wtoRiskCount ? `\n⚠ WTO 최저 ${wtoRiskCount}건 — 세번 변경 시 소급 관세 위험. CO 가능한 FTA 전환 검토 권장.` : '') + (skippedConfirmed ? `\n🔒 관세사확정 ${skippedConfirmed}건 — 소급 변경 금지로 제외.` : ''));
+}
+
+// [v3.2.90 B] 안전망 — 관세사확정=true인데 적용FTA 빈값/'없음'인 제품 → pickBestTariff로 자동 채움(미선택 잔존 차단).
+//   ★이미 값 있으면 불변(override 보존). 자동은 관세사확정 Products 세율 기준 위에서만. FTA우선·WTO소급 규칙(pickBestTariff) 그대로.
+//   best.fta가 '없음'(기본세율 최저)이면 그대로 — '일반'으로 귀결(미선택 아님). 사서함 로드 시 1회 호출(렌더 전).
+function autoFillConfirmedProductFta() {
+  if (!state.products || typeof pickBestTariff !== 'function') return 0;
+  const num = v => (v == null || v === '') ? null : (isNaN(parseFloat(v)) ? null : parseFloat(v));
+  let filled = 0;
+  state.products.forEach(p => {
+    const f = p.fields || {};
+    if (f['관세사확정'] !== true) return;            // 관세사확정 건만(확정 세율 기준)
+    const cur = String(f['적용FTA'] || '').trim();
+    if (cur && cur !== '없음') return;               // 이미 값 있음 → override 보존
+    const tariff = (typeof lookupTariff === 'function') ? lookupTariff(f['HS코드']) : null;
+    const best = pickBestTariff({
+      A:  (tariff && tariff.A  != null) ? tariff.A  : num(f['기본세율']),
+      C:  (tariff && tariff.C  != null) ? tariff.C  : num(f['WTO세율']),
+      CN: (tariff && tariff.CN != null) ? tariff.CN : num(f['FTA_한중']),
+      RC: (tariff && tariff.RC != null) ? tariff.RC : num(f['FTA_RCEP중국']),
+      E1: (tariff && tariff.E1 != null) ? tariff.E1 : num(f['아태세율']),
+    });
+    if (best && best.fta !== cur) {
+      f['적용FTA'] = best.fta;
+      if (state.modifiedProducts) state.modifiedProducts.add(p.id);
+      filled++;
+    }
+  });
+  if (filled && typeof log === 'function') log(`§FTA 안전망: 관세사확정 제품 ${filled}건 적용FTA 자동 채움 — 미선택 차단(저장 시 반영)`, 'info');
+  return filled;
 }
 
 // ========== v2.9.7: 박스 라벨 출력 ==========
@@ -12954,23 +12986,19 @@ function buildInvoiceData() {
     email: cf['이메일'] || '-',
   };
 
-  // 작업6·7: 적용 FTA 확정 — 고객이 §2에서 선택한 값 → 청구서/인보이스 표시 + 5원칙 저장
-  // Shipments.선택FTA: 일반 / 한중FTA / 아태FTA / 미선택
-  // applied_fta (5원칙): 일반 / 한중FTA / 아태협정
-  const FTA_DISPLAY = {
-    '한중FTA': '한중 FTA',
-    '아태FTA': '아태협정',
-    '일반': '일반 세율',
-    '미선택': '미선택',
-  };
-  const FTA_APPLIED = {
-    '한중FTA': '한중FTA',
-    '아태FTA': '아태협정',
-    '일반': '일반',
-  };
-  const selectedFta = f['선택FTA'] || '미선택';
-  const appliedFtaDisplay = FTA_DISPLAY[selectedFta] || selectedFta;
-  const appliedFtaCode = FTA_APPLIED[selectedFta] || '일반';
+  // [v3.2.90] 사서함 FTA = Products.적용FTA(관세사확정 기준) 대표값에서 파생. 고객 선택FTA는 폴백.
+  //   ★단일 진실원 = 제품 적용FTA. "미선택" 상태 제거 — 자격 없으면 '일반'(기본세율).
+  //   대표값: 수량>0 제품 적용FTA 집합에서 한중>RCEP>아태 우선(없음/WTO 제외). 전부 없음 → 선택FTA 폴백 → '일반'.
+  //   appliedFtaCode = 적용FTA확정 저장값 = Airtable 옵션 라벨과 100% 일치(한중FTA/RCEP협정/아태협정/일반).
+  const FTA_DISPLAY = { '한중FTA': '한중 FTA', 'RCEP협정': 'RCEP 협정', '아태협정': '아태협정', '일반': '일반 세율' };
+  const _ftaProds = (state.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0);
+  const _ftaSet = new Set(_ftaProds.map(p => String((p.fields || {})['적용FTA'] || '').trim()));
+  const appliedFtaCode = _ftaSet.has('한중') ? '한중FTA'
+    : _ftaSet.has('RCEP') ? 'RCEP협정'
+    : _ftaSet.has('아태') ? '아태협정'
+    : (f['선택FTA'] === '한중FTA' ? '한중FTA' : f['선택FTA'] === '아태FTA' ? '아태협정' : '일반');   // 제품에 FTA 없음 → 고객 선택 폴백 → '일반'
+  const appliedFtaDisplay = FTA_DISPLAY[appliedFtaCode] || appliedFtaCode;
+  const selectedFta = f['선택FTA'] || '미선택';   // 고객 응답값(정보용 — 표시·파생은 제품 기준)
 
   // v3.2.82: 관부가세 비교(예상) — 도구 시나리오 계산(calcTariffForScenario) 단일 소스 재사용.
   //   기본세율(base) vs 선택 FTA(current = 제품 적용FTA). ★재계산·별도공식 금지 — totalDutyKrw/VatKrw/Krw 그대로.
@@ -13307,7 +13335,7 @@ async function downloadInvoicePdf() {
         '발행주체': data.issuingEntity,
         '결제방식': data.paymentMethod,
         '청구서발행일시': data.date,
-        '적용FTA확정': data.appliedFtaCode,
+        // [v3.2.90 D] 적용FTA확정은 아래 별도 PATCH(격리) — RCEP협정 옵션 미추가 시 422가 청구 저장 전체를 막지 않게.
         // v3.2.18 P0: invoice-view 물류비 청구서 렌더용 항목별 저장
         '청구_BL_금액':      bd.bl      || 0,
         '청구_해상운임_금액': bd.sea     || 0,
@@ -13321,6 +13349,14 @@ async function downloadInvoicePdf() {
         '청구_FTA_절세_KRW': data.ftaSavingKrw || 0,
       };
       await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields, typecast: true });
+      // [v3.2.90 D] 적용FTA확정 격리 저장 — 옵션(특히 'RCEP협정') 미추가면 422지만 청구 저장은 이미 완료. 코드=옵션 라벨 100% 일치.
+      try {
+        await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: { '적용FTA확정': data.appliedFtaCode }, typecast: true });
+        if (state.shipment.fields) state.shipment.fields['적용FTA확정'] = data.appliedFtaCode;
+      } catch (ftaErr) {
+        console.warn('[v3.2.90 D] 적용FTA확정 저장 경고(옵션 미추가 가능):', ftaErr.message);
+        if (typeof toastWarn === 'function') toastWarn(`적용FTA확정 "${data.appliedFtaCode}" 저장 실패 — Airtable 적용FTA확정에 "${data.appliedFtaCode}" 옵션 추가 필요 (청구서는 정상 발행됨)`, { title: '⚠ FTA 옵션' });
+      }
       if (typeof toastSuccess === 'function') toastSuccess('청구서 발행 완료 — ' + fname + ' (FTA: ' + data.appliedFtaDisplay + ')', { title: '📄 발행' });
     } catch (e) {
       console.warn('[F3] Shipments 5원칙 저장 경고:', e.message);
