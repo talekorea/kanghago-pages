@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.91</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.92</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.91</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.92</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3510,7 +3510,15 @@ async function ensureSchema() {
         { name: '일반', color: 'grayLight2' },
         { name: '한중FTA', color: 'greenLight2' },
         { name: '아태협정', color: 'tealLight2' },
+        { name: 'RCEP협정', color: 'blueLight2' },   // [v3.2.90] 제품 RCEP 파생 매핑(라벨 100% 일치)
       ]}},
+      // [v3.2.92] 마스터 배차표 오른쪽 절반 — 배차 운영 데이터(부킹 요약 모달 입력). 마진·청구 연동은 Phase 2.
+      { name: '배대지', type: 'singleLineText' },                                   // UNIPASS '보세운송 반입' 보세창고 자동 프리필+수정
+      { name: '배차견적액', type: 'number', options: { precision: 0 } },             // 수동(자동견적 후속)
+      { name: '실제배차비', type: 'number', options: { precision: 0 } },             // 운송사 실지급액
+      { name: '기사_송장', type: 'singleLineText' },                                 // 화물=기사연락처 / 택배=송장번호
+      { name: '배차완료일', type: 'date', options: { dateFormat: { name: 'iso' } } },
+      { name: '배차상태', type: 'singleSelect', options: { choices: [ { name: '대기' }, { name: '완료' } ] } },
       // v3.1.0 (2026-05-30): 페이앱 결제 1단계 — Shipments에 결제 URL/거래번호/상태 저장.
       //   1단계: 직원이 카톡/이메일 수동 발송, 결제완료 수동 확인.
       //   2단계: 웹훅 자동화 → 페이앱_결제상태 '결제완료' + Shipments.입금완료일시 자동.
@@ -15520,12 +15528,16 @@ async function fetchBookingSummary(mode) {
 
     // (3) Shipments 조회 (RECORD_ID()로 묶음, 50개씩 chunk)
     const shipChunks = chunkArray(shipIds, 50);
-    const shipResults = await Promise.all(shipChunks.map(chunk => {
+    // [v3.2.92] 배차 6필드도 함께 조회. 단 미생성 시 fields[]에 넣으면 422(UNKNOWN_FIELD)로 부킹 전체가 깨짐 →
+    //   배차 필드 포함 쿼리 먼저 시도, 실패하면 기본 쿼리로 폴백(필드 추가 전까지 배차 입력만 빈칸, 부킹은 정상).
+    const _dispQ = ['배대지','배차견적액','실제배차비','기사_송장','배차완료일','배차상태'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');
+    const shipResults = await Promise.all(shipChunks.map(async chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
-      const u = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}`
+      const base = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}`
               + `&fields[]=사서함&fields[]=상태&fields[]=출고요청일`
               + `&fields[]=BL파일&fields[]=BL번호&fields[]=CO파일`;   // [v3.2.87] 문서 누락 감지(읽기만)
-      return apiPaged(u);
+      try { return await apiPaged(base + _dispQ); }
+      catch (e) { return await apiPaged(base); }   // 배차 필드 미생성 → 폴백
     }));
     const ships = shipResults.flat();
 
@@ -15567,6 +15579,9 @@ async function fetchBookingSummary(mode) {
         blHasFile: Array.isArray(sf['BL파일']) && sf['BL파일'].length > 0,
         blNo: String(sf['BL번호'] || '').trim(),
         coHasFile: Array.isArray(sf['CO파일']) && sf['CO파일'].length > 0,
+        // [v3.2.92] 배차 운영 값(미생성 시 undefined → 빈칸)
+        배대지: sf['배대지'] || '', 배차견적액: sf['배차견적액'] ?? '', 실제배차비: sf['실제배차비'] ?? '',
+        기사송장: sf['기사_송장'] || '', 배차완료일: sf['배차완료일'] || '', 배차상태: sf['배차상태'] || '대기',
       };
     }));
 
@@ -15700,7 +15715,82 @@ function renderBookingTable(rows, dateLabel) {
     <div id="batchDocResult" style="margin-top:10px;"></div>
   </div>`;
 
+  // [v3.2.92] 배차 운영 입력 (마스터 배차표 오른쪽 절반) — 사서함별 배대지·견적·실제비·기사/송장·완료일·상태. 입력 즉시 자동저장(debounce). 마진·청구는 Phase 2.
+  html += `<div style="margin-top:10px; padding:12px; background:#f3f0ea; border:1px solid #d9cdb4; border-radius:6px;">
+    <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">🚚 배차 운영 입력 <span style="font-weight:400; color:#888;">(배대지·견적·실제비·기사/송장·완료일·상태 — 입력 즉시 자동 저장. 마진·청구는 후속)</span></div>
+    <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px; white-space:nowrap;">
+    <thead><tr style="background:#5a4a2a; color:#fff;">
+      <th style="padding:5px 7px; text-align:left;">사서함</th><th style="padding:5px 7px;">배대지(UNIPASS)</th><th style="padding:5px 7px;">견적액</th><th style="padding:5px 7px;">실제배차비</th><th style="padding:5px 7px;">기사/송장</th><th style="padding:5px 7px;">완료일</th><th style="padding:5px 7px;">상태</th><th style="padding:5px 7px;"></th>
+    </tr></thead><tbody>`;
+  rows.forEach((r, i) => {
+    const sid = r.id, dst = 'dispSt_' + i, bid = 'baedaeji_' + i;
+    const numInp = (field, val, ph) => `<input value="${escAttr(val == null ? '' : val)}" placeholder="${ph}" inputmode="numeric" oninput="saveDispatch('${sid}','${field}',this.value,'${dst}')" style="width:82px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px; text-align:right;">`;
+    html += `<tr style="border-bottom:1px solid #e6ddc8;">
+      <td style="padding:4px 7px; font-family:ui-monospace,monospace; font-weight:600;">${r.mailbox}</td>
+      <td style="padding:4px 7px;"><input id="${bid}" value="${escAttr(r.배대지 || '')}" placeholder="보세창고" oninput="saveDispatch('${sid}','배대지',this.value,'${dst}')" style="width:150px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><button type="button" title="UNIPASS '보세운송 반입' 보세창고 조회·프리필" onclick="fetchBaedaeji('${sid}','${escAttr(r.blNo || '')}','${escAttr(r.shipDate || '')}','${bid}','${dst}')" style="margin-left:3px; padding:3px 6px; border:1px solid #1B5E9A; background:#eef5ff; border-radius:4px; cursor:pointer; font-size:11px;">📍</button></td>
+      <td style="padding:4px 7px;">${numInp('배차견적액', r.배차견적액, '₩')}</td>
+      <td style="padding:4px 7px;">${numInp('실제배차비', r.실제배차비, '₩')}</td>
+      <td style="padding:4px 7px;"><input value="${escAttr(r.기사송장 || '')}" placeholder="기사연락처/송장" oninput="saveDispatch('${sid}','기사_송장',this.value,'${dst}')" style="width:130px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"></td>
+      <td style="padding:4px 7px;"><input type="date" value="${escAttr(r.배차완료일 || '')}" oninput="saveDispatch('${sid}','배차완료일',this.value,'${dst}')" style="padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"></td>
+      <td style="padding:4px 7px;"><select onchange="saveDispatch('${sid}','배차상태',this.value,'${dst}')" style="padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><option value="대기"${r.배차상태 !== '완료' ? ' selected' : ''}>대기</option><option value="완료"${r.배차상태 === '완료' ? ' selected' : ''}>완료</option></select></td>
+      <td style="padding:4px 7px;"><span id="${dst}" style="font-size:11px; color:#888;"></span></td>
+    </tr>`;
+  });
+  html += `</tbody></table></div>
+    <div style="font-size:11px; color:#999; margin-top:6px;">※ 배차 필드(배대지·배차견적액·실제배차비·기사_송장·배차완료일·배차상태) 미생성 시 저장 안 됨(경고 표시) — Airtable Shipments에 수동 추가 필요.</div>
+  </div>`;
+
   document.getElementById('bookingResultBox').innerHTML = html;
+}
+
+// [v3.2.92] 배차 운영 저장 — Shipments PATCH(debounce 800ms). 기존 api() 직접 사용(새 함수 0).
+//   숫자필드는 빈값→null, 그 외 문자열. 필드 미생성 시 UNKNOWN_FIELD → 경고(부킹·다른 입력 안 깨짐).
+const _dispatchSaveTimers = {};
+function saveDispatch(shipId, field, value, statusElId) {
+  if (!shipId) return;
+  const st = statusElId ? document.getElementById(statusElId) : null;
+  if (st) { st.textContent = '⏳'; st.style.color = '#888'; }
+  const key = shipId + '|' + field;
+  clearTimeout(_dispatchSaveTimers[key]);
+  _dispatchSaveTimers[key] = setTimeout(async () => {
+    try {
+      let v = value;
+      if (field === '배차견적액' || field === '실제배차비') v = (value === '' || value == null) ? null : (parseFloat(String(value).replace(/[^0-9.\-]/g, '')) || 0);
+      else if (typeof v === 'string') v = v.trim();
+      await api('PATCH', `/${TABLES.Shipments}/${shipId}`, { fields: { [field]: v }, typecast: true });
+      // bookingState 동기(재렌더 없이 값 보존)
+      const row = (bookingState.rows || []).find(x => x.id === shipId);
+      if (row) { const m = { '기사_송장': '기사송장' }; row[m[field] || field] = v; }
+      if (st) { st.textContent = '✓ 저장'; st.style.color = '#0a7b40'; }
+    } catch (e) {
+      if (st) { st.textContent = '❌'; st.style.color = '#c0392b'; }
+      console.warn('[배차 저장]', field, e.message);
+      if (typeof toastWarn === 'function' && /UNKNOWN_FIELD|Unknown field/i.test(e.message || '')) toastWarn(`배차 필드 "${field}" 미생성 — Airtable Shipments에 추가 필요(저장 안 됨)`, { title: '⚠ 배차 필드' });
+    }
+  }, 800);
+}
+// [v3.2.92] 배대지 자동 프리필 — UNIPASS '보세운송 반입' 보세창고(op=customs_progress, 새 함수 0). 수정 가능.
+async function fetchBaedaeji(shipId, blNo, shipDate, inputId, statusElId) {
+  const inp = inputId ? document.getElementById(inputId) : null;
+  const st = statusElId ? document.getElementById(statusElId) : null;
+  blNo = String(blNo || '').trim();
+  if (!blNo) { toastWarn && toastWarn('BL번호 없음 — BL 등록 후 조회', { title: '📍 배대지' }); return; }
+  const auth = (typeof customsAuthHeader === 'function') ? customsAuthHeader() : null;
+  if (!auth) { toastWarn && toastWarn('관세사/관리자 토큰 필요 (👥 관세사 관리)', { title: '📍 배대지' }); return; }
+  const yr = String(shipDate || '').slice(0, 4) || String(new Date().getFullYear());
+  if (st) { st.textContent = '조회중…'; st.style.color = '#888'; }
+  try {
+    const r = await fetch(`${AGENT_API_BASE}?op=customs_progress&blNo=${encodeURIComponent(blNo)}&blYear=${yr}`, { headers: { Authorization: auth } });
+    const d = await r.json().catch(() => ({}));
+    const stages = d.stages || [];
+    // 배대지(기사 픽업 보세창고) 추출 체인 — 보세운송 반입 → 반입신고 → 반입 포함 → 최근 장치장 → summary.shedNm.
+    //   (BL마다 단계 명칭 상이: WY3567E604는 '반입신고 @ 선광신컨테이너터미널보세창고'가 실제 배대지.)
+    const _pick = (re) => stages.find(s => re.test((s.진행상태 || '') + ' ' + (s.반출입내용 || '')));
+    const bonded = _pick(/보세운송\s*반입/) || _pick(/반입신고/) || _pick(/반입/) || [...stages].reverse().find(s => (s.장치장 || '').trim());
+    const name = (bonded && bonded.장치장) || (d.summary && d.summary.shedNm) || '';
+    if (name) { if (inp) inp.value = name; saveDispatch(shipId, '배대지', name, statusElId); }
+    else if (st) { st.textContent = '보세운송 반입 미발견(통관 진행 전?)'; st.style.color = '#a14a00'; }
+  } catch (e) { if (st) { st.textContent = '조회 실패'; st.style.color = '#c0392b'; } console.warn('[배대지 조회]', e.message); }
 }
 
 // [v3.2.69] 마킹 = {고객사서함}-{박스순번 범위} (연속이면 1~N, 끊기면 콤마). 예 AP2783-1~4 / AP2783-1~2,4
