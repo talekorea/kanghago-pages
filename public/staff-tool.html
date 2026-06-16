@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.94</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.95</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.94</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.95</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -12567,6 +12567,37 @@ function calcDomesticFreight(totalCbm, km, opts) {
   const vat = Math.round(subtotal * 0.10);
   return { vehicle:v, km:parseFloat(km)||0, units, distance_fee, warehouse_fee, destination_fee, subtotal, vat, total: subtotal };
 }
+// [v3.2.95] 배차견적액(참고 견적) 자동 — ★청구의 동일 산식 재사용(새 산식 0). 택배=getParcelRate per-box 합 / 화물=calcDomesticFreight(CBM·km, 상하차 제외).
+//   반환 { amount:number|null, basis } | null. 화물은 CBM·거리 둘 다 있어야(없으면 null→빈값). 매트릭스 초과면 amount=null(수동).
+function _dispatchEstimate(method, boxes, cbmSum, km) {
+  if (method === '택배') {
+    if (!boxes || !boxes.length) return null;
+    let sum = 0;
+    for (const b of boxes) {
+      const r = getParcelRate((b.fields || {})['부피CBM'], (b.fields || {})['무게KG']);
+      if (!r || r.rate == null) return { amount: null, basis: '택배 매트릭스 범위초과 — 수동 입력' };
+      sum += r.rate;
+    }
+    return { amount: sum, basis: `택배 매트릭스 ${boxes.length}박스 합` };
+  }
+  if (method === '화물') {
+    const cbm = parseFloat(cbmSum) || 0, k = parseFloat(km) || 0;
+    if (cbm <= 0 || k <= 0) return null;   // CBM·거리 없으면 빈값(수동)
+    const f = calcDomesticFreight(cbm, k, {});   // 상하차 제외 기본 견적
+    return { amount: f.total, basis: `차종 ${f.vehicle.name}·${k}km·상하차제외` };
+  }
+  return null;
+}
+// [v3.2.95] 빈 배차견적액만 자동 채움(override 보존). ★배차견적액만 write — 청구/실제배차비/세율 미접근.
+async function autoFillEstimates(rows) {
+  for (const r of (rows || [])) {
+    if (r.배차견적액 !== '' && r.배차견적액 != null) continue;        // 수동/기존값 보존
+    const est = r._autoEst;
+    if (!est || est.amount == null) continue;
+    try { const amt = Math.round(est.amount); await api('PATCH', `/${TABLES.Shipments}/${r.id}`, { fields: { '배차견적액': amt }, typecast: true }); r.배차견적액 = amt; }
+    catch (e) { console.warn('[배차견적 자동]', r.mailbox, e.message); }
+  }
+}
 // ===== 사장님 피드백 #1·#2: 출발지 고정 + km 양방향 동기화 =====
 const SHIPPING_ORIGIN = { name: '인천 신항', lat: 37.3825, lng: 126.6356, address: '인천광역시 연수구 인천신항' };
 let _shipKm = 0;
@@ -15734,8 +15765,8 @@ async function fetchBookingSummary(mode) {
     const shipResults = await Promise.all(shipChunks.map(async chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
       const base = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}`
-              + `&fields[]=사서함&fields[]=상태&fields[]=출고요청일`
-              + `&fields[]=BL파일&fields[]=BL번호&fields[]=CO파일`;   // [v3.2.87] 문서 누락 감지(읽기만)
+              + `&fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=도착지거리km`
+              + `&fields[]=BL파일&fields[]=BL번호&fields[]=CO파일`;   // [v3.2.87] 문서 누락 감지(읽기만) [v3.2.95] 도착지거리km(화물 견적)
       try { return await apiPaged(base + _dispQ); }
       catch (e) { return await apiPaged(base); }   // 배차 필드 미생성 → 폴백
     }));
@@ -15769,6 +15800,8 @@ async function fetchBookingSummary(mode) {
       });
       const boxCount = boxes.length;
       const isReady = boxCount > 0 && !missingMeasure;
+      // [v3.2.95] 배송방식(Shipments 우선 → 박스 폴백) — 견적·분기 공용
+      const _bkMethod = (function(){ const m = String(sf['배송방식']||'').trim(); if (m) return m; const set = new Set(boxes.map(b=>String((b.fields||{})['배송방식']||''))); return set.has('택배')||set.has('parcel') ? '택배' : (set.has('화물')||set.has('cargo') ? '화물' : ''); })();
       return {
         id: s.id,   // [v3.2.69] 운송사/택배사 양식에서 Shipments 추가필드 재조회용
         mailbox, shipDate, status,
@@ -15780,7 +15813,9 @@ async function fetchBookingSummary(mode) {
         blNo: String(sf['BL번호'] || '').trim(),
         coHasFile: Array.isArray(sf['CO파일']) && sf['CO파일'].length > 0,
         // [v3.2.93] 배차 운영 값 — 배송방식 분기 + 자동표시 + 화물/택배 입력
-        shipMethod: (function(){ const m = String(sf['배송방식']||'').trim(); if (m) return m; const set = new Set(boxes.map(b=>String((b.fields||{})['배송방식']||''))); return set.has('택배')||set.has('parcel') ? '택배' : (set.has('화물')||set.has('cargo') ? '화물' : ''); })(),
+        shipMethod: _bkMethod,
+        // [v3.2.95] 배차견적액 자동(참고) — 청구 동일 산식 재사용. 빈값일 때만 autoFillEstimates가 PATCH.
+        _autoEst: _dispatchEstimate(_bkMethod, boxes, cbmSum, sf['도착지거리km']),
         포워딩사: sf['포워딩사'] || '', 보세창고: sf['보세창고'] || '', 입항일: sf['입항일'] || '', 한국포워딩사: sf['한국포워딩사'] || '',
         배차견적액: sf['배차견적액'] ?? '', 실제배차비: sf['실제배차비'] ?? '',
         차량번호: sf['차량번호'] || '', 기사전화번호: sf['기사전화번호'] || '', 배차완료일: sf['배차완료일'] || '', 배차상태: sf['배차상태'] || '대기',
@@ -15798,6 +15833,8 @@ async function fetchBookingSummary(mode) {
     bookingState.rows = rows;
     bookingState.dateLabel = dateLabel;
     bookingState.days = days;   // [v3.2.69] 운송사/택배사 양식 Orders 재조회용(IS_SAME 선적일)
+    // [v3.2.95] 배차견적액 빈값 자동 채움(참고 견적, override 보존) — 배차견적액만 write. 렌더 전 반영.
+    try { await autoFillEstimates(rows); } catch (e) { console.warn('[autoFillEstimates]', e.message); }
     renderBookingTable(rows, dateLabel);
     loading.textContent = `✓ ${rows.length}개 사서함 (Orders ${orders.length}건 기반)`;
   } catch (e) {
