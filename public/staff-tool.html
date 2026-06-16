@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.85</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.86</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.85</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.86</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1547,8 +1547,11 @@
   <h2>🛃 통관 진행상황 <span class="small-dim">(UNIPASS 화물통관진행정보 — BL번호 조회)</span></h2>
   <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px;">
     <div>
-      <label style="font-size:11px; color:#666; display:block;">BL번호 (HBL)</label>
-      <input id="cpBlNo" placeholder="예: WY3561E701" style="padding:7px 10px; border:1px solid #ccc; border-radius:6px; width:200px;">
+      <label style="font-size:11px; color:#666; display:block;">BL번호 (HBL) <span style="color:#999;">— 저장값 자동표시</span></label>
+      <div style="display:flex; gap:4px; align-items:center;">
+        <input id="cpBlNo" placeholder="사서함 로드 시 자동" readonly title="저장된 BL번호 자동 표시 — 직접 조회하려면 ✏ 수정" style="padding:7px 10px; border:1px solid #ccc; border-radius:6px; width:175px; background:#f4f1ea; color:#333;">
+        <button type="button" onclick="cpBlNoEdit()" title="BL번호 직접 수정(임시 조회용 — Shipments엔 저장 안 됨)" style="padding:6px 9px; border:1px solid #c9973a; background:#fff7e6; border-radius:6px; cursor:pointer; font-size:12px;">✏ 수정</button>
+      </div>
     </div>
     <div>
       <label style="font-size:11px; color:#666; display:block;">연도</label>
@@ -6140,7 +6143,12 @@ async function extractBlNumberFromFile(file) {
     area.innerHTML = '<span style="color:#a14a00;">ℹ️ 텍스트 없는 스캔 이미지 BL로 보입니다 — BL번호 수기 입력하세요. (OCR 추후)</span>'; return;
   }
   const cands = extractBlCandidates(text);
-  if (!cands.length) { area.innerHTML = '<span style="color:#a14a00;">BL번호를 찾지 못했습니다 — 수기 입력하세요.</span>'; return; }
+  if (!cands.length) {
+    // [v3.2.86] 내용 추출 실패 → 파일명 폴백(일괄 경로 _blNoFromName과 동일). 그래도 없으면 수기.
+    const fromName = (typeof _blNoFromName === 'function') ? _blNoFromName(file.name) : '';
+    if (fromName) { fillBlNumberCandidate(fromName); return; }
+    area.innerHTML = '<span style="color:#a14a00;">BL번호를 찾지 못했습니다 — 수기 입력하세요.</span>'; return;
+  }
   if (cands.length === 1) { fillBlNumberCandidate(cands[0].value); return; }
   const btns = cands.slice(0, 5).map(c => `<button type="button" onclick="fillBlNumberCandidate('${c.value}')" style="margin:2px 4px 2px 0; padding:3px 8px; border:1px solid #c9973a; background:#fff7e6; border-radius:5px; cursor:pointer; font-family:ui-monospace,monospace; font-size:11px;">${c.value}</button>`).join('');
   area.innerHTML = '<div style="color:#1B5E9A;">여러 후보 — 맞는 BL번호 선택:</div><div style="margin-top:3px;">' + btns + '</div>';
@@ -6150,10 +6158,25 @@ function fillBlNumberCandidate(val) {
   const inp = document.getElementById('blNumber');
   const area = document.getElementById('blAutoExtract');
   if (!inp) return;
-  inp.value = val;                      // ★ input 이벤트 미발생 → 자동저장 안 탐(확정 전까지 미저장)
+  inp.value = val;
+  const cur = String((state.shipment && state.shipment.fields && state.shipment.fields['BL번호']) || '').trim();
+  // [v3.2.86] BL번호 저장 원자화 — BL파일만 저장되고 번호 빈값 불가하게.
+  //   빈값 → 무조건 즉시 저장 / 동일 → no-op / 다름 → 대조·확정 게이트(정상 BL 보호, 취소 시 기존 유지).
+  if (!cur) {
+    inp.style.background = ''; inp.style.borderColor = '';
+    if (typeof autoSaveBL === 'function') autoSaveBL();   // 빈값 → 파일값 무조건 채움(원자적)
+    if (area) area.innerHTML = `<span style="color:#0a7b40;">✓ 추출·자동저장: <strong style="font-family:ui-monospace,monospace;">${val}</strong></span> <span style="color:#856404;">— 실물 BL과 대조하세요(다르면 ✏ 수정).</span>`;
+    return;
+  }
+  if (cur === val) {
+    inp.style.background = ''; inp.style.borderColor = '';
+    if (area) area.innerHTML = `<span style="color:#0a7b40;">✓ 추출값이 저장된 BL번호와 일치: <strong style="font-family:ui-monospace,monospace;">${val}</strong></span>`;
+    return;
+  }
+  // 기존값 ≠ 추출값 → 대조 후 확정(정상 BL 보호)
   inp.style.background = '#fff3cd';      // 노란 강조 = 미확인·미저장
   inp.style.borderColor = '#c9973a';
-  if (area) area.innerHTML = `<span style="color:#856404;">✅ 추출: <strong style="font-family:ui-monospace,monospace;">${val}</strong> — 실물과 대조 후</span> <button type="button" onclick="confirmExtractedBl()" style="margin-left:6px; padding:3px 10px; border:none; background:#0a7b40; color:#fff; border-radius:5px; cursor:pointer; font-size:11px;">✓ 확정·저장</button>`;
+  if (area) area.innerHTML = `<span style="color:#856404;">⚠ 기존 <strong>${cur}</strong> ≠ 추출 <strong style="font-family:ui-monospace,monospace;">${val}</strong> — 실물과 대조 후</span> <button type="button" onclick="confirmExtractedBl()" style="margin-left:6px; padding:3px 10px; border:none; background:#0a7b40; color:#fff; border-radius:5px; cursor:pointer; font-size:11px;">✓ 대체·저장</button>`;
 }
 
 function confirmExtractedBl() {
@@ -7960,6 +7983,16 @@ async function notifySend() {
   }
 }
 
+// [v3.2.86 ③] 통관 진행상황 BL번호 칸은 읽기전용(저장값 자동표시) — junk 재유입 차단.
+//   직접 다른 BL을 조회해야 할 때만 [✏ 수정]으로 편집 허용(임시 조회용, Shipments엔 저장 안 됨).
+function cpBlNoEdit() {
+  const el = document.getElementById('cpBlNo');
+  if (!el) return;
+  el.readOnly = false;
+  el.style.background = '#fff';
+  el.style.borderColor = '#c9973a';
+  el.focus(); el.select();
+}
 async function loadCustomsProgress(opts) {
   const auto = !!(opts && opts.auto);
   const blEl = document.getElementById('cpBlNo'), yrEl = document.getElementById('cpBlYear');
