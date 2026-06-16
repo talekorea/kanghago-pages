@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.86</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.87</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.86</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.87</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -15327,7 +15327,8 @@ async function fetchBookingSummary(mode) {
     const shipResults = await Promise.all(shipChunks.map(chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
       const u = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}`
-              + `&fields[]=사서함&fields[]=상태&fields[]=출고요청일`;
+              + `&fields[]=사서함&fields[]=상태&fields[]=출고요청일`
+              + `&fields[]=BL파일&fields[]=BL번호&fields[]=CO파일`;   // [v3.2.87] 문서 누락 감지(읽기만)
       return apiPaged(u);
     }));
     const ships = shipResults.flat();
@@ -15366,6 +15367,10 @@ async function fetchBookingSummary(mode) {
         member: cust.회원명 || memberByShip[s.id] || '',   // [v3.2.71] Customers 회원명 없으면 Orders.회원명 폴백
         company: cust.회사명 || '',
         boxCount, kgSum, cbmSum, missingMeasure, isReady,
+        // [v3.2.87] 문서 누락 감지 — BL파일/번호/CO파일 읽기만(신규 필드 X)
+        blHasFile: Array.isArray(sf['BL파일']) && sf['BL파일'].length > 0,
+        blNo: String(sf['BL번호'] || '').trim(),
+        coHasFile: Array.isArray(sf['CO파일']) && sf['CO파일'].length > 0,
       };
     }));
 
@@ -15407,6 +15412,13 @@ function renderBookingTable(rows, dateLabel) {
   // HTML 테이블
   let html = '';
   html += `<div style="background:#fafaf5; padding:10px 12px; border-radius:6px; margin-bottom:10px; font-size:13px;">📅 <strong>${dateLabel}</strong> · 사서함 <strong>${rows.length}개</strong> · 합계 <strong>${totalKg.toFixed(1)}kg / ${fmtCBM(totalCbm)}CBM</strong></div>`;
+  // [v3.2.87] 문서 수령 요약 — BL/CO 미수령(파일 없음) 건수. 0이면 초록, 있으면 빨강.
+  const blMissing = rows.filter(r => !r.blHasFile).length;
+  const coMissing = rows.filter(r => !r.coHasFile).length;
+  const _missTag = (n, label) => n > 0
+    ? `<strong style="color:#c0392b;">${label} 미수령 ${n}</strong>`
+    : `<span style="color:#0a7b40;">${label} 전건 수령</span>`;
+  html += `<div style="background:${(blMissing || coMissing) ? '#fff5f5' : '#f1f8f1'}; border:1px solid ${(blMissing || coMissing) ? '#f5c2c7' : '#cfe8cf'}; padding:8px 12px; border-radius:6px; margin-bottom:10px; font-size:12px;">📄 서류 수령: ${_missTag(blMissing, 'BL')} · ${_missTag(coMissing, 'CO')} <span style="color:#999;">(BL ✅파일+번호 / ⚠파일만·번호없음 / ❌미수령 · CO ✅있음 / ❌미수령)</span></div>`;
   html += `<table style="width:100%; border-collapse:collapse; font-size:13px;">`;
   html += `<thead><tr style="background:#1B2A3B; color:#fff;">
     <th style="padding:8px; text-align:left; width:100px;">사서함</th>
@@ -15415,6 +15427,8 @@ function renderBookingTable(rows, dateLabel) {
     <th style="padding:8px; text-align:right; width:90px;">CBM</th>
     <th style="padding:8px; text-align:center; width:70px;">박스</th>
     <th style="padding:8px; text-align:center; width:80px;">상태</th>
+    <th style="padding:8px; text-align:center; width:44px;" title="BL: ✅파일+번호 / ⚠파일만(번호없음) / ❌미수령">BL</th>
+    <th style="padding:8px; text-align:center; width:44px;" title="CO: ✅있음 / ❌미수령">CO</th>
   </tr></thead><tbody>`;
   rows.forEach(r => {
     const bg = r.isReady ? '#fff' : '#fff8e1';
@@ -15426,6 +15440,15 @@ function renderBookingTable(rows, dateLabel) {
       : (r.boxCount === 0
           ? '<span style="color:#b26a00; font-weight:600;">✗ 박스0</span>'
           : '<span style="color:#b26a00; font-weight:600;">✗ 무게/CBM</span>');
+    // [v3.2.87] BL: 파일+번호→✅ / 파일만→⚠ / 없음→❌ · CO: 있음→✅ / 없음→❌
+    const blCell = r.blHasFile
+      ? (r.blNo
+          ? '<span style="color:#0a7b40; font-weight:700;" title="BL 파일+번호 수령">✅</span>'
+          : '<span style="color:#b26a00; font-weight:700;" title="BL 파일만 — 번호 미입력">⚠</span>')
+      : '<span style="color:#c0392b; font-weight:700;" title="BL 미수령">❌</span>';
+    const coCell = r.coHasFile
+      ? '<span style="color:#0a7b40; font-weight:700;" title="CO 수령">✅</span>'
+      : '<span style="color:#c0392b; font-weight:700;" title="CO 미수령">❌</span>';
     html += `<tr style="background:${bg}; border-bottom:1px solid #eee;">
       <td style="padding:7px 8px; font-family:'SF Mono',Consolas,monospace; font-weight:600;">${r.mailbox}</td>
       <td style="padding:7px 8px;">${nameTag}</td>
@@ -15433,13 +15456,15 @@ function renderBookingTable(rows, dateLabel) {
       <td style="padding:7px 8px; text-align:right; font-family:'SF Mono',Consolas,monospace;">${fmtCBM(r.cbmSum)}</td>
       <td style="padding:7px 8px; text-align:center;">${r.boxCount}</td>
       <td style="padding:7px 8px; text-align:center; font-size:11px;">${statusBadge}</td>
+      <td style="padding:7px 8px; text-align:center;">${blCell}</td>
+      <td style="padding:7px 8px; text-align:center;">${coCell}</td>
     </tr>`;
   });
   html += `<tr style="background:#1B2A3B; color:#fff; font-weight:700;">
     <td colspan="2" style="padding:9px 8px; text-align:right;">합계</td>
     <td style="padding:9px 8px; text-align:right; font-family:'SF Mono',Consolas,monospace;">${totalKg.toFixed(1)}</td>
     <td style="padding:9px 8px; text-align:right; font-family:'SF Mono',Consolas,monospace;">${fmtCBM(totalCbm)}</td>
-    <td colspan="2"></td>
+    <td colspan="4"></td>
   </tr>`;
   html += `</tbody></table>`;
 
