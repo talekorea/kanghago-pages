@@ -57,6 +57,27 @@ function parseUnipassXml(xmlText) {
   return stages;
 }
 
+// [관리대상검사] 요약(기본정보) 블록 파싱 — Dtl 블록 제외 후 남는 cargCsclPrgsInfoQryVo.
+//   관리대상검사여부(예: '반입후검사'/'즉시검사')는 상세단계가 아니라 이 요약 블록에 있음.
+function parseSummary(xmlText) {
+  const stripped = String(xmlText || '').replace(/<cargCsclPrgsInfoDtlQryVo>[\s\S]*?<\/cargCsclPrgsInfoDtlQryVo>/g, '');
+  const all = {};
+  let m; const re = /<([a-zA-Z][\w]*)>([^<]+)<\/\1>/g;
+  while ((m = re.exec(stripped))) { if (!all[m[1]]) all[m[1]] = m[2].trim(); }
+  // 관리대상검사여부 — UNIPASS 요약 태그 mtTrgtCargYnNm (예 '반입후검사'/'즉시검사'). 폴백: 값에 '검사' 포함 태그.
+  let inspection = (all['mtTrgtCargYnNm'] || '').trim();
+  if (!inspection || !/검사/.test(inspection)) {
+    for (const k of Object.keys(all)) { if (/검사/.test(all[k])) { inspection = all[k].trim(); break; } }
+  }
+  // 'N'/'해당없음'/'비대상' 등 비검사 값은 빈값으로 정규화(검사 대상일 때만 노출)
+  const isTarget = /검사/.test(inspection);
+  return {
+    inspection: isTarget ? inspection : '',           // 검사 대상이면 종류 문자열, 아니면 ''
+    customsStatus: (all['csclPrgsStts'] || '').trim(), // 통관진행상태(부가) — 예 '수입신고전'
+    cargoMgmtNo: (all['cargMtNo'] || '').trim(),       // 화물관리번호(부가)
+  };
+}
+
 module.exports = async (req, res) => {
   if (handleCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'POST only' });
@@ -138,11 +159,17 @@ module.exports = async (req, res) => {
     };
   }
 
+  // [관리대상검사] 요약 블록에서 검사여부 추출
+  const summary = parseSummary(xmlText);
+
   return res.status(200).json({
     ok: true,
     bondedWarehouse,
     stages,
     stagesCount: stages.length,
+    inspection: summary.inspection,                  // 관리대상검사: '반입후검사'/'즉시검사'/'' (비대상)
+    customsStatus: summary.customsStatus,            // 통관진행상태 (부가)
+    cargoMgmtNo: summary.cargoMgmtNo,                // 화물관리번호 (부가)
     queriedAt: new Date().toISOString(),
     note: bondedWarehouse
       ? (bondedWarehouse._matched

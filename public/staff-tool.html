@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.84</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.85</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.84</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.85</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -7839,11 +7839,23 @@ function _cpStageRow(label, st, opt) {
 function renderCustomsTimeline(d, blNo) {
   const s = d.summary || {};
   const cur = s.csclPrgsStts || (d.stages[d.stages.length - 1] || {}).진행상태 || '-';
+  // [관리대상검사 v3.2.85] UNIPASS mtTrgtCargYnNm — 검사 대상이면 ⚠ 눈에 띄게(고객 안내용: 통관 지연·비용 가능).
+  //   값 있고 '검사' 포함 → 박스 표시(반입후검사/즉시검사 의미 병기, 그 외 원문). 비대상/빈값 → 미표시.
+  const _insp = String(s.관리대상검사여부 || s.inspection || '').trim();
+  const _inspBox = (_insp && /검사/.test(_insp)) ? (() => {
+    const meaning = _insp.includes('반입후검사') ? '보세창고 반입 후 검사'
+      : _insp.includes('즉시검사') ? '세관 검사장 이동 후 검사'
+      : '세관 지정 검사 대상';
+    return `<div style="background:#fff3cd; border:1px solid #E8A800; border-radius:10px; padding:10px 13px; margin-bottom:10px; font-size:13px;">
+      <span style="font-weight:800; color:#8a6d00;">⚠ 관리대상검사: ${_insp}</span>
+      <span style="color:#8a6d00; font-size:11px; margin-left:6px;">(${meaning} — 통관 지연·검사비 발생 가능, 고객 안내 권장)</span>
+    </div>`;
+  })() : '';
   const sumHtml = `<div style="background:#f0f7ff; border:1px solid #1B5E9A; border-radius:10px; padding:12px 14px; margin-bottom:10px; font-size:13px;">
     <div style="font-weight:700; color:#1B2A3B; margin-bottom:4px;">📦 ${s.prnm || '(품명 미상)'} <span style="font-size:11px; color:#888;">화물관리번호 ${s.cargMtNo || '-'}</span></div>
     <div style="color:#555;">BL ${s.blNo || blNo} · 포장 ${s.pckGcnt || '-'} · 총중량 ${s.ttwg || '-'}kg · 선적국 ${s.shipNat || '-'} · 입항 ${s.etprDt || '-'}</div>
     <div style="color:#1B5E9A; font-weight:600; margin-top:3px;">현재 진행상태: ${cur}</div>
-  </div>`;
+  </div>` + _inspBox;
   const n = d.stages.length;
   const c = selectCore6(d.stages);
   // 표시 순서(고정): 입항→하선→수입신고→[검사]→수입신고수리→반입→반출
