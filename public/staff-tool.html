@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.87</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.88</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.87</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.88</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1315,6 +1315,24 @@
       <div style="margin-left:38px; margin-top:6px;">
         <input type="file" id="coFileInput" accept=".pdf,.jpg,.jpeg,.png" multiple style="width:100%; max-width:420px; padding:6px; border:1px solid #c7dcf3; border-radius:4px; font-size:11px; background:#fff;" />
         <div id="coFileList" style="font-size:11px; color:#666; margin-top:4px;"></div>
+      </div>
+      <!-- [v3.2.88] CO 비교용 블라인드 대조 — 위챗 CO 이미지 읽고 입력 → 인보이스 자동 비교 -->
+      <div style="margin-left:38px; margin-top:10px; padding:10px 12px; background:#f7f4ee; border:1px solid #d9cdb4; border-radius:8px;">
+        <div style="font-weight:700; color:#1B2A3B; font-size:12px;">🔍 CO 비교 대조 <span style="font-weight:400; color:#888;">(블라인드 — 위챗 CO 이미지용)</span></div>
+        <div style="font-size:11px; color:#888; margin:2px 0 8px;">CO 이미지를 보고 핵심값 입력 후 [비교] → 인보이스 값과 자동 대조. (송장번호 제외 · 출발지·FTA 빈값이면 스킵)</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:7px;">
+          <label style="font-size:11px; color:#666;">HS코드 <span style="color:#aaa;">(콤마/공백)</span><input id="coCmpHs" placeholder="예: 6307900000" style="width:100%; padding:5px 7px; border:1px solid #ccc; border-radius:4px; font-size:12px;"></label>
+          <label style="font-size:11px; color:#666;">수량(총)<input id="coCmpQty" inputmode="numeric" placeholder="총 수량" style="width:100%; padding:5px 7px; border:1px solid #ccc; border-radius:4px; font-size:12px;"></label>
+          <label style="font-size:11px; color:#666;">포장수(C/T)<input id="coCmpPkg" inputmode="numeric" placeholder="박스 수" style="width:100%; padding:5px 7px; border:1px solid #ccc; border-radius:4px; font-size:12px;"></label>
+          <label style="font-size:11px; color:#666;">마크(AP)<input id="coCmpMark" placeholder="예: AP2682" style="width:100%; padding:5px 7px; border:1px solid #ccc; border-radius:4px; font-size:12px;"></label>
+          <label style="font-size:11px; color:#666;">출발지<input id="coCmpOrigin" placeholder="예: WEIHAI" style="width:100%; padding:5px 7px; border:1px solid #ccc; border-radius:4px; font-size:12px;"></label>
+          <label style="font-size:11px; color:#666;">FTA종류<input id="coCmpFta" placeholder="예: 한중 / RCEP" style="width:100%; padding:5px 7px; border:1px solid #ccc; border-radius:4px; font-size:12px;"></label>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button type="button" onclick="runCoCompare()" style="padding:7px 16px; background:#1B5E9A; color:#fff; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">🔍 비교</button>
+          <button type="button" id="coCmpConfirmBtn" onclick="confirmCoCompare()" disabled style="padding:7px 16px; background:#0a7b40; color:#fff; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:not-allowed; opacity:.5;">✓ CO 대조 확정</button>
+        </div>
+        <div id="coCmpResult"></div>
       </div>
     </div>
     <div style="font-size:11px; color:#888; margin-top:10px;">
@@ -5978,6 +5996,88 @@ function confirmDocMatch() {
   if (typeof saveAll === 'function') saveAll({ silent: true }).catch(() => {});
   if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();
   if (typeof log === 'function') log('✓ BL/CO 대조 확인 완료 — 최종 다운로드 활성화', 'ok');
+}
+
+// ===== [v3.2.88] CO 비교용 블라인드 대조 — 위챗 CO 이미지(자동추출 불가) → 직원 입력 → 인보이스 자동 비교 =====
+//   인보이스 소스: Products.HS코드·수량·적용FTA / Boxes 박스수 / Shipments.사서함(AP)·출발지. ★송장번호 제외.
+//   출발지·적용FTA 빈값 → '소스 없음' 비교 스킵(에러 X). 통과 시 confirmDocMatch 재사용 + CO대조(JSON) 저장.
+const _CO_PORT_MAP = { WEIHAI: '웨이하이', SHIDAO: '석도', YANTAI: '연태', 위해: '웨이하이', 웨이하이: '웨이하이', 석도: '석도', 연태: '연태' };
+function _coNormPort(s) {
+  const t = String(s || '').trim().toUpperCase();
+  if (!t) return '';
+  for (const k of Object.keys(_CO_PORT_MAP)) { if (t.includes(k.toUpperCase())) return _CO_PORT_MAP[k]; }
+  return String(s).trim();
+}
+function _coInvoiceSource() {
+  const f = (state.shipment && state.shipment.fields) || {};
+  const prods = (state.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0);
+  const hsSet = [...new Set(prods.map(p => String((p.fields || {})['HS코드'] || '').replace(/[^0-9]/g, '')).filter(Boolean))].sort();
+  const qtyTotal = prods.reduce((s, p) => s + (parseInt((p.fields || {})['수량'], 10) || 0), 0);
+  const boxCount = Object.keys(state.boxes || {}).length;
+  const apMark = baseMailbox(f['사서함'] || '').toUpperCase();
+  const origin = String(f['출발지'] || f['선적항'] || '').trim();
+  const ftaSet = [...new Set(prods.map(p => String((p.fields || {})['적용FTA'] || '').trim()).filter(Boolean))].sort();
+  return { hsSet, qtyTotal, boxCount, apMark, origin, ftaSet };
+}
+let _coCompareState = null;
+function runCoCompare() {
+  if (!state.shipment) { toastWarn && toastWarn('사서함 먼저 불러오세요'); return; }
+  const src = _coInvoiceSource();
+  const gv = id => ((document.getElementById(id) || {}).value || '').trim();
+  const inHs = [...new Set(String(gv('coCmpHs')).split(/[\s,]+/).map(x => x.replace(/[^0-9]/g, '')).filter(Boolean))].sort();
+  const inQty = parseInt(String(gv('coCmpQty')).replace(/[^0-9]/g, ''), 10);
+  const inPkg = parseInt(String(gv('coCmpPkg')).replace(/[^0-9]/g, ''), 10);
+  const inMark = baseMailbox(gv('coCmpMark')).toUpperCase();
+  const inOrigin = gv('coCmpOrigin');
+  const inFta = [...new Set(String(gv('coCmpFta')).split(/[\s,]+/).map(x => x.trim()).filter(Boolean))].sort();
+  const items = [];
+  items.push({ label: 'HS코드',     input: inHs.join(', ') || '(미입력)', invoice: src.hsSet.join(', ') || '(없음)', match: src.hsSet.length ? (inHs.join('|') === src.hsSet.join('|')) : null });
+  items.push({ label: '수량(총)',    input: isNaN(inQty) ? '(미입력)' : String(inQty), invoice: String(src.qtyTotal), match: isNaN(inQty) ? false : (inQty === src.qtyTotal) });
+  items.push({ label: '포장수(C/T)', input: isNaN(inPkg) ? '(미입력)' : String(inPkg), invoice: String(src.boxCount), match: src.boxCount ? (isNaN(inPkg) ? false : (inPkg === src.boxCount)) : null });
+  items.push({ label: '마크(AP)',    input: inMark || '(미입력)', invoice: src.apMark || '(없음)', match: src.apMark ? (inMark === src.apMark) : null });
+  items.push({ label: '출발지',      input: inOrigin || '(미입력)', invoice: src.origin || '(소스 없음)', match: src.origin ? (_coNormPort(inOrigin) === _coNormPort(src.origin)) : null });
+  items.push({ label: 'FTA종류',     input: inFta.join(', ') || '(미입력)', invoice: src.ftaSet.join(', ') || '(소스 없음)', match: src.ftaSet.length ? (inFta.join('|') === src.ftaSet.join('|')) : null });
+  const compared = items.filter(it => it.match !== null);
+  const mismatches = compared.filter(it => it.match === false).length;
+  _coCompareState = { items, ok: compared.length > 0 && mismatches === 0, mismatches };
+  renderCoCompare();
+}
+function renderCoCompare() {
+  const area = document.getElementById('coCmpResult');
+  const btn = document.getElementById('coCmpConfirmBtn');
+  if (!area || !_coCompareState) return;
+  const rows = _coCompareState.items.map(it => {
+    const icon = it.match === null ? '<span style="color:#999;">— 소스 없음(스킵)</span>'
+      : it.match ? '<span style="color:#0a7b40; font-weight:700;">✅ 일치</span>'
+      : '<span style="color:#c0392b; font-weight:700;">🔴 불일치</span>';
+    const bg = it.match === false ? '#fff5f5' : (it.match === null ? '#fafafa' : '#f1f8f1');
+    return `<tr style="background:${bg};"><td style="padding:4px 8px; font-weight:600;">${it.label}</td><td style="padding:4px 8px; font-family:ui-monospace,monospace;">${it.input}</td><td style="padding:4px 8px; font-family:ui-monospace,monospace; color:#555;">${it.invoice}</td><td style="padding:4px 8px; text-align:center; white-space:nowrap;">${icon}</td></tr>`;
+  }).join('');
+  area.innerHTML = `<table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;">
+    <thead><tr style="background:#1B2A3B; color:#fff;"><th style="padding:5px 8px; text-align:left;">항목</th><th style="padding:5px 8px; text-align:left;">입력(CO)</th><th style="padding:5px 8px; text-align:left;">인보이스</th><th style="padding:5px 8px;">판정</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div style="margin-top:6px; font-size:12px; font-weight:700; color:${_coCompareState.ok ? '#0a7b40' : '#c0392b'};">${_coCompareState.ok ? '✓ 전 항목 일치 — 대조 확정 가능' : '🔴 불일치 ' + _coCompareState.mismatches + '건 — 확정 불가(입력·서류 재확인)'}</div>`;
+  if (btn) { btn.disabled = !_coCompareState.ok; btn.style.opacity = _coCompareState.ok ? '1' : '.5'; btn.style.cursor = _coCompareState.ok ? 'pointer' : 'not-allowed'; }
+}
+async function confirmCoCompare() {
+  if (!state.shipment || !_coCompareState || !_coCompareState.ok) { toastWarn && toastWarn('먼저 [비교]로 전 항목 일치를 확인하세요'); return; }
+  confirmDocMatch();   // 기존 게이트 재사용 → 대조확인상태=확인완료
+  try {
+    const payload = {
+      입력: _coCompareState.items.reduce((o, it) => (o[it.label] = it.input, o), {}),
+      인보이스: _coCompareState.items.reduce((o, it) => (o[it.label] = it.invoice, o), {}),
+      불일치: _coCompareState.items.filter(it => it.match === false).map(it => it.label),
+      대조자: document.body.classList.contains('mode-staff') ? '직원' : '사장님',
+      일시: new Date().toISOString(),
+    };
+    await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: { 'CO대조': JSON.stringify(payload) }, typecast: true });
+    if (!state.shipment.fields) state.shipment.fields = {};
+    state.shipment.fields['CO대조'] = JSON.stringify(payload);
+    toastSuccess && toastSuccess('CO 블라인드 대조 확정·저장', { title: '🔍 CO' });
+  } catch (e) {
+    console.warn('[CO대조] 저장 경고(필드 미생성 가능):', e.message);
+    toastWarn && toastWarn('대조 확인은 완료됐으나 CO대조 필드 저장 실패 — Airtable Shipments에 "CO대조"(긴 텍스트) 필드 추가 필요', { title: '🔍 CO' });
+  }
 }
 
 // 파일 → base64 data URL
@@ -15735,7 +15835,7 @@ async function handleBatchDocFiles(fileList) {
         if (!blNumber) blNumber = _blNoFromName(file.name);
       }
       // [v3.2.80] 출발지(BL 내용 Port of Loading) + 마스터 선적일(TALE{YYMMDD})
-      const port = (docType === 'bl') ? _portOfLoading(pdfText) : '';
+      const port = (docType === 'bl' || docType === 'co') ? _portOfLoading(pdfText) : '';   // [v3.2.88] 원본 CO도 출발지 추출
       const masterShipDate = isMaster ? (_shipDateFromName(file.name) || _shipDateFromName(pdfText)) : '';
       let conf;
       if (isMaster) conf = 'amber';             // 마스터BL — 사서함 매칭 안 함(N/M), 현재 건너뜀
@@ -15864,7 +15964,7 @@ async function saveBatchDocs() {
         if (doUpdate) { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { 'BL번호': it.blNumber }, typecast: true }); blNoUpdated++; if (row) row && (it._blSaved = it.blNumber); }
       }
       // [v3.2.80] 하우스BL 출발지 → 그 사서함 Shipments.출발지 (추출 성공 시).
-      if (it.docType === 'bl' && it.port) { try { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { '출발지': it.port }, typecast: true }); portSet++; } catch (e) {} }
+      if ((it.docType === 'bl' || it.docType === 'co') && it.port) { try { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { '출발지': it.port }, typecast: true }); portSet++; } catch (e) {} }   // [v3.2.88] 원본 CO도 출발지 저장(있으면)
       if (el) el.querySelectorAll('tbody tr')[i] && (el.querySelectorAll('tbody tr')[i].style.background = '#e8f5e9');
     } catch (e) { failed++; console.warn('[일괄저장]', it.filename, e.message); }
   }
