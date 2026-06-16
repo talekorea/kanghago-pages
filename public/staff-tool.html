@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.88</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.89</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.88</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.89</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -4055,6 +4055,9 @@ async function loadShipment() {
       `/${TABLES.Orders}?filterByFormula=${encodeURIComponent(`SEARCH('${shipmentName}',ARRAYJOIN({Shipment}))`)}`
     );
     log(`✓ ${state.orders.length}개 주문`, 'ok');
+    // [v3.2.89] §4 배송방식 — Shipments.배송방식 빈값이면 고객 요청(Orders.배송방법) 정규화로 기본 적용.
+    //   ★박스 기본값·라디오·운임(getShipMethod) 모두 이 필드를 읽으므로 렌더 전에 적용해야 일관. 값 있으면 override 존중.
+    if (typeof applyCustomerShipDefault === 'function') applyCustomerShipDefault();
 
     // Products: 모든 fetch 후 클라이언트 필터
     log('Products 로드 중...', 'dim');
@@ -14876,7 +14879,37 @@ function resetShipUiFields() {
   state._shippingLatest = null;   // 이전 운임 계산결과 잔존 제거 (recalculate가 새로 채움)
 }
 
-// [§4 안내] 고객 요청 배송방법·요청사항 (Orders, 읽기전용 안내 — radio 선택과 별개)
+// [v3.2.89] 배송방법 문자열 정규화 — 택배 / 화물(용달 포함) / 밀크런 → §4 라디오 3택1 값.
+function normalizeShipMethodKo(v) {
+  var s = String(v || '').trim();
+  if (!s) return '';
+  if (s.indexOf('택배') >= 0) return '택배';
+  if (s.indexOf('밀크런') >= 0) return '밀크런';
+  if (s.indexOf('화물') >= 0 || s.indexOf('용달') >= 0) return '화물';
+  return '';   // 미인식 — 강제하지 않음
+}
+// [v3.2.89] 고객 요청 배송방법(원문) — Orders.배송방법 첫 비어있지 않은 값.
+function _customerRequestedMethod() {
+  var m = '';
+  (state.orders || []).forEach(function(o){ var f=o.fields||{}; if (!m && (f['배송방법']||'').trim()) m=f['배송방법'].trim(); });
+  return m;
+}
+// [v3.2.89] §4 배송방식 기본값 — Shipments.배송방식 빈값이면 고객 요청(Orders.배송방법) 정규화로 기본 적용.
+//   값이 있으면(staff/고객 확정) 손대지 않음(override 존중). in-memory만 — 저장은 staff가 라디오/저장 시.
+function applyCustomerShipDefault() {
+  if (!state.shipment) return;
+  state.shipment.fields = state.shipment.fields || {};
+  var cur = String(state.shipment.fields['배송방식'] || '').trim();
+  if (cur) return;   // 이미 설정 → override 존중
+  var reqRaw = _customerRequestedMethod();
+  var req = normalizeShipMethodKo(reqRaw);
+  if (req) {
+    state.shipment.fields['배송방식'] = req;
+    if (typeof log === 'function') log('§4 배송방식 미설정 → 고객 요청(' + reqRaw + '→' + req + ') 기본 적용 (staff 변경 가능)', 'info');
+  }
+}
+
+// [§4 안내] 고객 요청 배송방법·요청사항 (Orders.배송방법 — radio 선택과 별개). 현재 선택과 다르면 ⚠.
 function renderCustRequestedShip() {
   var el=document.getElementById('custRequestedShip');
   if (!el) return;
@@ -14886,7 +14919,12 @@ function renderCustRequestedShip() {
     if (!method && (f['배송방법']||'').trim()) method=f['배송방법'].trim();
     if (!req && (f['배송요청사항']||'').trim()) req=f['배송요청사항'].trim();
   });
-  el.innerHTML = '📋 고객 요청 배송방법: <strong>' + escAttr(method||'—') + '</strong> · 요청사항: <strong>' + escAttr(req||'—') + '</strong> <span style="color:#888; font-weight:400;">(안내 — staff가 보고 선택)</span>';
+  // [v3.2.89] Orders.배송방법 없으면 Shipments.배송방식 폴백 표시. 현재 선택 vs 고객요청 불일치 경고.
+  var sel = String((state.shipment && state.shipment.fields && state.shipment.fields['배송방식'])||'').trim();
+  if (!method) method = sel;
+  var norm = normalizeShipMethodKo(method);
+  var warn = (norm && sel && norm !== sel) ? ' <span style="color:#c0392b; font-weight:700;">⚠ 현재 선택(' + escAttr(sel) + ')과 다름 — 확인</span>' : '';
+  el.innerHTML = '📋 고객 요청 배송방법: <strong>' + escAttr(method||'—') + '</strong> · 요청사항: <strong>' + escAttr(req||'—') + '</strong>' + warn + ' <span style="color:#888; font-weight:400;">(안내 — staff가 보고 선택)</span>';
 }
 
 // [§6 도착지 B] 수동 입력 → Shipments.수취_주소 저장(1초 debounce) + 운임 도착지 동기. 추출기 자동(A) 채워도 이 값이 우선(override).
