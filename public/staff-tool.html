@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.104</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.105</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.104</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.105</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -2999,7 +2999,7 @@ const OVERHEAD_PRESETS = [
   { key: 'bl',       i18n: 'oh.bl',              amount: 25000, type: 'fixed' },
   { key: 'sea',      i18n: 'oh.sea',             amount: 0,     type: 'sea' },   // 금액은 calcSeaFreightKRW로 동적
   { key: 'domestic_freight', i18n: 'oh.domestic_freight', amount: 0,    type: 'manual' },
-  { key: 'domestic_parcel',  i18n: 'oh.domestic_parcel',  amount: 9000, type: 'per_box' },
+  { key: 'domestic_parcel',  i18n: 'oh.domestic_parcel',  amount: 9000, type: 'per_box' },   // v3.2.105: amount(9000)은 미사용(dead) — 실제 택배요금은 PARCEL_RATES_MATRIX(getParcelRate)로 부피·무게 반영. flat 9,000 폴백 폐기.
   // v3.2.38·v3.2.39: 밀크런 — §11이 ⌈CBM/1.5⌉×30,000으로 state.overheadAmounts.milkrun 채움. manual로 단일 소스.
   { key: 'milkrun',          i18n: 'oh.milkrun',          amount: 0,    type: 'manual' }
 ];
@@ -7343,18 +7343,15 @@ function renderOverhead() {
       desc = `${seaInfo.rate.name} · CBM ${cbmShow} × $${seaInfo.rate.unit} = 원가 $${seaInfo.costUsd.toFixed(2)} ×1.23 → 청구 $${seaInfo.usd.toFixed(2)} × 환율 → ₩${auto.toLocaleString()} (pre-VAT)`
            + (overridden ? ` · <span style="color:#c0392b;">수정됨</span>` : '');
     } else if (p.type === 'per_box') {
-      // v3.2.39: §11 매트릭스 결과(state.overheadAmounts[key]) 단일 소스.
-      //   §11이 채운 값 있으면 그대로 표시 (무게 반영 pre-VAT) — 정답.
-      //   §11 미실행이면 9,000×박스수 폴백 + "§11 실행 권장" 안내.
+      // v3.2.105: 택배는 ★항상 매트릭스(getParcelRate, 부피·무게 반영) 단일 소스.
+      //   §11이 채운 값(state.overheadAmounts[key])과 calcParcelTotalKrwPreVat()는 동일 매트릭스 합 → 어느 쪽이든 일치.
+      //   ★옛 "9,000×박스수 flat 폴백" 폐기: 부피·무게 무관 박스당 9,000이 §6·청구서·CostItems에 박히던 버그(부피·중량 무관 전부 ₩9,000).
       const parcelCount = getParcelBoxCount();
       const v = state.overheadAmounts[p.key];
-      if (v != null && v !== '' && parseFloat(v) > 0) {
-        amount = parseFloat(v) || 0;
-        desc = `§11 매트릭스 (무게 반영) — pre-VAT · ${parcelCount}박스`;
-      } else {
-        amount = p.amount * parcelCount;
-        desc = `${p.amount.toLocaleString()} × ${parcelCount}박스 — <span style="color:#c0392b;">§11 미실행 폴백</span>`;
-      }
+      amount = (v != null && v !== '' && parseFloat(v) > 0)
+        ? (parseFloat(v) || 0)
+        : ((typeof calcParcelTotalKrwPreVat === 'function') ? calcParcelTotalKrwPreVat() : 0);
+      desc = `택배 매트릭스 (부피·무게 반영) — pre-VAT · ${parcelCount}박스`;
     } else if (p.type === 'manual') {
       amount = parseFloat(state.overheadAmounts[p.key]) || 0;
       editable = true;
@@ -7409,10 +7406,11 @@ function calcTotalOverhead() {
     if (p.type === 'sea') {
       total += getSeaFreightKRW();
     } else if (p.type === 'per_box') {
-      // v3.2.37: §11 매트릭스 결과(state.overheadAmounts[key]) 있으면 그 값 우선 (무게 반영 pre-VAT)
-      //   없을 때만 PRESET 9,000×박스수 폴백 (옛 단순 계산)
+      // v3.2.105: 택배 ★항상 매트릭스 단일 소스. §11 값 또는 calcParcelTotalKrwPreVat() (동일). flat 9,000×박스수 폴백 폐기.
       const v = state.overheadAmounts[p.key];
-      total += (v != null && v !== '' && parseFloat(v) > 0) ? (parseFloat(v) || 0) : (p.amount * parcelCount);
+      total += (v != null && v !== '' && parseFloat(v) > 0)
+        ? (parseFloat(v) || 0)
+        : ((typeof calcParcelTotalKrwPreVat === 'function') ? calcParcelTotalKrwPreVat() : 0);
     } else if (p.type === 'manual') {
       total += parseFloat(state.overheadAmounts[p.key]) || 0;
     } else { // fixed (BL) — 수정값 우선
@@ -9955,16 +9953,13 @@ async function saveAll(skipReload) {
         const rg = seaRateGroup(shipDate);
         memo = `해상운임 ${rg.name} · CBM ${fmtCBM(totalCbm)} · 선적일 ${shipDate || '미상'}`;
       } else if (p.type === 'per_box') {
-        // v3.2.39: §11 매트릭스 결과(state.overheadAmounts[key]) 단일 소스. 없으면 9,000×박스수 폴백.
+        // v3.2.105: ★CostItems 저장도 항상 매트릭스(부피·무게 반영). flat 9,000×박스수 폴백 폐기 — 치수 무관 9,000 영구저장 버그 제거.
         const parcelCount = getParcelBoxCount();
         const v = state.overheadAmounts[p.key];
-        if (v != null && v !== '' && parseFloat(v) > 0) {
-          amount = parseFloat(v) || 0;
-          memo = `§11 매트릭스 (무게 반영) · ${parcelCount}박스`;
-        } else {
-          amount = p.amount * parcelCount;
-          memo = `${p.amount}/박스 × ${parcelCount}박스(폴백)`;
-        }
+        amount = (v != null && v !== '' && parseFloat(v) > 0)
+          ? (parseFloat(v) || 0)
+          : ((typeof calcParcelTotalKrwPreVat === 'function') ? calcParcelTotalKrwPreVat() : 0);
+        memo = `택배 매트릭스 (부피·무게 반영) · ${parcelCount}박스`;
       } else if (p.type === 'manual') {
         amount = parseFloat(state.overheadAmounts[p.key]) || 0;
         memo = '수기 입력 (국내운임)';
@@ -13770,8 +13765,8 @@ function calcFinalInvoiceTotalKrw() {
 }
 
 // v3.2.18 §9: 택배 박스별 단가 detail — sub-row 표시용 ({label, amount} 배열)
+// v3.2.105: ★9,000 매직 폴백 제거 — getParcelRate 단일소스. 범위 초과는 금액 대신 표식(합산 0).
 function getParcelDetailByBox() {
-  const PARCEL_FALLBACK = 9000;
   const shipMethod = ((state.shipment && state.shipment.fields && state.shipment.fields['배송방식']) || '').trim();
   if (shipMethod !== '택배') return [];
   const out = [];
@@ -13781,13 +13776,10 @@ function getParcelDetailByBox() {
     const b = boxes[bn] || {};
     const cbm = parseFloat(b.cbm) || 0;
     const kg = parseFloat(b.kg) || 0;
-    let amount;
-    if (cbm <= 0 && kg <= 0) amount = PARCEL_FALLBACK;
-    else {
-      const r = (typeof getParcelRate === 'function') ? getParcelRate(cbm, kg) : null;
-      amount = (r && r.rate != null) ? r.rate : PARCEL_FALLBACK;
-    }
-    out.push({ label: `박스 ${bn} (${fmtCBM(cbm)} CBM · ${kg.toFixed(1)}kg)`, amount });
+    const r = (typeof getParcelRate === 'function') ? getParcelRate(cbm, kg) : null;
+    const amount = (r && r.rate != null) ? r.rate : 0;     // 범위 초과/미스 → 0(수동 입력 필요)
+    const exceeded = !(r && r.rate != null);
+    out.push({ label: `박스 ${bn} (${fmtCBM(cbm)} CBM · ${kg.toFixed(1)}kg)${exceeded ? ' — ⚠ 수동 입력 필요' : ''}`, amount, exceeded });
   });
   return out;
 }
@@ -13795,9 +13787,10 @@ function getParcelDetailByBox() {
 // 택배 합계 (pre-VAT) — 박스별 PARCEL_RATES_MATRIX lookup.
 // v3.2.15: 배송방식은 Shipment 단위 단일. Shipment.배송방식='택배'면 전체 박스 합산.
 //   매트릭스 단가는 이미 마진 포함·VAT 미포함 (외부 거래선 견적표 기반).
-//   매트릭스 미발견 시 기본 9000 폴백.
+// v3.2.105: ★9,000 매직 폴백 제거 — §11(recalcShippingMatrix)과 동일하게 getParcelRate 단일소스만.
+//   빈 박스(cbm·kg 0) → getParcelRate(0,0)=매트릭스 최저칸(0.01CBM/10kg). 범위 초과 → 0(수동 입력, §11과 동일).
+//   (구버전: cbm·kg 0이거나 조회 미스 시 박스당 ₩9,000 박아넣어 §11과 불일치 → 폐기. v3.2.39 설계주석대로.)
 function calcParcelTotalKrwPreVat() {
-  const PARCEL_FALLBACK = 9000;
   const shipMethod = ((state.shipment && state.shipment.fields && state.shipment.fields['배송방식']) || '').trim();
   // Shipment가 '택배'가 아니면 택배 합계 0 (화물은 §12 화물 input으로 별도)
   if (shipMethod !== '택배') return 0;
@@ -13807,10 +13800,9 @@ function calcParcelTotalKrwPreVat() {
     const b = boxes[bn] || {};
     const cbm = parseFloat(b.cbm) || 0;
     const kg = parseFloat(b.kg) || 0;
-    if (cbm <= 0 && kg <= 0) { total += PARCEL_FALLBACK; return; }
     const r = (typeof getParcelRate === 'function') ? getParcelRate(cbm, kg) : null;
     if (r && r.rate != null) total += r.rate;
-    else total += PARCEL_FALLBACK;
+    // 범위 초과/미스 → 합산 제외(수동 입력 필요, §11 recalcShippingMatrix와 동일). ★매직 폴백 금지.
   });
   return total;
 }
@@ -15656,7 +15648,7 @@ async function downloadBatchIp(stage) {
     zip.file(`_누락목록_${label}.txt`, txt);
   }
   const zblob = await zip.generateAsync({ type: 'blob' });
-  // [v3.2.104] ZIP명 = kanghago_IP_{선적일 YYYY-MM-DD}_{1차|최종}.zip (dateLabel 첫 YYYY-MM-DD 추출 — 범위/단일 안전). 내부 개별파일·누락목록 불변.
+  // [v3.2.105] ZIP명 = kanghago_IP_{선적일 YYYY-MM-DD}_{1차|최종}.zip (dateLabel 첫 YYYY-MM-DD 추출 — 범위/단일 안전). 내부 개별파일·누락목록 불변.
   const _ymd = (String(bookingState.dateLabel || '').match(/\d{4}-\d{2}-\d{2}/) || ['export'])[0];
   const fname = `kanghago_IP_${_ymd}_${label}.zip`;
   const a = document.createElement('a'); a.href = URL.createObjectURL(zblob); a.download = fname;
