@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.96</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.97</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.96</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.97</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -10134,7 +10134,9 @@ function renderFinalConfirm() {
   // v3.2.40 (2026-06-04): 1차 게이트 완화 — 제품 + 박스만 (환율·작업비는 0 처리 허용).
   //   포워딩 부킹용 초안이라 박스 정보만 있으면 부킹 가능. 환율·작업비는 추후 채워 재다운로드.
   //   ★ 최종 게이트는 firstReady 의존을 끊고 7조건(박스·환율·작업비·관세사확정·BL·CO) 명시 나열.
-  const firstReady = s1 && hasBoxes;
+  // [v3.2.97] 1차 하드 게이트 — 영문명·HS 빈 제품 있으면 1차도 잠금(데이터 직접)
+  const _missNH = (typeof productsMissingNameOrHs === 'function') ? productsMissingNameOrHs() : [];
+  const firstReady = s1 && hasBoxes && _missNH.length === 0;
   // 최종 게이트 (v3.1.0): 박스·환율·작업비·관세사확정·BL번호·BL파일·CO파일 (★ s4 고객응답 제거)
   const blNumOk = !!f['BL번호'];
   const blFileOk = !!(f['BL파일'] && Array.isArray(f['BL파일']) && f['BL파일'].length);
@@ -10155,13 +10157,16 @@ function renderFinalConfirm() {
     + (when ? ` <span style="color:#888; font-size:11px;">— ${when}</span>` : '') + '</div>';
 
   // 1차 게이트 미충족 항목 (v3.2.40: 환율·작업비는 더 이상 게이트 아님 → firstMiss에서 제거)
+  const _nhTag = _missNH.length ? `영문명·HS 미입력 ${_missNH.length}건(${_missNH.slice(0,3).map(p => declItemName(p.fields) === '⚠영문명 미입력' ? ((p.fields||{})['상품ID']||'?') : declItemName(p.fields)).join(', ')}${_missNH.length>3?' 외':''})` : '';
   const firstMiss = [];
   if (!s1) firstMiss.push('①제품');
   if (!hasBoxes) firstMiss.push('박스');
+  if (_nhTag) firstMiss.push(_nhTag);
   // 최종 게이트 미충족 항목 (v3.1.0: 고객응답 제거 / v3.2.40: 환율·작업비 누락도 안내)
   const finalMiss = [];
   if (!s1) finalMiss.push('①제품');
   if (!hasBoxes) finalMiss.push('박스');
+  if (_nhTag) finalMiss.push(_nhTag);
   if (!rOk) finalMiss.push('환율');
   if (!hasWorkCosts) finalMiss.push('작업비');
   if (!s2) finalMiss.push('관세사확정');
@@ -10600,6 +10605,13 @@ function hasDeclName(pf) {
 function productsMissingDeclName() {
   return (state.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0 && !hasDeclName(p.fields || {}));
 }
+function _hasHsCode(pf) { pf = pf || {}; return !!String(pf['HS코드'] || '').replace(/[^0-9]/g, ''); }
+// [v3.2.97] ★1차 IP 하드 게이트 — 수량>0 제품 중 영문명 또는 HS 빈 제품(데이터 직접 계산, 플래그 의존 X).
+//   products 인자 주면 그 배열로(배치/임의 사서함), 없으면 state.products(개별).
+function productsMissingNameOrHs(products) {
+  const arr = products || (state.products || []);
+  return arr.filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0 && (!hasDeclName(p.fields || {}) || !_hasHsCode(p.fields || {})));
+}
 
 // ============================================================================
 // v3.0.7 [Phase A] 주문 단위 신고 계산 — 회의 정책: 인보이스 라인 = 주문 1개당 1라인
@@ -10799,6 +10811,9 @@ async function downloadInvoiceExcel(opts) {
   if (!(state.products && state.products.length)) miss.push('제품');
   const hasBoxes = !!(state.boxes && Object.keys(state.boxes).length);
   if (!hasBoxes) miss.push('박스');
+  // [v3.2.97] ★1차·최종 공통 하드 게이트 — 수량>0 제품 전부 영문명+HS 채워졌을 때만(데이터 직접, 플래그 의존 X).
+  const _missNH = (typeof productsMissingNameOrHs === 'function') ? productsMissingNameOrHs() : [];
+  if (_missNH.length) miss.push(`영문명·HS 미입력 ${_missNH.length}건(${_missNH.slice(0,3).map(p => declItemName(p.fields) === '⚠영문명 미입력' ? ((p.fields||{})['상품ID']||'?') : declItemName(p.fields)).join(', ')}${_missNH.length>3?' 외':''})`);
 
   // 환율·작업비 상태 — 1차에서는 게이트 아님(0 처리). 1차 토스트 안내·최종 게이트에 사용.
   const rOk = !!(parseFloat((document.getElementById('rateUsdKrw') || {}).value)
@@ -10814,9 +10829,7 @@ async function downloadInvoiceExcel(opts) {
     const prods = state.products || [];
     const confN = prods.filter(p => p.fields['관세사확정'] === true).length;
     if (confN < prods.length) miss.push('관세사확정');
-    // [v3.2.91] ★영문명(통관품명_영문/Description) 빈 제품 1건이라도 → 최종 발행 차단(통관서류 코드/빈칸 방지).
-    const _noNameFinal = (typeof productsMissingDeclName === 'function') ? productsMissingDeclName() : [];
-    if (_noNameFinal.length) miss.push(`영문명 미입력 ${_noNameFinal.length}건(${_noNameFinal.slice(0,5).map(p => (p.fields||{})['상품ID']||'?').join(', ')}${_noNameFinal.length>5?' …':''})`);
+    // [v3.2.97] 영문명·HS는 위 공통 게이트(_missNH)에서 1차·최종 공통 하드 차단 — 최종 전용 중복 제거.
     // v3.2.30: 고객 확인 요청 절차 폐기 → 고객응답 필수 게이트 제거
     if (!f['BL번호']) miss.push('BL번호');
     if (!(f['BL파일'] && Array.isArray(f['BL파일']) && f['BL파일'].length)) miss.push('BL파일');
@@ -10864,9 +10877,7 @@ async function downloadInvoiceExcel(opts) {
     const warn = [];
     if (!rOk) warn.push('환율 미입력 → 단가 $0 표기');
     if (!hasWorkCosts) warn.push('작업비 미입력 → 0 분배');
-    // [v3.2.91] 1차는 차단 X(관세사확정 전 정상) — 단 영문명 빈 제품은 품명에 '⚠영문명 미입력' 표기되므로 경고.
-    const _noName1st = (typeof productsMissingDeclName === 'function') ? productsMissingDeclName() : [];
-    if (_noName1st.length) warn.push(`영문명 미입력 ${_noName1st.length}건 → 품명 "⚠영문명 미입력" 표기(${_noName1st.slice(0,5).map(p => (p.fields||{})['상품ID']||'?').join(', ')}${_noName1st.length>5?' …':''})`);
+    // [v3.2.97] 영문명·HS 누락은 위 공통 하드 게이트에서 이미 차단 — 여기 도달 시 영문명·HS는 충족됨(소프트 경고 제거).
     if (warn.length && typeof toastWarn === 'function') {
       toastWarn('초안 다운로드 진행 — ' + warn.join(' / '), { title: '⚠️ 1차 정보 부족' });
     }
