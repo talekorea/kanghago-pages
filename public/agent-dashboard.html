@@ -319,14 +319,18 @@
     for (let p = 1; p <= pages; p++) { const pg = await pdf.getPage(p); const tc = await pg.getTextContent(); text += tc.items.map(it => it.str).join(' ') + '\n'; }
     return text;
   }
-  // BL번호 후보 추출 (도구 extractBlCandidates 축약 — 라벨 우선 → 일반 영숫자 혼합)
+  // [v3.2.112] BL번호 후보 추출 — ★접두(HBL) 최우선 + 포워더 상호·전화 reject (도구 extractBlCandidates와 동일 원칙·거짓BL 차단).
+  const _BL_PREFIXES = ['XWK', 'WY', 'TALE', 'HBL', 'MBL', 'SITC'];
+  const _BL_REJECT = /KOREA|CO[.,]?LTD|LTD|INC\b|CORP|LOGIS|EXPRESS|SHIPPING|FORWARD|HANSUNG/;
   function _blCandidates(text) {
     const T = String(text || '').replace(/ /g, ' ');
     const seen = new Map();
-    const add = (raw, rank) => { let v = String(raw || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').replace(/^-+|-+$/g, ''); if (v.length < 6 || v.length > 20) return; if (/^[A-Z]{4}\d{7}$/.test(v)) return; if (/^\d+$/.test(v)) return; if (!/[A-Z]/.test(v) || !/\d/.test(v)) return; if (!seen.has(v) || seen.get(v) > rank) seen.set(v, rank); };
+    const add = (raw, rank) => { let v = String(raw || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').replace(/^-+|-+$/g, ''); if (v.length < 6 || v.length > 20) return; if (/^[A-Z]{4}\d{7}$/.test(v)) return; if (/^\d+$/.test(v)) return; if (!/[A-Z]/.test(v) || !/\d/.test(v)) return; if (_BL_REJECT.test(v)) return; if (/^\d{2,4}-\d{3,4}/.test(v)) return; if (!seen.has(v) || seen.get(v) > rank) seen.set(v, rank); };
     let m;
+    const preRe = new RegExp('\\b((?:' + _BL_PREFIXES.join('|') + ')[A-Z0-9-]{4,})\\b', 'ig');   // 접두(HBL) 최우선
+    while ((m = preRe.exec(T))) add(m[1], 0);
     const labelRe = /(?:HOUSE\s*B\s*\/?\s*L|H\s*\/?\s*B\s*\/?\s*L|B\s*\/?\s*L|선하증권|BILL\s*OF\s*LADING)\s*(?:No\.?|NO\.?|NUMBER|번호|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\- ]{4,22})/ig;
-    while ((m = labelRe.exec(T))) add(m[1].split(/\s{2,}/)[0], 0);
+    while ((m = labelRe.exec(T))) add(m[1].split(/\s{2,}/)[0], 1);
     const genRe = /\b([A-Z]{2,5}\d{5,}[A-Z0-9]*)\b/g;
     while ((m = genRe.exec(T))) add(m[1], 2);
     return [...seen.entries()].sort((a, b) => a[1] - b[1]).map(([value]) => value);
