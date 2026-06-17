@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.100</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.101</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.100</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.101</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -10147,8 +10147,11 @@ function renderFinalConfirm() {
   //   포워딩 부킹용 초안이라 박스 정보만 있으면 부킹 가능. 환율·작업비는 추후 채워 재다운로드.
   //   ★ 최종 게이트는 firstReady 의존을 끊고 7조건(박스·환율·작업비·관세사확정·BL·CO) 명시 나열.
   // [v3.2.97] 1차 하드 게이트 — 영문명·HS 빈 제품 있으면 1차도 잠금(데이터 직접)
-  const _missNH = (typeof productsMissingNameOrHs === 'function') ? productsMissingNameOrHs() : [];
-  const firstReady = s1 && hasBoxes && _missNH.length === 0;
+  // [v3.2.101] 1차=영문명만 / 최종=영문명+HS+신고 헤더필드
+  const _missName = (typeof productsMissingName === 'function') ? productsMissingName() : [];
+  const _missHs = (typeof productsMissingHs === 'function') ? productsMissingHs() : [];
+  const _missHdr = (typeof finalHeaderMissing === 'function') ? finalHeaderMissing() : [];
+  const firstReady = s1 && hasBoxes && _missName.length === 0;
   // 최종 게이트 (v3.1.0): 박스·환율·작업비·관세사확정·BL번호·BL파일·CO파일 (★ s4 고객응답 제거)
   const blNumOk = !!f['BL번호'];
   const blFileOk = !!(f['BL파일'] && Array.isArray(f['BL파일']) && f['BL파일'].length);
@@ -10169,16 +10172,20 @@ function renderFinalConfirm() {
     + (when ? ` <span style="color:#888; font-size:11px;">— ${when}</span>` : '') + '</div>';
 
   // 1차 게이트 미충족 항목 (v3.2.40: 환율·작업비는 더 이상 게이트 아님 → firstMiss에서 제거)
-  const _nhTag = _missNH.length ? `영문명·HS 미입력 ${_missNH.length}건(${_missNH.slice(0,3).map(p => declItemName(p.fields) === '⚠영문명 미입력' ? ((p.fields||{})['상품ID']||'?') : declItemName(p.fields)).join(', ')}${_missNH.length>3?' 외':''})` : '';
+  const _nameTag = _missName.length ? `영문명 미입력 ${_missName.length}건(${_missName.slice(0,3).map(p => (p.fields||{})['상품ID']||'?').join(', ')}${_missName.length>3?' 외':''})` : '';
+  const _hsTag = _missHs.length ? `HS 미입력 ${_missHs.length}건` : '';
+  const _hdrTag = _missHdr.length ? `신고 헤더필드 ${_missHdr.join('·')}` : '';
   const firstMiss = [];
   if (!s1) firstMiss.push('①제품');
   if (!hasBoxes) firstMiss.push('박스');
-  if (_nhTag) firstMiss.push(_nhTag);
+  if (_nameTag) firstMiss.push(_nameTag);   // [v3.2.101] 1차=영문명만
   // 최종 게이트 미충족 항목 (v3.1.0: 고객응답 제거 / v3.2.40: 환율·작업비 누락도 안내)
   const finalMiss = [];
   if (!s1) finalMiss.push('①제품');
   if (!hasBoxes) finalMiss.push('박스');
-  if (_nhTag) finalMiss.push(_nhTag);
+  if (_nameTag) finalMiss.push(_nameTag);
+  if (_hsTag) finalMiss.push(_hsTag);          // [v3.2.101] 최종=+HS
+  if (_hdrTag) finalMiss.push(_hdrTag);        // [v3.2.101] 최종=+신고 헤더필드
   if (!rOk) finalMiss.push('환율');
   if (!hasWorkCosts) finalMiss.push('작업비');
   if (!s2) finalMiss.push('관세사확정');
@@ -10618,11 +10625,32 @@ function productsMissingDeclName() {
   return (state.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0 && !hasDeclName(p.fields || {}));
 }
 function _hasHsCode(pf) { pf = pf || {}; return !!String(pf['HS코드'] || '').replace(/[^0-9]/g, ''); }
-// [v3.2.97] ★1차 IP 하드 게이트 — 수량>0 제품 중 영문명 또는 HS 빈 제품(데이터 직접 계산, 플래그 의존 X).
-//   products 인자 주면 그 배열로(배치/임의 사서함), 없으면 state.products(개별).
+// [v3.2.101] 게이트 단일 함수 통일 — 1차=영문명만(BL용), 최종=영문명+HS(신고용). products 인자=배치/임의, 없으면 state.products.
+//   ★1차는 영문명만(HS 제외): 1차 IP=포워더 BL용, BL은 품명만 필요. HS는 최종(신고)에서.
+function productsMissingName(products) {
+  const arr = products || (state.products || []);
+  return arr.filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0 && !hasDeclName(p.fields || {}));
+}
+function productsMissingHs(products) {
+  const arr = products || (state.products || []);
+  return arr.filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0 && !_hasHsCode(p.fields || {}));
+}
+// 최종용(영문명+HS 둘 중 하나라도 빈) — 호환 유지.
 function productsMissingNameOrHs(products) {
   const arr = products || (state.products || []);
   return arr.filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0 && (!hasDeclName(p.fields || {}) || !_hasHsCode(p.fields || {})));
+}
+// [v3.2.101] ★최종 신고 필수 헤더필드(getInvoiceRemarks 소스) — 사장님 확정용. 빈값이면 최종 게이트 차단.
+//   통관고유부호는 자주 빈 필드 → 필요시 이 배열에서 제거(개별 정책). cf=Customers, sf=Shipments(수취_*).
+const FINAL_REQUIRED_HEADER = [
+  { key: '납세의무자', get: (cf, sf) => (cf['회사명'] || cf['회원명'] || '').trim() },
+  { key: '사업자번호', get: (cf, sf) => (cf['사업자번호'] || '').trim() },
+  { key: '통관고유부호', get: (cf, sf) => (cf['통관고유부호'] || (sf || {})['수취_통관부호'] || '').trim() },
+];
+function finalHeaderMissing() {
+  const cf = (state.customer && state.customer.fields) || {};
+  const sf = (state.shipment && state.shipment.fields) || {};
+  return FINAL_REQUIRED_HEADER.filter(h => !h.get(cf, sf)).map(h => h.key);
 }
 
 // ============================================================================
@@ -10824,9 +10852,10 @@ async function downloadInvoiceExcel(opts) {
   if (!(state.products && state.products.length)) miss.push('제품');
   const hasBoxes = !!(state.boxes && Object.keys(state.boxes).length);
   if (!hasBoxes) miss.push('박스');
-  // [v3.2.97] ★1차·최종 공통 하드 게이트 — 수량>0 제품 전부 영문명+HS 채워졌을 때만(데이터 직접, 플래그 의존 X).
-  const _missNH = (typeof productsMissingNameOrHs === 'function') ? productsMissingNameOrHs() : [];
-  if (_missNH.length) miss.push(`영문명·HS 미입력 ${_missNH.length}건(${_missNH.slice(0,3).map(p => declItemName(p.fields) === '⚠영문명 미입력' ? ((p.fields||{})['상품ID']||'?') : declItemName(p.fields)).join(', ')}${_missNH.length>3?' 외':''})`);
+  // [v3.2.101] ★1차·최종 공통: 영문명(수량>0 전부). 1차=영문명만(BL용), HS·헤더는 최종에서.
+  const _idLbl = p => declItemName(p.fields) === '⚠영문명 미입력' ? ((p.fields || {})['상품ID'] || '?') : declItemName(p.fields);
+  const _missName = productsMissingName();
+  if (_missName.length) miss.push(`영문명 미입력 ${_missName.length}건(${_missName.slice(0,3).map(p => (p.fields || {})['상품ID'] || '?').join(', ')}${_missName.length>3?' 외':''})`);
 
   // 환율·작업비 상태 — 1차에서는 게이트 아님(0 처리). 1차 토스트 안내·최종 게이트에 사용.
   const rOk = !!(parseFloat((document.getElementById('rateUsdKrw') || {}).value)
@@ -10842,11 +10871,15 @@ async function downloadInvoiceExcel(opts) {
     const prods = state.products || [];
     const confN = prods.filter(p => p.fields['관세사확정'] === true).length;
     if (confN < prods.length) miss.push('관세사확정');
-    // [v3.2.97] 영문명·HS는 위 공통 게이트(_missNH)에서 1차·최종 공통 하드 차단 — 최종 전용 중복 제거.
+    // [v3.2.101] ★최종=모든 내용 완전성: 영문명(공통 위) + HS + 신고 헤더필드.
+    const _missHs = productsMissingHs();
+    if (_missHs.length) miss.push(`HS 미입력 ${_missHs.length}건(${_missHs.slice(0,3).map(_idLbl).join(', ')}${_missHs.length>3?' 외':''})`);
+    const _missH = (typeof finalHeaderMissing === 'function') ? finalHeaderMissing() : [];
+    if (_missH.length) miss.push(`신고 헤더필드 미입력: ${_missH.join('·')}`);
     // v3.2.30: 고객 확인 요청 절차 폐기 → 고객응답 필수 게이트 제거
     if (!f['BL번호']) miss.push('BL번호');
     if (!(f['BL파일'] && Array.isArray(f['BL파일']) && f['BL파일'].length)) miss.push('BL파일');
-    // [CO 게이트 완화] CO파일은 하드 차단 제거 → miss 통과 후 소프트 confirm (없으면 기본세율 건).
+    if (!(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length)) miss.push('CO파일');   // [v3.2.101] 최종=CO 필수(완전성)
     if (f['대조확인상태'] !== '확인완료') miss.push('BL/CO 대조확인');   // v3.2.49 [Phase 1-G]
   }
 
@@ -15591,16 +15624,32 @@ async function downloadBatchIp(stage) {
     if (loadingEl) loadingEl.textContent = '';
   }
   const blocked = state._batchWriteBlocked || 0;
+  // [v3.2.101 ⓐ/ⓑ] 누락(스킵) 강화 — 스킵 목록 빨강 표시 + ZIP 생성 전 확인 모달 + ZIP에 _누락목록.txt 동봉.
+  _renderBatchIpResult(label, done, skipped, blocked);   // 빨강 스킵 목록 먼저 노출
   if (!done.length) {
     toastWarn && toastWarn(`${label} IP 생성 0건 — 전부 미충족(${skipped.slice(0, 3).map(s => s.mb + ':' + s.reason).join(' / ')}${skipped.length > 3 ? ' …' : ''})`, { title: '📦 배치' });
-    _renderBatchIpResult(label, done, skipped, blocked);
+    if (skipped.length) alert(`🚫 ${label} IP — 생성 가능 0건.\n\n전부 누락(아래):\n` + skipped.map(s => `• ${s.mb} — ${s.reason}`).join('\n'));
     return;
+  }
+  // ⓐ 확인 모달 — 스킵 1건이라도 있으면 ZIP 생성 전 확인. [취소]=ZIP 미생성.
+  if (skipped.length) {
+    const ok = confirm(`⚠ ${label} IP 누락 ${skipped.length}건 (포워더 전달 누락 주의):\n\n` +
+      skipped.map(s => `🔴 ${s.mb} — ${s.reason}`).join('\n') +
+      `\n\n생성 ${done.length}건만 ZIP으로 받고 진행할까요?\n[확인]=충족분만 ZIP(누락목록.txt 동봉) · [취소]=ZIP 미생성`);
+    if (!ok) { toastWarn && toastWarn('ZIP 생성 취소 — 누락 해소 후 다시 시도', { title: '📦 배치' }); return; }
+  }
+  // ⓑ 누락목록.txt 동봉
+  if (skipped.length) {
+    const txt = `[강하고 ${label} IP 배치 — 누락 목록]\n선적일: ${bookingState.dateLabel || ''}\n생성: ${done.length}건 / 누락: ${skipped.length}건\n\n` +
+      skipped.map(s => `${s.mb}\t${s.reason}`).join('\n') + `\n\n※ 누락분은 영문명/HS/BL/CO/헤더필드 보완 후 재생성하세요.`;
+    zip.file(`_누락목록_${label}.txt`, txt);
   }
   const zblob = await zip.generateAsync({ type: 'blob' });
   const fname = `배차표IP_${bookingState.dateLabel || 'export'}_${label}.zip`;
   const a = document.createElement('a'); a.href = URL.createObjectURL(zblob); a.download = fname;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  toastSuccess && toastSuccess(`${label} IP ${done.length}건 ZIP 생성 · 스킵 ${skipped.length} · 쓰기차단 ${blocked}`, { title: '📦 배치 IP', duration: 6000 });
+  const skipMsg = skipped.length ? ` · ⚠누락 ${skipped.length}건(목록.txt 동봉)` : '';
+  toastSuccess && toastSuccess(`${label} IP ${done.length}건 ZIP${skipMsg} · 쓰기차단 ${blocked}`, { title: '📦 배치 IP', duration: 7000 });
   _renderBatchIpResult(label, done, skipped, blocked);
 }
 function _renderBatchIpResult(label, done, skipped, blocked) {
