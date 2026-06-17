@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.99</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.100</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.99</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.100</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3650,7 +3650,8 @@ function airtablePat() {
 
 async function api(method, path, body) {
   // [v3.2.98] ★배치(IP 전체) 무쓰기 보장 — _batchMode면 모든 쓰기(PATCH/POST/PUT/DELETE) 단일관문 차단(중첩 부작용 전부 커버). GET만 통과.
-  if (state._batchMode && /^(PATCH|POST|PUT|DELETE)$/i.test(method)) {
+  //   [v3.2.100] 좁은 예외: _allowSeqWrite=true인 순간(최종 배치 CI순번 persist 1회)만 통과. 그 외 쓰기는 계속 차단.
+  if (state._batchMode && /^(PATCH|POST|PUT|DELETE)$/i.test(method) && !state._allowSeqWrite) {
     console.warn('[batch] Airtable 쓰기 차단:', method, path);
     if (state._batchWriteBlocked != null) state._batchWriteBlocked++;
     return {};   // 무해 스텁
@@ -10923,7 +10924,12 @@ async function downloadInvoiceExcel(opts) {
     if (stage === 'final' && !forwarder) { if (_rb) return { skip: '포워딩사(ZTK/BTK) 미선택' }; toastWarn('최종 다운로드는 포워딩사(ZTK/BTK) 선택 후 가능 — CI 번호 확정 필요', { title: '🔒 번호 확정' }); return; }
     // [B] CI 순번 영구 불변: 부여돼 있으면 재사용, 없으면 같은 (포워딩,선적일) max+1 부여·저장(포워딩 선택분만 확정).
     let seq = parseInt(f['인보이스순번']) || 0;
-    if (!seq && forwarder) { seq = await assignInvoiceSeq(forwarder, shipDateIso); }
+    if (!seq && forwarder) {
+      // [v3.2.100] 미부여 → 부여+persist. ★최종 배치에서만 순번 persist 예외 통과(_allowSeqWrite 1회). 1차는 무쓰기 유지. 개별은 _batchMode=false라 무관.
+      if (_rb && stage === 'final') state._allowSeqWrite = true;
+      try { seq = await assignInvoiceSeq(forwarder, shipDateIso); }
+      finally { state._allowSeqWrite = false; }
+    }
     if (!seq) seq = 1;   // 1차 + 포워딩 미선택 → 임시 표기(저장 안 함)
     const invoiceNo = forwarder
       ? `${forwarder}-${yymmdd}-${seq}`
