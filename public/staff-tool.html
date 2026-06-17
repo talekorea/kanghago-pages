@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.101</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.102</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.101</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.102</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -10985,7 +10985,7 @@ async function downloadInvoiceExcel(opts) {
         { text: ' ' + (value || ''), font: { ...FONT, size: 10 } },
       ]
     });
-    const writeFormHeader = (ws, title, lastCol) => {
+    const writeFormHeader = (ws, title, lastCol, headerRowH) => {   // [v3.2.102] headerRowH: 좁은 시트(FREIGHT)는 wrap 다중행 → 행높이 확대(겹침 방지)
       const lastL = ws.getColumn(lastCol).letter;
       // 제목
       ws.mergeCells('A1:' + lastL + '1');
@@ -11074,7 +11074,7 @@ async function downloadInvoiceExcel(opts) {
         }
       }
       // 모든 헤더 행 높이 통일
-      for (let i = 0; i < n; i++) ws.getRow(i + 2).height = 18;
+      for (let i = 0; i < n; i++) ws.getRow(i + 2).height = headerRowH || 18;   // [v3.2.102] wrap 다중행 겹침 방지(좁은 시트 확대)
       // 외곽 박스 (Remarks 영역 포함)
       borderRange(ws, 1, 1, n + 1, lastCol);
     };
@@ -11351,8 +11351,9 @@ async function downloadInvoiceExcel(opts) {
     const ivTotal = calcIvFreightUSD(ivCbm, ivKg);   // raw로 계산 → band·운임 불변
     const ivCbmDisp = Number(fmtCBM(pTotCbm));   // [v3.2.76] IV 시트 표시용 CBM 2자리(계산엔 미사용)
     const ws3 = wb.addWorksheet('IV');
-    ws3.columns = [{ width: 28 }, { width: 14 }, { width: 16 }, { width: 16 }];
-    writeFormHeader(ws3, 'FREIGHT INVOICE', 4);
+    // [v3.2.102] FREIGHT 컬럼 확대(표현만, 값 불변) — 헤더 우측블록(C:D) 폭↑로 'No.&date of invoice' 등 긴 줄 wrap 최소화. 데이터 'FREIGHT CHARGE(USD)'도 여유.
+    ws3.columns = [{ width: 26 }, { width: 16 }, { width: 22 }, { width: 24 }];
+    writeFormHeader(ws3, 'FREIGHT INVOICE', 4, 28);   // 헤더 행높이 28 — 좁은 시트 wrap 2줄 수용(겹침 0)
     const ivHead = ws3.addRow(['Description', 'CBM', 'G.W.(KG)', 'FREIGHT CHARGE(USD)']);
     ivHead.font = { ...FONT, bold: true, size: 12 };
     ivHead.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
