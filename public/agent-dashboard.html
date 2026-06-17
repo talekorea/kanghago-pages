@@ -59,9 +59,9 @@
       <span id="agentBookingLoading" style="font-size:12px; color:#888;"></span>
     </div>
     <div id="agentBookingResult"><div style="padding:18px; text-align:center; color:#999; font-size:13px;">날짜 선택 후 조회하세요.</div></div>
-    <!-- [수입면장 일괄업로드 v3.2.109] 위 선적일 전체 사서함 — BL번호 내용 자동매칭 → 통관필증 저장 -->
+    <!-- [수입면장 일괄업로드 v3.2.109] 위 선적일 전체 사서함 — BL번호 내용 자동매칭 → 수입면장 저장 -->
     <div id="agentLicenseBatch" style="display:none; margin-top:18px; border-top:2px dashed #C9973A; padding-top:14px;">
-      <div style="font-size:13px; font-weight:700; color:#1B2A3B; margin-bottom:6px;">📋 수입신고필증(면장) 일괄 업로드 <span style="font-size:11px; font-weight:400; color:#888;">— 조회된 선적일 전체 사서함 대상 · BL번호 내용 자동매칭 → 통관필증 저장</span></div>
+      <div style="font-size:13px; font-weight:700; color:#1B2A3B; margin-bottom:6px;">📋 수입면장 일괄 업로드 <span style="font-size:11px; font-weight:400; color:#888;">— 조회된 선적일 전체 사서함 대상 · BL번호 내용 자동매칭 → 사서함별 저장(면허파일)</span></div>
       <div id="licDrop" style="border:2px dashed #c7dcf3; border-radius:8px; padding:18px; text-align:center; color:#666; font-size:12px; cursor:pointer; background:#fafdff;">
         📂 면장 PDF·이미지·ZIP 드래그 또는 클릭 — PDF는 BL번호로 자동매칭, 스캔/이미지는 수동 지정
         <input type="file" id="licFileInput" accept=".pdf,.jpg,.jpeg,.png,.zip" multiple style="display:none;" />
@@ -288,7 +288,7 @@
     catch (e) { alert('복사 실패 — 수동 선택하세요'); }
   };
 
-  // ===== [수입면장 일괄업로드 v3.2.109] BL번호 내용 매칭 → 통관필증 저장 (도구 유틸 소규모 포팅) =====
+  // ===== [수입면장 일괄업로드 v3.2.109] BL번호 내용 매칭 → 수입면장 저장 (도구 유틸 소규모 포팅) =====
   let agentBookingRows = [];
   let licBatchItems = [];
   const _blNorm = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -387,9 +387,9 @@
     </tr>`).join('');
     const matched = licBatchItems.filter(it => it.shipId).length;
     const allOk = licBatchItems.length > 0 && matched === licBatchItems.length;
-    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#1B2A3B;color:#fff;"><th style="padding:6px 7px;text-align:left;">파일</th><th style="padding:6px 7px;">매칭</th><th style="padding:6px 7px;text-align:left;">근거</th><th style="padding:6px 7px;text-align:left;">사서함(통관필증 저장 대상)</th></tr></thead><tbody>${trs}</tbody></table>
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#1B2A3B;color:#fff;"><th style="padding:6px 7px;text-align:left;">파일</th><th style="padding:6px 7px;">매칭</th><th style="padding:6px 7px;text-align:left;">근거</th><th style="padding:6px 7px;text-align:left;">사서함(수입면장 저장 대상)</th></tr></thead><tbody>${trs}</tbody></table>
       <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
-        <button onclick="saveLicBatch()" ${allOk ? '' : 'disabled'} style="padding:8px 16px;font-size:13px;background:${allOk ? '#2BB673' : '#ccc'};color:#fff;border:none;border-radius:6px;cursor:${allOk ? 'pointer' : 'not-allowed'};">💾 통관필증 일괄 저장 (${matched}/${licBatchItems.length})</button>
+        <button onclick="saveLicBatch()" ${allOk ? '' : 'disabled'} style="padding:8px 16px;font-size:13px;background:${allOk ? '#2BB673' : '#ccc'};color:#fff;border:none;border-radius:6px;cursor:${allOk ? 'pointer' : 'not-allowed'};">💾 수입면장 일괄 저장 (${matched}/${licBatchItems.length})</button>
         <span style="font-size:11px;color:#888;">${allOk ? '전부 매칭됨 — 저장 가능' : '🔴 미매칭 건은 드롭다운으로 사서함을 지정해야 저장됩니다'}</span>
       </div>
       <div id="licSaveResult" style="margin-top:8px;font-size:12px;"></div>`;
@@ -406,11 +406,11 @@
       try {
         const base64 = await _fileToBase64(it.file);
         const ctype = it.file.type || (/\.pdf$/i.test(it.filename) ? 'application/pdf' : 'application/octet-stream');
-        await fetchAgent('POST', '', { op: 'upload_customs_cert', shipmentId: it.shipId, file: { base64, filename: it.filename, contentType: ctype } });
+        await fetchAgent('POST', '', { op: 'upload_license', shipmentId: it.shipId, file: { base64, filename: it.filename, contentType: ctype } });   // [v3.2.110] 정본=면허파일(단건과 동일 op)
         done++;
       } catch (e) { fail++; it.conf = 'red'; it.note = '저장실패: ' + (e.message || e); }
     }
-    if (res) res.innerHTML = `<span style="color:${fail ? '#c0392b' : '#0a7b40'};font-weight:700;">✓ 통관필증 저장 완료 — 성공 ${done} / 실패 ${fail}</span>`;
+    if (res) res.innerHTML = `<span style="color:${fail ? '#c0392b' : '#0a7b40'};font-weight:700;">✓ 수입면장 저장 완료 — 성공 ${done} / 실패 ${fail}</span>`;
     renderLicBatchTable();
   };
 

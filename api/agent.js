@@ -999,25 +999,8 @@ module.exports = async (req, res) => {
         return res.json({ ok: true, filename: fname });
       }
 
-      // [수입면장 일괄업로드 v3.2.109] 통관필증(수입신고필증) 업로드 — 관세사 JWT. Shipments.통관필증 1장 replace.
-      //   ★면허파일(fldYmUht…) 아님. 선적일 전체 일괄(대시보드)이 사서함별로 이 op를 호출. content endpoint(uploadAttachment) 재사용.
-      if (op === 'upload_customs_cert') {
-        const { shipmentId, file } = body;
-        if (!shipmentId) return res.status(400).json({ error: 'shipmentId 누락' });
-        if (!file || !file.base64) return res.status(400).json({ error: '파일(file.base64) 누락' });
-        const CUSTOMS_CERT_FIELD = 'fldAHuXolyJHjXyy0';   // Shipments.통관필증 (필드 ID — 한글명 인코딩 사고 방지)
-        await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, { fields: { '통관필증': [] }, typecast: true });   // 1장 replace → 비움
-        const up = await fetch(`https://content.airtable.com/v0/${BASE_ID}/${shipmentId}/${CUSTOMS_CERT_FIELD}/uploadAttachment`, {
-          method: 'POST', headers: { 'Authorization': `Bearer ${AIRTABLE_PAT}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contentType: String(file.contentType || 'application/pdf'), filename: String(file.filename || '수입신고필증.pdf'), file: String(file.base64) }),
-        });
-        if (!up.ok) { const t = await up.text(); return res.status(502).json({ error: `통관필증 업로드 실패 ${up.status}: ${t.slice(0, 160)}` }); }
-        const uj = await up.json();
-        const atts = (uj.fields && uj.fields[CUSTOMS_CERT_FIELD]) || [];
-        const fname = (atts[0] && atts[0].filename) || String(file.filename || '수입신고필증.pdf');
-        await logAction(agent, shipmentId, null, { '통관필증': '(이전)' }, { '통관필증': fname });
-        return res.json({ ok: true, filename: fname });
-      }
+      // [v3.2.110] 수입면장 일괄업로드 정정: 별도 op 폐기 — 정본=면허파일(fldYmUht)이므로 단건과 동일하게 op=upload_license 재사용.
+      //   (v3.2.109가 통관필증(fldAHuXo)을 타깃했으나 면장 데이터는 전부 면허파일에 있어 정정. 통관필증은 0건·미사용.)
 
       return res.status(400).json({ error: 'Unknown op' });
     }
