@@ -59,6 +59,15 @@
       <span id="agentBookingLoading" style="font-size:12px; color:#888;"></span>
     </div>
     <div id="agentBookingResult"><div style="padding:18px; text-align:center; color:#999; font-size:13px;">날짜 선택 후 조회하세요.</div></div>
+    <!-- [수입면장 일괄업로드 v3.2.109] 위 선적일 전체 사서함 — BL번호 내용 자동매칭 → 통관필증 저장 -->
+    <div id="agentLicenseBatch" style="display:none; margin-top:18px; border-top:2px dashed #C9973A; padding-top:14px;">
+      <div style="font-size:13px; font-weight:700; color:#1B2A3B; margin-bottom:6px;">📋 수입신고필증(면장) 일괄 업로드 <span style="font-size:11px; font-weight:400; color:#888;">— 조회된 선적일 전체 사서함 대상 · BL번호 내용 자동매칭 → 통관필증 저장</span></div>
+      <div id="licDrop" style="border:2px dashed #c7dcf3; border-radius:8px; padding:18px; text-align:center; color:#666; font-size:12px; cursor:pointer; background:#fafdff;">
+        📂 면장 PDF·이미지·ZIP 드래그 또는 클릭 — PDF는 BL번호로 자동매칭, 스캔/이미지는 수동 지정
+        <input type="file" id="licFileInput" accept=".pdf,.jpg,.jpeg,.png,.zip" multiple style="display:none;" />
+      </div>
+      <div id="licBatchResult" style="margin-top:10px;"></div>
+    </div>
   </div>
 </div>
 
@@ -229,7 +238,10 @@
     if (inp && !inp.value) inp.value = new Date().toISOString().slice(0, 10);
     document.getElementById('agentBookingResult').innerHTML = '<div style="padding:18px; text-align:center; color:#999; font-size:13px;">날짜 선택 후 조회하세요.</div>';
     document.getElementById('agentBookingCopyBtn').style.display = 'none';
+    const lz = document.getElementById('agentLicenseBatch'); if (lz) lz.style.display = 'none';   // [v3.2.109] 조회 전 숨김
+    _resetLicBatch();
     document.getElementById('agentBookingModal').style.display = 'block';
+    _wireLicDrop();   // [v3.2.109] 면장 드롭존 와이어(1회)
   };
   function isoDayList(base, n) { const out = []; const d = new Date(base + 'T00:00:00'); for (let i = 0; i < n; i++) { const x = new Date(d); x.setDate(d.getDate() + i); out.push(x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')); } return out; }
   window.fetchAgentBooking = async (mode) => {
@@ -244,6 +256,10 @@
       const data = await fetchAgent('GET', '?op=booking_summary&days=' + encodeURIComponent(days.join(',')));
       const rows = data.rows || [];
       loading.textContent = '';
+      agentBookingRows = rows;   // [v3.2.109] 면장 일괄 매칭용(id·blNo 포함)
+      _resetLicBatch();
+      const licZone = document.getElementById('agentLicenseBatch');
+      if (licZone) licZone.style.display = rows.length ? 'block' : 'none';
       if (!rows.length) { box.innerHTML = `<div style="padding:18px; text-align:center; color:#999; font-size:13px;">📭 <strong>${label}</strong> 선적 예정 사서함 0건</div>`; return; }
       let kgT = 0, cbmT = 0, ctnT = 0;
       const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -271,6 +287,144 @@
     try { await navigator.clipboard.writeText(agentBookingCopyText); const b = document.getElementById('agentBookingCopyBtn'); const t = b.textContent; b.textContent = '✓ 복사됨'; setTimeout(() => b.textContent = t, 1500); }
     catch (e) { alert('복사 실패 — 수동 선택하세요'); }
   };
+
+  // ===== [수입면장 일괄업로드 v3.2.109] BL번호 내용 매칭 → 통관필증 저장 (도구 유틸 소규모 포팅) =====
+  let agentBookingRows = [];
+  let licBatchItems = [];
+  const _blNorm = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  function _resetLicBatch() { licBatchItems = []; const r = document.getElementById('licBatchResult'); if (r) r.innerHTML = ''; }
+
+  // pdf.js 동적 로드 (CDN 3중 폴백 — 도구 loadPdfJs 동일 패턴, IP 생성기 공유 아님)
+  let _pdfjs = null;
+  async function _loadPdfJs() {
+    if (_pdfjs) return _pdfjs;
+    const V = '4.0.379';
+    const libs = [`https://cdn.jsdelivr.net/npm/pdfjs-dist@${V}/build/pdf.min.mjs`, `https://unpkg.com/pdfjs-dist@${V}/build/pdf.min.mjs`, `https://esm.sh/pdfjs-dist@${V}`];
+    const workers = [`https://cdn.jsdelivr.net/npm/pdfjs-dist@${V}/build/pdf.worker.min.mjs`, `https://unpkg.com/pdfjs-dist@${V}/build/pdf.worker.min.mjs`, `https://esm.sh/pdfjs-dist@${V}/build/pdf.worker.min.mjs`];
+    let lastErr;
+    for (let i = 0; i < libs.length; i++) {
+      try {
+        const mod = await import(/* webpackIgnore: true */ libs[i]);
+        const lib = mod.getDocument ? mod : (mod.default && mod.default.getDocument ? mod.default : mod);
+        if (lib && lib.getDocument) { try { lib.GlobalWorkerOptions.workerSrc = workers[i]; } catch (e) {} _pdfjs = lib; return lib; }
+      } catch (e) { lastErr = e; }
+    }
+    throw new Error('PDF 파서 CDN 차단 (' + (lastErr && lastErr.message) + ')');
+  }
+  async function _pdfText(file) {
+    const lib = await _loadPdfJs();
+    const pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+    let text = '';
+    const pages = Math.min(3, pdf.numPages);   // [v3.2.109] 면장 BL번호는 보통 1p, 여유로 3p
+    for (let p = 1; p <= pages; p++) { const pg = await pdf.getPage(p); const tc = await pg.getTextContent(); text += tc.items.map(it => it.str).join(' ') + '\n'; }
+    return text;
+  }
+  // BL번호 후보 추출 (도구 extractBlCandidates 축약 — 라벨 우선 → 일반 영숫자 혼합)
+  function _blCandidates(text) {
+    const T = String(text || '').replace(/ /g, ' ');
+    const seen = new Map();
+    const add = (raw, rank) => { let v = String(raw || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').replace(/^-+|-+$/g, ''); if (v.length < 6 || v.length > 20) return; if (/^[A-Z]{4}\d{7}$/.test(v)) return; if (/^\d+$/.test(v)) return; if (!/[A-Z]/.test(v) || !/\d/.test(v)) return; if (!seen.has(v) || seen.get(v) > rank) seen.set(v, rank); };
+    let m;
+    const labelRe = /(?:HOUSE\s*B\s*\/?\s*L|H\s*\/?\s*B\s*\/?\s*L|B\s*\/?\s*L|선하증권|BILL\s*OF\s*LADING)\s*(?:No\.?|NO\.?|NUMBER|번호|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\- ]{4,22})/ig;
+    while ((m = labelRe.exec(T))) add(m[1].split(/\s{2,}/)[0], 0);
+    const genRe = /\b([A-Z]{2,5}\d{5,}[A-Z0-9]*)\b/g;
+    while ((m = genRe.exec(T))) add(m[1], 2);
+    return [...seen.entries()].sort((a, b) => a[1] - b[1]).map(([value]) => value);
+  }
+  function _fileToBase64(file) { return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1] || ''); r.onerror = reject; r.readAsDataURL(file); }); }
+
+  async function handleLicBatchFiles(fileList) {
+    let files = Array.from(fileList || []);
+    if (!files.length) return;
+    if (!agentBookingRows.length) { alert('먼저 선적일을 조회하세요'); return; }
+    const out = document.getElementById('licBatchResult');
+    if (out) out.innerHTML = '<span style="color:#888;font-size:12px;">🔎 파일 분석 중…</span>';
+    // ZIP 풀기 (JSZip 동적 — 도구와 동일 CDN)
+    const zips = files.filter(f => /\.zip$/i.test(f.name));
+    if (zips.length) {
+      try {
+        const JSZipMod = await import(/* webpackIgnore: true */ 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
+        const JSZip = JSZipMod.default || JSZipMod;
+        for (const z of zips) { const zip = await JSZip.loadAsync(await z.arrayBuffer()); for (const path of Object.keys(zip.files)) { const ent = zip.files[path]; if (ent.dir) continue; if (!/\.(pdf|jpe?g|png)$/i.test(path)) continue; const blob = await ent.async('blob'); files.push(new File([blob], path.split('/').pop(), { type: blob.type || (/\.pdf$/i.test(path) ? 'application/pdf' : 'image/jpeg') })); } }
+      } catch (e) { alert('ZIP 해제 실패 — 일반 파일만 처리 (' + (e.message || '') + ')'); }
+      files = files.filter(f => !/\.zip$/i.test(f.name));
+    }
+    if (!files.length) { if (out) out.innerHTML = '<span style="color:#c0392b;font-size:12px;">처리할 파일 없음</span>'; return; }
+    // 선적일 사서함 BL 인덱스
+    const byBl = {};
+    agentBookingRows.forEach(r => { const k = _blNorm(r.blNo); if (k) (byBl[k] = byBl[k] || []).push(r); });
+    const items = [];
+    for (const file of files) {
+      try {
+        const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+        let text = '', cands = [], matchRow = null, conf = 'red', note = '';
+        if (isPdf) {
+          try { text = await _pdfText(file); } catch (e) { note = 'PDF 파싱 실패'; }
+          if (text && text.replace(/\s/g, '').length >= 20) {
+            cands = _blCandidates(text);
+            for (const c of cands) { const hit = byBl[_blNorm(c)]; if (hit && hit.length === 1) { matchRow = hit[0]; conf = 'green'; note = 'BL ' + c; break; } else if (hit && hit.length > 1) { conf = 'red'; note = 'BL ' + c + ' 중복(' + hit.length + ') — 수동'; } }
+            if (!matchRow && !note) note = cands.length ? ('BL후보 ' + cands.slice(0, 2).join(',') + ' 선적분 BL 불일치') : 'BL번호 미발견';
+          } else if (!note) { note = '텍스트 없는 스캔 — 수동'; }
+        } else { note = '이미지 — 수동'; }
+        items.push({ file, filename: file.name, shipId: matchRow ? matchRow.id : '', mailbox: matchRow ? matchRow.mailbox : '', conf, note });
+      } catch (e) { items.push({ file, filename: (file && file.name) || '(이름없음)', shipId: '', mailbox: '', conf: 'red', note: '분석 실패' }); }
+    }
+    licBatchItems = items;
+    renderLicBatchTable();
+  }
+
+  function renderLicBatchTable() {
+    const el = document.getElementById('licBatchResult');
+    if (!el) return;
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const opts = sel => '<option value="">— 사서함 선택 —</option>' + agentBookingRows.map(r => `<option value="${esc(r.id)}"${r.id === sel ? ' selected' : ''}>${esc(r.mailbox)}${r.blNo ? ' (BL:' + esc(r.blNo) + ')' : ''}</option>`).join('');
+    const cColor = { green: '#0a7b40', red: '#c0392b' };
+    const trs = licBatchItems.map((it, i) => `<tr>
+      <td style="padding:5px 7px;border-bottom:1px solid #eee;font-size:11px;word-break:break-all;">${esc(it.filename)}</td>
+      <td style="padding:5px 7px;border-bottom:1px solid #eee;text-align:center;color:${cColor[it.conf]};font-weight:700;">${it.conf === 'green' ? '🟢' : '🔴'}</td>
+      <td style="padding:5px 7px;border-bottom:1px solid #eee;font-size:11px;color:#666;">${esc(it.note)}</td>
+      <td style="padding:5px 7px;border-bottom:1px solid #eee;"><select onchange="_licReassign(${i}, this.value)" style="font-size:11px;padding:3px 5px;border:1px solid #ccc;border-radius:4px;max-width:200px;">${opts(it.shipId)}</select></td>
+    </tr>`).join('');
+    const matched = licBatchItems.filter(it => it.shipId).length;
+    const allOk = licBatchItems.length > 0 && matched === licBatchItems.length;
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#1B2A3B;color:#fff;"><th style="padding:6px 7px;text-align:left;">파일</th><th style="padding:6px 7px;">매칭</th><th style="padding:6px 7px;text-align:left;">근거</th><th style="padding:6px 7px;text-align:left;">사서함(통관필증 저장 대상)</th></tr></thead><tbody>${trs}</tbody></table>
+      <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
+        <button onclick="saveLicBatch()" ${allOk ? '' : 'disabled'} style="padding:8px 16px;font-size:13px;background:${allOk ? '#2BB673' : '#ccc'};color:#fff;border:none;border-radius:6px;cursor:${allOk ? 'pointer' : 'not-allowed'};">💾 통관필증 일괄 저장 (${matched}/${licBatchItems.length})</button>
+        <span style="font-size:11px;color:#888;">${allOk ? '전부 매칭됨 — 저장 가능' : '🔴 미매칭 건은 드롭다운으로 사서함을 지정해야 저장됩니다'}</span>
+      </div>
+      <div id="licSaveResult" style="margin-top:8px;font-size:12px;"></div>`;
+  }
+  window._licReassign = (i, shipId) => { if (!licBatchItems[i]) return; const r = agentBookingRows.find(x => x.id === shipId); licBatchItems[i].shipId = shipId; licBatchItems[i].mailbox = r ? r.mailbox : ''; if (shipId) { licBatchItems[i].conf = 'green'; licBatchItems[i].note = (licBatchItems[i].note || '') + ' · 수동지정'; } renderLicBatchTable(); };
+
+  window.saveLicBatch = async () => {
+    if (!licBatchItems.length || licBatchItems.some(it => !it.shipId)) { alert('미매칭 건이 있어 저장할 수 없습니다'); return; }
+    const res = document.getElementById('licSaveResult');
+    let done = 0, fail = 0;
+    for (let i = 0; i < licBatchItems.length; i++) {
+      const it = licBatchItems[i];
+      if (res) res.innerHTML = `<span style="color:#888;">저장 중… ${i + 1}/${licBatchItems.length} (${it.mailbox})</span>`;
+      try {
+        const base64 = await _fileToBase64(it.file);
+        const ctype = it.file.type || (/\.pdf$/i.test(it.filename) ? 'application/pdf' : 'application/octet-stream');
+        await fetchAgent('POST', '', { op: 'upload_customs_cert', shipmentId: it.shipId, file: { base64, filename: it.filename, contentType: ctype } });
+        done++;
+      } catch (e) { fail++; it.conf = 'red'; it.note = '저장실패: ' + (e.message || e); }
+    }
+    if (res) res.innerHTML = `<span style="color:${fail ? '#c0392b' : '#0a7b40'};font-weight:700;">✓ 통관필증 저장 완료 — 성공 ${done} / 실패 ${fail}</span>`;
+    renderLicBatchTable();
+  };
+
+  // 드래그앤드롭 + 클릭 와이어 (모달 진입 후 1회)
+  function _wireLicDrop() {
+    const drop = document.getElementById('licDrop'), inp = document.getElementById('licFileInput');
+    if (!drop || !inp || drop._wired) return;
+    drop._wired = true;
+    drop.onclick = () => inp.click();
+    inp.onchange = () => { if (inp.files && inp.files.length) handleLicBatchFiles(inp.files); inp.value = ''; };
+    drop.ondragover = e => { e.preventDefault(); drop.style.background = '#eef5ff'; };
+    drop.ondragleave = () => { drop.style.background = '#fafdff'; };
+    drop.ondrop = e => { e.preventDefault(); drop.style.background = '#fafdff'; if (e.dataTransfer.files && e.dataTransfer.files.length) handleLicBatchFiles(e.dataTransfer.files); };
+  }
 
   window.setFilter = (f) => {
     filter = f;

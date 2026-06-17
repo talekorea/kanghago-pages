@@ -839,7 +839,7 @@ module.exports = async (req, res) => {
         let ships = [];
         for (const c of chunk(shipIds, 50)) {
           const f = `OR(${c.map(id => `RECORD_ID()='${id}'`).join(',')})`;
-          ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=상태&fields[]=출고요청일`));
+          ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=BL번호`));   // [v3.2.109] BL번호 = 수입면장 일괄 매칭 키
         }
         let custMap = {};
         try {
@@ -854,7 +854,7 @@ module.exports = async (req, res) => {
           let kgSum = 0, cbmSum = 0, missing = false;
           boxes.forEach(b => { const kg = parseFloat((b.fields || {})['무게KG']) || 0; const cbm = parseFloat((b.fields || {})['부피CBM']) || 0; kgSum += kg; cbmSum += cbm; if (kg <= 0 || cbm <= 0) missing = true; });
           const cust = custMap[String(mailbox).replace(/-\d{6}$/, '')] || custMap[mailbox] || { member: '', company: '' };   // [선적분 키] base 우선
-          rows.push({ mailbox, shipDate, status, member: cust.member, company: cust.company, boxCount: boxes.length, kgSum, cbmSum, missingMeasure: missing, isReady: boxes.length > 0 && !missing });
+          rows.push({ id: s.id, blNo: sf['BL번호'] || '', mailbox, shipDate, status, member: cust.member, company: cust.company, boxCount: boxes.length, kgSum, cbmSum, missingMeasure: missing, isReady: boxes.length > 0 && !missing });   // [v3.2.109] id·blNo = 면장 일괄(매칭·업로드)
         }
         rows.sort((a, b) => (a.shipDate || '').localeCompare(b.shipDate || '') || a.mailbox.localeCompare(b.mailbox));
         return res.json({ rows, days });
@@ -996,6 +996,26 @@ module.exports = async (req, res) => {
         const atts = (uj.fields && uj.fields[LICENSE_FIELD]) || [];
         const fname = (atts[0] && atts[0].filename) || String(file.filename || '면허.pdf');
         await logAction(agent, shipmentId, null, { '면허파일': '(이전)' }, { '면허파일': fname });
+        return res.json({ ok: true, filename: fname });
+      }
+
+      // [수입면장 일괄업로드 v3.2.109] 통관필증(수입신고필증) 업로드 — 관세사 JWT. Shipments.통관필증 1장 replace.
+      //   ★면허파일(fldYmUht…) 아님. 선적일 전체 일괄(대시보드)이 사서함별로 이 op를 호출. content endpoint(uploadAttachment) 재사용.
+      if (op === 'upload_customs_cert') {
+        const { shipmentId, file } = body;
+        if (!shipmentId) return res.status(400).json({ error: 'shipmentId 누락' });
+        if (!file || !file.base64) return res.status(400).json({ error: '파일(file.base64) 누락' });
+        const CUSTOMS_CERT_FIELD = 'fldAHuXolyJHjXyy0';   // Shipments.통관필증 (필드 ID — 한글명 인코딩 사고 방지)
+        await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, { fields: { '통관필증': [] }, typecast: true });   // 1장 replace → 비움
+        const up = await fetch(`https://content.airtable.com/v0/${BASE_ID}/${shipmentId}/${CUSTOMS_CERT_FIELD}/uploadAttachment`, {
+          method: 'POST', headers: { 'Authorization': `Bearer ${AIRTABLE_PAT}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contentType: String(file.contentType || 'application/pdf'), filename: String(file.filename || '수입신고필증.pdf'), file: String(file.base64) }),
+        });
+        if (!up.ok) { const t = await up.text(); return res.status(502).json({ error: `통관필증 업로드 실패 ${up.status}: ${t.slice(0, 160)}` }); }
+        const uj = await up.json();
+        const atts = (uj.fields && uj.fields[CUSTOMS_CERT_FIELD]) || [];
+        const fname = (atts[0] && atts[0].filename) || String(file.filename || '수입신고필증.pdf');
+        await logAction(agent, shipmentId, null, { '통관필증': '(이전)' }, { '통관필증': fname });
         return res.json({ ok: true, filename: fname });
       }
 
