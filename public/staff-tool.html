@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.95</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.96</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.95</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.96</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3014,27 +3014,33 @@ const FTA_OPTIONS = ['한중', 'RCEP', '아태', 'WTO', '없음'];
 const FTA_LABEL = { '한중': 'fta.kc', 'RCEP': 'fta.rcep', '아태': 'fta.apta', 'WTO': 'fta.wto', '없음': 'fta.none' };
 
 // ========== 부대비용 계산 ==========
-// v3.0.6: 해상운임 — 선적요일 그룹(월수금 28/7, 화목일/일 30/7.5) × CBM(0.3기본+0.1단위 절상)
-//   → USD 산출 후 고시환율(USD_KRW) 곱하고 100원 단위 절상.
+// [v3.2.96] 해상운임 청구 산식 재정의 — CBM단가(요일) × 청구부피(0.1절상·0.5미니멈) × 마진(1.23).
+//   ★옛 base+step($28+$7 / $30+$7.5) 폐기. ★고객 청구 직결 — calcSeaFreightKRW만 교체, ×1.10은 §9 한 번(불변).
+//   청구부피 = max(ceil(실제CBM/0.1)×0.1, 0.5) · 포워딩원가USD = 청구부피×요일단가 · 청구USD = 원가×1.23 · 청구KRW = round(청구USD×환율) pre-VAT.
+const SEA_COST_RATE = { '월수금': 60, '화목일': 65 };   // USD/CBM (조정 자유)
+const SEA_MARGIN = 0.23;                                  // 해운비 마진 (×1.23)
+const SEA_MIN_CBM = 0.5;                                  // 청구부피 최소
 function seaRateGroup(shipDateStr) {
-  // 선적요일 0일~6토. 월(1)·수(3)·금(5)=A(28/7), 화(2)·목(4)·일(0)=B(30/7.5). 토(6)는 선적 없음→B 폴백.
+  // 선적요일 0일~6토. 월(1)·수(3)·금(5)=월수금, 화(2)·목(4)·일(0)=화목일. 토(6)는 선적 없음→화목일 폴백(경고 유지).
   const d = shipDateStr ? new Date(shipDateStr + 'T00:00:00') : null;
   const wd = (d && !isNaN(d)) ? d.getDay() : -1;
-  const groupA = (wd === 1 || wd === 3 || wd === 5);
-  return groupA ? { base: 28, step: 7, name: '월수금' } : { base: 30, step: 7.5, name: '화목일' };
+  const name = (wd === 1 || wd === 3 || wd === 5) ? '월수금' : '화목일';
+  return { name, unit: SEA_COST_RATE[name] };
 }
-function calcSeaUSD(totalCbm, rate) {
+// 청구부피(CBM) — 0.1 절상 후 0.5 미니멈. float-safe(-1e-9).
+function seaBillCbm(totalCbm) {
   const cbm = parseFloat(totalCbm) || 0;
-  if (cbm <= 0.3) return rate.base;
-  const steps = Math.ceil((cbm - 0.3 - 1e-9) / 0.1);  // 0.1단위 절상
-  return rate.base + steps * rate.step;
+  const ceiled = Math.ceil(cbm / 0.1 - 1e-9) * 0.1;
+  return Math.max(Math.round(ceiled * 100) / 100, SEA_MIN_CBM);
 }
-// 최종 해상운임(KRW). 선적일·CBM·환율로 계산, 100원 절상.
+// 최종 해상운임 청구(KRW, pre-VAT). 반환 { usd:청구USD, krw, rate:{name,unit}, billCbm, costUsd, marginRate }.
 function calcSeaFreightKRW(totalCbm, shipDateStr, rateUsdKrw) {
   const rate = seaRateGroup(shipDateStr);
-  const usd = calcSeaUSD(totalCbm, rate);
-  const krw = usd * (parseFloat(rateUsdKrw) || 0);
-  return { usd, krw: Math.ceil(krw / 100) * 100, rate };
+  const billCbm = seaBillCbm(totalCbm);
+  const costUsd = billCbm * rate.unit;             // 포워딩원가
+  const usd = costUsd * (1 + SEA_MARGIN);          // 청구 USD (×1.23)
+  const krw = Math.round(usd * (parseFloat(rateUsdKrw) || 0));   // pre-VAT, round
+  return { usd, krw, rate, billCbm, costUsd, marginRate: SEA_MARGIN };
 }
 // 도구 현재 상태에서 선적일·환율 읽어 해상운임 KRW 반환 (수정값 우선)
 function getSeaFreightKRW() {
@@ -7291,7 +7297,7 @@ function renderOverhead() {
         <div style="background:#fff; border:1px solid #c4d5ea; border-radius:6px; padding:10px 14px;">
           <div style="font-size:11px; color:var(--text-dim); font-weight:600; letter-spacing:0.05em; margin-bottom:4px;">🌊 해상운임</div>
           <div style="font-size:13px; font-weight:600; color:var(--navy);">${seaInfo.rate.name}</div>
-          <div style="font-size:11px; color:#666; margin-top:2px;">$${seaInfo.rate.base} 기본 + $${seaInfo.rate.step}/0.1CBM</div>
+          <div style="font-size:11px; color:#666; margin-top:2px;">$${seaInfo.rate.unit}/CBM · 청구부피 ${seaInfo.billCbm}CBM · 마진 ${Math.round(seaInfo.marginRate*100)}%</div>
           ${rwChk.warn ? `<div style="margin-top:6px; padding:4px 8px; background:#ffebe9; color:#c0392b; border-radius:4px; font-size:10px; font-weight:700;">${rwChk.msg}</div>` : ''}
         </div>
       </div>
@@ -7326,8 +7332,8 @@ function renderOverhead() {
       amount = overridden ? (parseFloat(state.overheadAmounts.sea) || 0) : auto;
       editable = true;
       editVal = overridden ? state.overheadAmounts.sea : auto;
-      const cbmShow = totalCbm <= 0.3 ? `${fmtCBM(totalCbm)} (기본 0.3 적용)` : `${fmtCBM(totalCbm)}`;
-      desc = `${seaInfo.rate.name} · CBM ${cbmShow} → $${seaInfo.usd} × 환율 → ₩${auto.toLocaleString()} (100원 절상)`
+      const cbmShow = `${fmtCBM(totalCbm)} → 청구부피 ${seaInfo.billCbm}CBM`;
+      desc = `${seaInfo.rate.name} · CBM ${cbmShow} × $${seaInfo.rate.unit} = 원가 $${seaInfo.costUsd.toFixed(2)} ×1.23 → 청구 $${seaInfo.usd.toFixed(2)} × 환율 → ₩${auto.toLocaleString()} (pre-VAT)`
            + (overridden ? ` · <span style="color:#c0392b;">수정됨</span>` : '');
     } else if (p.type === 'per_box') {
       // v3.2.39: §11 매트릭스 결과(state.overheadAmounts[key]) 단일 소스.
