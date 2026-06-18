@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.122</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.123</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.122</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.123</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -4343,7 +4343,7 @@ async function loadShipment(forceId) {
     renderBlCoFiles();   // v3.0.7 [Phase C.2]: BL/CO 파일 UI
     bindBlCoFileInputs();// v3.0.7 [Phase C.2]: 파일 input 핸들러 바인딩
     // [v3.2.120] 사서함 전환 시 CO 대조 패널 초기화 — 이전 사서함 입력값·자동비교 상태 잔존(stale) 방지.
-    _coCompareState = null;
+    _coCompareState = null; _coExtracted = null; _blFields = null;   // [v3.2.123] CO 추출·BL 추출도 리셋
     ['coCmpHs', 'coCmpQty', 'coCmpPkg', 'coCmpMark', 'coCmpOrigin', 'coCmpFta'].forEach(id => { const el = document.getElementById(id); if (el) { el.value = ''; el.style.background = ''; el.title = ''; } });
     { const _cr = document.getElementById('coCmpResult'); if (_cr) _cr.innerHTML = ''; }
     renderOverhead();
@@ -6133,7 +6133,7 @@ function resetDocMatch() {
     state.shipment.fields['대조확인자'] = '';
     state.shipmentDirty = true;
   }
-  _coCompareState = null;   // [v3.2.120] CO/BL 변경 → 자동비교 상태 무효(스테일 우회 차단)
+  _coCompareState = null; _coExtracted = null; _blFields = null;   // [v3.2.120/123] CO/BL 변경 → 자동비교·추출 상태 무효(스테일 우회 차단)
   renderDocMatchBadge();
 }
 
@@ -6177,51 +6177,86 @@ function _coInvoiceSource() {
   const apMark = baseMailbox(f['사서함'] || '').toUpperCase();
   const origin = String(f['출발지'] || f['선적항'] || '').trim();
   const ftaSet = [...new Set(prods.map(p => String((p.fields || {})['적용FTA'] || '').trim()).filter(Boolean))].sort();
-  return { hsSet, qtyTotal, boxCount, apMark, origin, ftaSet };
+  // [v3.2.123] consignee 사업자번호 = 대행종류 분기(구매대행=TALE KOREA 162-86-01960 / 배송·결제대행=고객). + IP invoice no.
+  const _at = [...new Set((state.orders || []).map(o => (o.fields || {})['대행종류']).filter(Boolean))];
+  const _isCust = _at.length === 1 && (_at[0] === '배송대행' || _at[0] === '결제대행');
+  const cf = (state.customer && state.customer.fields) || {};
+  const consigneeBiz = (_isCust ? String(cf['사업자번호'] || '').trim() : '162-86-01960').replace(/[^0-9]/g, '');
+  const fwd = String(f['포워딩사'] || '').trim(); const seq = parseInt(f['인보이스순번']) || 0;
+  const yymmdd = String(f['선적일'] || '').slice(2, 10).replace(/-/g, '');
+  const invoiceNo = (fwd && seq > 0 && yymmdd) ? `${fwd}-${yymmdd}-${seq}` : '';
+  return { hsSet, qtyTotal, boxCount, apMark, origin, ftaSet, consigneeBiz, invoiceNo };
 }
-let _coCompareState = null;
-function runCoCompare() {
+let _coCompareState = null, _coExtracted = null, _blFields = null;
+async function runCoCompare() {
   if (!state.shipment) { toastWarn && toastWarn('사서함 먼저 불러오세요'); return; }
+  if (!_blFields && typeof autoFillBlFromAttachment === 'function') { try { await autoFillBlFromAttachment(); } catch (e) {} }   // [v3.2.123] 삼각용 BL 추출(첫 비교 시 1회)
   const src = _coInvoiceSource();
+  const bl = _blFields || {};
+  const co = _coExtracted || {};
   const gv = id => ((document.getElementById(id) || {}).value || '').trim();
-  const inHs = [...new Set(String(gv('coCmpHs')).split(/[\s,]+/).map(x => x.replace(/[^0-9]/g, '').slice(0, 6)).filter(Boolean))].sort();   // [v3.2.119] 6자리 정규화(CO↔HSK 정합)
+  const inHs = [...new Set(String(gv('coCmpHs')).split(/[\s,]+/).map(x => x.replace(/[^0-9]/g, '').slice(0, 6)).filter(Boolean))].sort();
   const inQty = parseInt(String(gv('coCmpQty')).replace(/[^0-9]/g, ''), 10);
-  const inPkg = parseInt(String(gv('coCmpPkg')).replace(/[^0-9]/g, ''), 10);
   const inMark = baseMailbox(gv('coCmpMark')).toUpperCase();
   const inOrigin = gv('coCmpOrigin');
   const inFta = [...new Set(String(gv('coCmpFta')).split(/[\s,]+/).map(x => x.trim()).filter(Boolean))].sort();
   const items = [];
-  items.push({ label: 'HS코드',     input: inHs.join(', ') || '(미입력)', invoice: src.hsSet.join(', ') || '(없음)', match: src.hsSet.length ? (inHs.join('|') === src.hsSet.join('|')) : null });
-  items.push({ label: '수량(총)',    input: isNaN(inQty) ? '(미입력)' : String(inQty), invoice: String(src.qtyTotal), match: isNaN(inQty) ? false : (inQty === src.qtyTotal) });
-  items.push({ label: '포장수(C/T)', input: isNaN(inPkg) ? '(미입력)' : String(inPkg), invoice: String(src.boxCount), match: src.boxCount ? (isNaN(inPkg) ? false : (inPkg === src.boxCount)) : null });
-  items.push({ label: '마크(AP)',    input: inMark || '(미입력)', invoice: src.apMark || '(없음)', match: src.apMark ? (inMark === src.apMark) : null });
-  items.push({ label: '출발지',      input: inOrigin || '(미입력)', invoice: src.origin || '(소스 없음)', match: src.origin ? (_coNormPort(inOrigin) === _coNormPort(src.origin)) : null });
-  // [v3.2.121] ★FTA종류 = 정보(닭-달걀 방지). 확정([✓ CO 대조 확정])이 적용FTA확정을 set하므로 차단 전제조건에서 제외(match=null·info).
-  //   confirm 시 set될 값 안내. (제품 적용FTA와의 실불일치는 §3 세율/적용FTA에서 별도 관리.)
+  // ── 삼각(BL∩CO∩IP): 추출된 소스끼리 일치해야 🟢. <2개면 비교불가(스킵). 회사명 등 빈값은 미추출 처리.
+  const present = v => (v != null && String(v).trim() !== '' && String(v).trim() !== '(미입력)');
+  const tri = (label, norm, vBl, vCo, vIp, missNote) => {
+    const arr = [{ s: 'BL', v: vBl }, { s: 'CO', v: vCo }, { s: 'IP', v: vIp }];
+    const have = arr.filter(x => present(x.v));
+    const miss = arr.filter(x => !present(x.v)).map(x => x.s);
+    let match, note = '';
+    if (have.length < 2) { match = null; note = (missNote || (miss.join('·') + ' 미추출')) + ' — 비교 불가(스킵)'; }
+    else { const ns = have.map(x => norm(x.v)); match = ns.every(n => n === ns[0]); if (miss.length) note = miss.join('·') + ' 미추출(나머지 비교)'; }
+    return { label, scope: '삼각', bl: present(vBl) ? String(vBl) : '—', co: present(vCo) ? String(vCo) : '—', ip: present(vIp) ? String(vIp) : '—', match, note };
+  };
+  const nMark = s => baseMailbox(String(s || '')).toUpperCase();
+  const nBiz = s => String(s || '').replace(/[^0-9]/g, '');
+  const nPort = s => _coNormPort(s);
+  items.push(tri('마크(AP)', nMark, bl.mark, inMark, src.apMark));
+  items.push(tri('적출항', nPort, bl.origin, inOrigin, src.origin));
+  // consignee = 사업자번호. 빈값(개인 등) → 미추출(수동 확인), 자동 🔴 금지.
+  items.push(tri('consignee(사업자번호)', nBiz, bl.consigneeBiz, co.consigneeBiz, src.consigneeBiz, '사업자번호 없음 — 수동 확인'));
+  // ── CO↔IP(2소스)
+  // ★빈 CO입력 = null(스킵, 사람게이트) — 이미지 CO를 false로 차단하지 않음. 제공된 값이 다를 때만 🔴.
+  items.push({ label: 'HS코드', scope: 'CO↔IP', bl: '—', co: inHs.join(', ') || '(미입력)', ip: src.hsSet.join(', ') || '(없음)', match: (src.hsSet.length && inHs.length) ? (inHs.join('|') === src.hsSet.join('|')) : null });
+  items.push({ label: '수량(총)', scope: 'CO↔IP', bl: '—', co: isNaN(inQty) ? '(미입력)' : String(inQty), ip: String(src.qtyTotal), match: isNaN(inQty) ? null : (inQty === src.qtyTotal) });
+  // invoice no (CO box12 ↔ IP 생성번호)
+  const coInv = String(co.invNo || '').toUpperCase();
+  items.push({ label: 'invoice no', scope: 'CO↔IP', bl: '—', co: coInv || '(미추출)', ip: src.invoiceNo || '(미발행)', match: (coInv && src.invoiceNo) ? (coInv === src.invoiceNo.toUpperCase()) : null });
+  // description = ★정보표시만(자유텍스트 퍼지, 차단 제외) — 실질검증은 HS·수량
+  items.push({ label: 'description', scope: '정보', bl: '—', co: '(CO 품명)', ip: '(제품 영문명)', match: null, info: true, willSet: 'HS·수량으로 실질검증' });
+  // FTA종류 = 정보(닭-달걀, 확정 시 적용FTA확정 set)
   const _coFtaRaw = String(gv('coCmpFta')).trim().toUpperCase();
   const _willSet = /한중|CHINA[\s-]*KOREA|^KC$/.test(_coFtaRaw) ? '한중FTA' : (/RCEP/.test(_coFtaRaw) ? 'RCEP협정' : (/아태|APTA|ASEAN|ASIA/.test(_coFtaRaw) ? '아태협정' : ''));
-  items.push({ label: 'FTA종류', input: inFta.join(', ') || '(미입력)', invoice: src.ftaSet.join(', ') || '(제품 적용FTA)', match: null, info: true, willSet: _willSet });
-  const compared = items.filter(it => it.match !== null);
+  items.push({ label: 'FTA종류', scope: '정보', bl: '—', co: inFta.join(', ') || '(미입력)', ip: src.ftaSet.join(', ') || '(제품 적용FTA)', match: null, info: true, willSet: _willSet ? ('확정 시 적용FTA확정=' + _willSet) : 'FTA 미식별 — 수동' });
+  const compared = items.filter(it => it.match !== null && !it.info);
   const mismatches = compared.filter(it => it.match === false).length;
-  _coCompareState = { items, ok: compared.length > 0 && mismatches === 0, mismatches };
+  // [v3.2.123] ok = 실불일치 0(비교된 것 중). 전부 스킵(이미지·미추출)이면 ok=true → 사람 게이트(blind) 허용. 실불일치 있으면 차단.
+  _coCompareState = { items, ok: mismatches === 0, mismatches, comparedN: compared.length };
   renderCoCompare();
 }
 function renderCoCompare() {
   const area = document.getElementById('coCmpResult');
   const btn = document.getElementById('coCmpConfirmBtn');
   if (!area || !_coCompareState) return;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const blLoaded = !!_blFields;
   const rows = _coCompareState.items.map(it => {
-    const icon = it.info ? `<span style="color:#1B5E9A; font-weight:700;">ℹ️ ${it.willSet ? '확정 시 적용FTA확정=' + it.willSet : 'FTA 미식별 — 수동'}</span>`
-      : it.match === null ? '<span style="color:#999;">— 소스 없음(스킵)</span>'
-      : it.match ? '<span style="color:#0a7b40; font-weight:700;">✅ 일치</span>'
+    const icon = it.info ? `<span style="color:#1B5E9A; font-weight:700;">ℹ️ ${esc(it.willSet || '정보')}</span>`
+      : it.match === null ? `<span style="color:#b26a00;">⚠ ${esc(it.note || '비교 불가')}</span>`
+      : it.match ? `<span style="color:#0a7b40; font-weight:700;">✅ 일치${it.note ? ' <span style=\"color:#b26a00;font-weight:400;\">(' + esc(it.note) + ')</span>' : ''}</span>`
       : '<span style="color:#c0392b; font-weight:700;">🔴 불일치</span>';
     const bg = it.info ? '#eef5ff' : (it.match === false ? '#fff5f5' : (it.match === null ? '#fafafa' : '#f1f8f1'));
-    return `<tr style="background:${bg};"><td style="padding:4px 8px; font-weight:600;">${it.label}</td><td style="padding:4px 8px; font-family:ui-monospace,monospace;">${it.input}</td><td style="padding:4px 8px; font-family:ui-monospace,monospace; color:#555;">${it.invoice}</td><td style="padding:4px 8px; text-align:center; white-space:nowrap;">${icon}</td></tr>`;
+    const scopeBadge = it.scope === '삼각' ? '<span style="font-size:9px;color:#fff;background:#8a6d3b;border-radius:3px;padding:1px 4px;">삼각</span>' : (it.scope === 'CO↔IP' ? '<span style="font-size:9px;color:#fff;background:#1B5E9A;border-radius:3px;padding:1px 4px;">CO↔IP</span>' : '');
+    return `<tr style="background:${bg};"><td style="padding:4px 8px; font-weight:600; white-space:nowrap;">${esc(it.label)} ${scopeBadge}</td><td style="padding:4px 8px; font-family:ui-monospace,monospace;">${esc(it.bl)}</td><td style="padding:4px 8px; font-family:ui-monospace,monospace;">${esc(it.co)}</td><td style="padding:4px 8px; font-family:ui-monospace,monospace; color:#555;">${esc(it.ip)}</td><td style="padding:4px 8px; text-align:center;">${icon}</td></tr>`;
   }).join('');
   area.innerHTML = `<table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;">
-    <thead><tr style="background:#1B2A3B; color:#fff;"><th style="padding:5px 8px; text-align:left;">항목</th><th style="padding:5px 8px; text-align:left;">입력(CO)</th><th style="padding:5px 8px; text-align:left;">인보이스</th><th style="padding:5px 8px;">판정</th></tr></thead>
+    <thead><tr style="background:#1B2A3B; color:#fff;"><th style="padding:5px 8px; text-align:left;">항목</th><th style="padding:5px 8px; text-align:left;">BL${blLoaded ? '' : ' <span style=\"font-weight:400;color:#bbb;\">(미추출)</span>'}</th><th style="padding:5px 8px; text-align:left;">CO</th><th style="padding:5px 8px; text-align:left;">IP</th><th style="padding:5px 8px;">판정</th></tr></thead>
     <tbody>${rows}</tbody></table>
-    <div style="margin-top:6px; font-size:12px; font-weight:700; color:${_coCompareState.ok ? '#0a7b40' : '#c0392b'};">${_coCompareState.ok ? '✓ 전 항목 일치 — 대조 확정 가능' : '🔴 불일치 ' + _coCompareState.mismatches + '건 — 확정 불가(입력·서류 재확인)'}</div>`;
+    <div style="margin-top:6px; font-size:12px; font-weight:700; color:${_coCompareState.ok ? '#0a7b40' : '#c0392b'};">${_coCompareState.ok ? (_coCompareState.comparedN > 0 ? `✓ 비교된 ${_coCompareState.comparedN}항목 전부 일치 — 대조 확정 가능` : '⚠ 자동 비교 항목 없음(이미지/미추출) — 사람이 서류 보고 확정(blind)') : '🔴 불일치 ' + _coCompareState.mismatches + '건 — 확정 불가(서류 재확인)'}${blLoaded ? '' : ' · <span style="color:#b26a00;font-weight:400;">BL 미추출(삼각 일부 스킵) — 텍스트 BL 업로드 시 자동, 이미지 BL은 수동</span>'}</div>`;
   if (btn) { btn.disabled = !_coCompareState.ok; btn.style.opacity = _coCompareState.ok ? '1' : '.5'; btn.style.cursor = _coCompareState.ok ? 'pointer' : 'not-allowed'; }
 }
 async function confirmCoCompare() {
@@ -6283,9 +6318,15 @@ function extractCoFields(text) {
   const pcs = (T.match(/(\d{1,6})\s*PCS?\b/gi) || []).map(s => parseInt(s.replace(/[^0-9]/g, ''), 10)).filter(n => n > 0);
   if (pcs.length === 1) { out.qty = pcs[0]; out.qtyMulti = false; }
   else if (pcs.length > 1) { out.qty = pcs.reduce((a, b) => a + b, 0); out.qtyMulti = true; }
+  // [v3.2.123] consignee 사업자번호 — box3(Consignee)~box4(Means) 구간 한정(shipper/notify 오집 방지).
+  const U = T.toUpperCase(); const ci = U.search(/3\.?\s*CONSIGNEE|CONSIGNEE'?S?\s*NAME/);
+  if (ci >= 0) { const ni = U.search(/4\.?\s*MEANS|MEANS OF TRANSPORT/); const region = U.slice(ci, ni > ci ? ni : ci + 400); const rb = region.match(/\d{3}-\d{2}-\d{5}/); if (rb) out.consigneeBiz = rb[0].replace(/[^0-9]/g, ''); }
+  // [v3.2.123] invoice no(box12, BTK/ZTK-YYMMDD-N) + date
+  const iv = T.match(/\b(BTK|ZTK)-\d{6}-\d+\b/i); if (iv) out.invNo = iv[0].toUpperCase();
   return out;
 }
 function applyCoAutofill(co) {
+  _coExtracted = co;   // [v3.2.123] CO 추출 보존(삼각 consignee·invoice no — 입력칸 없는 값)
   const set = (id, val) => { const el = document.getElementById(id); if (el && val != null && val !== '') { el.value = val; el.style.background = '#fff8e1'; el.title = 'CO 자동추출 — 확인 요망'; } };
   set('coCmpFta', co.fta || '');
   set('coCmpOrigin', co.origin || '');
@@ -6323,6 +6364,33 @@ async function autoFillCoFromAttachment() {
     const r = await fetch(co.url); const blob = await r.blob();
     await autoFillCoFromFile(new File([blob], co.filename || 'co.pdf', { type: 'application/pdf' }));
   } catch (e) { if (area) area.innerHTML = '<div style="color:#a14a00;font-size:12px;">⚠ 브라우저가 CO 다운로드를 차단 — CO를 다시 업로드하면 자동채움됩니다. (또는 수동 입력)</div>'; }
+}
+// [v3.2.123] BL 추출 — 삼각대조(BL∩CO∩IP)용. consignee 사업자번호(★Consignee박스 한정)·마크·적출항·BL no.
+function extractBlFields(text) {
+  const T = String(text || '');
+  if (T.replace(/\s/g, '').length < 30) return { hasText: false };
+  const U = T.toUpperCase();
+  const out = { hasText: true };
+  // consignee 사업자번호 — Consignee~Notify 구간(shipper/notify/release 오집 방지)
+  const ci = U.indexOf('CONSIGNEE');
+  if (ci >= 0) { const ni = U.indexOf('NOTIFY', ci + 1); const region = U.slice(ci, ni > ci ? ni : ci + 400); const rb = region.match(/\d{3}-\d{2}-\d{5}/); if (rb) out.consigneeBiz = rb[0].replace(/[^0-9]/g, ''); }
+  const mk = U.match(/\bAP\d{1,}-?\d{0,6}\b/); if (mk) out.mark = mk[0];
+  out.origin = (typeof _portOfLoading === 'function') ? _portOfLoading(T) : '';
+  out.blNo = (typeof extractBlCandidates === 'function') ? ((extractBlCandidates(T)[0] || {}).value || '') : '';
+  return out;
+}
+// 로드된 BL파일 attachment에서 추출 → _blFields(삼각대조 BL 소스). CORS 차단·이미지면 미추출(삼각에서 'BL 미추출' 표시).
+async function autoFillBlFromAttachment() {
+  _blFields = null;
+  const bl = ((state.shipment && state.shipment.fields && state.shipment.fields['BL파일']) || [])[0];
+  if (!bl || !bl.url) return;
+  if (!/\.pdf$/i.test(bl.filename || '') && bl.type !== 'application/pdf') return;   // 이미지 BL → 미추출
+  try {
+    const r = await fetch(bl.url); const blob = await r.blob();
+    const text = await extractBlTextFromPdf(new File([blob], bl.filename || 'bl.pdf', { type: 'application/pdf' }));
+    const bf = extractBlFields(text);
+    if (bf.hasText) _blFields = bf;
+  } catch (e) { /* CORS/파싱 실패 → _blFields null(삼각에서 BL 미추출 표시) */ }
 }
 
 // 파일 → base64 data URL
