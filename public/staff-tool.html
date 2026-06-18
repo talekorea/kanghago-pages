@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.113</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.115</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.113</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.115</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -4125,6 +4125,9 @@ async function loadShipment(forceId) {
       return orderLinks.some(id => orderIds.has(id));
     });
     log(`✓ ${state.products.length}개 상품`, 'ok');
+    // [v3.2.114] stale-overwrite 가드 baseline — 로드 시점 통관/청구 필드 지문. saveAll 직전 Airtable과 비교해 타 세션 변경 시 저장 차단.
+    state._prodBaseline = {};
+    state.products.forEach(p => { state._prodBaseline[p.id] = _prodFingerprint(p.fields); state._prodBaseline[p.id + '_sid'] = (p.fields || {})['상품ID'] || p.id; });
     // [v3.2.90 B] 관세사확정 제품 적용FTA 빈값 자동 채움(미선택 차단) — 렌더·청구서 파생 전에 1회.
     if (typeof autoFillConfirmedProductFta === 'function') autoFillConfirmedProductFta();
 
@@ -4580,7 +4583,7 @@ function buildGroupHeader(gk, ordered) {
     + `<div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">`
     +   `<span class="grp-arrow" style="display:inline-block; width:16px; color:var(--gold);">▶</span>`
     +   `<span>주문 <span style="font-family:ui-monospace,monospace;">${label}</span></span>`
-    +   `<span style="color:var(--text-dim); font-weight:400; font-size:12px;">· 제품 ${items.length}건 · 총수량 <strong style="color:var(--navy);">${qty.toLocaleString()}</strong></span>`
+    +   `<span style="color:var(--text-dim); font-weight:400; font-size:12px;">· 제품 <span data-group-cnt>${items.length}</span>건 · 총수량 <strong data-group-qty style="color:var(--navy);">${qty.toLocaleString()}</strong></span>`
     +   `<span data-group-box-summary style="font-weight:600; font-size:12px; color:${boxSummary ? 'var(--navy)' : '#bbb'}; margin-left:6px;">${boxSummary || '박스 미지정'}</span>`
     +   `<span style="margin-left:auto; display:inline-flex; gap:5px; align-items:center; flex-wrap:wrap;">${rateChips}</span>`
     + `</div>`
@@ -5129,6 +5132,7 @@ function renderProducts() {
           if (totalCell) totalCell.textContent = '¥' + f['합계CNY'].toLocaleString();
           const dBtn = tr.querySelector('.del-product-btn');
           if (dBtn) dBtn.style.display = (q === 0) ? 'inline' : 'none';
+          if (typeof updateGroupQtyHeader === 'function') updateGroupQtyHeader(tr.dataset.group);   // [v3.2.114] 그룹 헤더 총수량 라이브
         }
         recalculate();
         if (field === '박스번호') { renderBoxes(); updateGroupBoxSummary(tr.dataset.group); scheduleBoxAutoSave(p.id); }
@@ -5137,6 +5141,32 @@ function renderProducts() {
         renderTariffEstimate();
         updateModifiedCounter();
       });
+      // [v3.2.114] ★수량 영구 저장 — change(blur/enter) 시 Products.수량+합계CNY 즉시 PATCH. (input은 로컬만 → 통관 수량 정정 소실 버그 처방. saveAll은 수량 미저장.)
+      if (inp.dataset.field === '수량') {
+        inp.addEventListener('change', async () => {
+          const q = parseFloat(inp.value) || 0;
+          const cny = q * (parseFloat(f['단가CNY']) || 0);
+          // [v3.2.115] 합계USD도 동반 저장 — saveAll과 동일 규약(합계CNY×환율 = 단가USD×수량). 수량↔합계CNY↔합계USD 행 정합.
+          const _rateCnyUsd = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
+          const usd = _rateCnyUsd ? cny * _rateCnyUsd : (parseFloat(f['합계USD']) || 0);
+          f['수량'] = q; f['합계CNY'] = cny; if (_rateCnyUsd) f['합계USD'] = usd;
+          const cell = tr.querySelector('[data-cell="합계CNY"]');
+          const _flash = (txt, color) => { if (cell) { const old = cell.textContent; cell.title = txt; cell.style.color = color; } };
+          try {
+            const _qf = { '수량': q, '합계CNY': cny };
+            if (_rateCnyUsd) _qf['합계USD'] = usd;   // 환율 있을 때만 USD 갱신(0으로 덮어쓰기 방지)
+            await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields: _qf, typecast: true });
+            // 우리 변경이므로 baseline 갱신 — 본인 저장이 stale 가드를 트립하지 않게.
+            if (state._prodBaseline) state._prodBaseline[p.id] = _prodFingerprint(f);
+            _flash('✓ 저장됨', 'var(--navy)');
+            if (typeof toastSuccess === 'function') toastSuccess(`수량 저장: ${(f['상품ID']||'')} = ${q.toLocaleString()}`);
+          } catch (e) {
+            _flash('⚠ 저장 실패 — 재시도', '#c0392b');
+            if (cell) cell.style.color = '#c0392b';
+            if (typeof toastError === 'function') toastError(`수량 저장 실패 (${f['상품ID']||p.id}): ${e.message || e} — 다시 입력/저장하세요`);
+          }
+        });
+      }
     });
 
     // HS코드 blur: 포맷 정규화 + 사전/캐시 검색 + 영문명/세율 강제 자동 채움
@@ -5734,6 +5764,46 @@ function summarizeBoxNumbers(values) {
   return arr[0] === arr[arr.length - 1] ? `박스 ${arr[0]}` : `박스 ${arr[0]}-${arr[arr.length - 1]}`;
 }
 function _grpSel(gk) { return (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(gk) : gk; }
+// [v3.2.114] 수량 편집 → 그룹 헤더 "제품 N건·총수량 X" 즉시 재렌더(라이브). DOM 행 합산(편집값 반영).
+function updateGroupQtyHeader(gk) {
+  if (gk == null) return;
+  const sel = _grpSel(gk);
+  const rows = document.querySelectorAll(`#productsBody tr[data-group="${sel}"]`);
+  let qty = 0, cnt = 0;
+  rows.forEach(r => { const i = r.querySelector('input[data-field="수량"]'); if (i) { qty += parseFloat(i.value) || 0; cnt++; } });
+  const hdr = document.querySelector(`#productsBody tr[data-group-header="${sel}"]`);
+  if (hdr) {
+    const q = hdr.querySelector('[data-group-qty]'); if (q) q.textContent = qty.toLocaleString();
+    const c = hdr.querySelector('[data-group-cnt]'); if (c) c.textContent = cnt;
+  }
+}
+// [v3.2.114] stale-overwrite 가드용 — 통관/청구 직결 필드 지문. 로드 baseline ↔ 저장 직전 Airtable 비교.
+const _PROD_GUARD_FIELDS = ['수량', '적용FTA', '박스번호', '단가USD', '합계CNY', 'Description', 'Material', 'HS코드'];
+function _prodFingerprint(f) {
+  f = f || {};
+  return JSON.stringify(_PROD_GUARD_FIELDS.map(k => { const v = f[k]; return (v == null ? '' : String(v)); }));
+}
+// 저장 직전 재조회 → 로드 이후 타 세션 변경 감지(우리 baseline과 다르면 stale). 변경된 상품ID 목록 반환.
+async function checkProductsStale() {
+  const base = state._prodBaseline || {};
+  const ids = Object.keys(base).filter(k => !k.endsWith('_sid'));   // 실제 record id만(보조 _sid 키 제외)
+  if (!ids.length) return { stale: false, changed: [] };
+  const changed = [];
+  const seen = new Set();
+  for (let i = 0; i < ids.length; i += 40) {
+    const chunk = ids.slice(i, i + 40);
+    const formula = 'OR(' + chunk.map(id => `RECORD_ID()='${id}'`).join(',') + ')';
+    let recs = [];
+    try { recs = await apiPaged(`/${TABLES.Products}?filterByFormula=${encodeURIComponent(formula)}`); } catch (e) { /* 조회 실패 시 가드 통과(차단 안 함) */ return { stale: false, changed: [], error: e.message }; }
+    recs.forEach(r => {
+      seen.add(r.id);
+      if (base[r.id] != null && _prodFingerprint(r.fields) !== base[r.id]) changed.push((r.fields || {})['상품ID'] || r.id);
+    });
+  }
+  // 로드된 제품이 Airtable에서 사라진 경우도 변경으로 간주
+  ids.forEach(id => { if (!seen.has(id)) changed.push((base[id + '_sid'] || id)); });
+  return { stale: changed.length > 0, changed };
+}
 function updateGroupBoxSummary(gk) {
   if (gk == null) return;
   const sel = _grpSel(gk);
@@ -5839,6 +5909,7 @@ async function autoSaveBox(productIds) {
       const p = state.products.find(x => x.id === pid);
       if (!p) continue;
       await api('PATCH', `/${TABLES.Products}/${pid}`, { fields: { '박스번호': p.fields['박스번호'] || '' }, typecast: true });
+      if (state._prodBaseline && state._prodBaseline[pid] != null) state._prodBaseline[pid] = _prodFingerprint(p.fields);   // [v3.2.114] 우리 박스저장 반영 → stale 가드 오작동 방지
       await sleep(120);
     }
     await saveBoxesTableAuto();           // 박스 자동생성 유지
@@ -9659,6 +9730,18 @@ async function fetchOfficialRates(forceOverwrite) {
 
 // ========== 저장 ==========
 async function saveAll(skipReload) {
+  // [v3.2.114] ★stale-overwrite 가드 — 로드 이후 타 세션이 통관/청구 필드(수량·적용FTA·박스번호·단가USD·합계CNY·영문명·재질·HS)를 바꿨으면
+  //   옛 스냅샷으로 덮어쓰지 않도록 저장 차단. 수동 저장(!skipReload)에만 적용(자동저장은 가드 생략).
+  if (!skipReload && state.shipment && state._prodBaseline && Object.keys(state._prodBaseline).some(k => !k.endsWith('_sid'))) {
+    let st = null;
+    try { st = await checkProductsStale(); } catch (e) { st = null; }
+    if (st && st.stale) {
+      const _list = st.changed.slice(0, 8).join(', ') + (st.changed.length > 8 ? ` 외 ${st.changed.length - 8}건` : '');
+      if (typeof toastWarn === 'function') toastWarn('저장 차단 — 최신 아님(다시 불러오기 필요)', { title: '⛔ 변경 충돌' });
+      alert('⛔ 저장 차단 — 이 사서함의 제품이 불러온 뒤 다른 세션/기기에서 변경되었습니다.\n\n변경된 제품: ' + _list + '\n\n옛 데이터로 덮어쓰면 통관 신고값이 오염되므로 저장을 막았습니다.\n상단 [불러오기]로 최신 데이터를 다시 읽은 뒤 저장하세요.');
+      return false;
+    }
+  }
   // [박스 v3.2.50] 저장 전 박스 무결성 점검 — 무게/CBM 빈 박스 0값 저장·박스번호 미할당 저장으로 인한
   //   데이터 유실(AP2233 0박스·AP2968/AP1520 34~48 무게0) 방지. 자동저장(skipReload) 경로는 건너뜀.
   if (!skipReload && state.shipment) {
