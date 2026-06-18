@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.125</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.126</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.125</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.126</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6522,7 +6522,7 @@ async function loadPdfJs() {
   throw new Error('PDF 파서 CDN 모두 차단됨 (' + (lastErr && lastErr.message) + ')');
 }
 
-const BL_PREFIXES = ['XWK', 'WY', 'TALE', 'HBL', 'MBL', 'SITC'];   // 접두 폴백 — 발견 시 한 줄 추가
+const BL_PREFIXES = ['XWK', 'WY', 'TALE', 'HBL', 'MBL', 'SITC', 'DH'];   // 접두 폴백 — 발견 시 한 줄 추가 (DH=电放提单 v3.2.126)
 // [v3.2.112] 포워더 상호·전화 오인식 차단(거짓 BL — ICOFKOREA1661-5776류). 거짓초록불 사고(260617 9건) 근본 처방.
 const _BL_REJECT = /KOREA|CO[.,]?LTD|LTD|INC\b|CORP|LOGIS|EXPRESS|SHIPPING|FORWARD|HANSUNG/;
 function extractBlCandidates(text) {
@@ -16767,7 +16767,7 @@ function _isMasterBl(name, content) {
 // [v3.2.79] 파일명에서 BL번호 후보(접두 XWK/WY/SITC 등 + 영숫자). 내용 추출 실패 시 폴백.
 function _blNoFromName(name) {
   // (?:^|[^A-Z]) — _WY3567은 잡고 HWY(고속도로)는 제외. 접두 뒤 숫자 1자 강제(BL번호 패턴).
-  const m = String(name || '').toUpperCase().match(/(?:^|[^A-Z])((?:XWK|WY|SITC|HBL|MBL|TALE)\d[A-Z0-9-]{2,})/);
+  const m = String(name || '').toUpperCase().match(/(?:^|[^A-Z])((?:XWK|WY|SITC|HBL|MBL|TALE|DH)\d[A-Z0-9-]{2,})/);   // [v3.2.126] DH=电放提单 추가
   return m ? m[1].replace(/[^A-Z0-9-]/g, '') : '';
 }
 // [v3.2.80] 마스터BL 선적일 — 파일명/내용 'TALE{YYMMDD}A##' → 'YYYY-MM-DD'.
@@ -17032,8 +17032,10 @@ async function saveBatchDocs() {
       saved++;
       // [v3.2.79] 하우스BL 번호 갱신 — 빈값이면 바로, 기존값 다르면 ★확인 게이트. (통관이 Shipments.BL번호 읽음 — 자동연결)
       // [v3.2.112] ★거짓초록불 금지: 🔴/접두 없는 값/포워더 상호(reject)면 BL번호 저장 안 함(통관·면장 오염 방지). 파일명 앵커 우선이라 정상건은 통과.
-      const _blOk = it.blNumber && it.conf !== 'red' && !_BL_REJECT.test(String(it.blNumber).toUpperCase())
-                    && new RegExp('^(?:' + BL_PREFIXES.join('|') + ')', 'i').test(String(it.blNumber));
+      // [v3.2.126] ★접두 화이트리스트 강제 제거 — DH(电放提단) 등 미등록 선사도 저장(접두 미등록 = 저장 누락 버그). reject(상호·전화) + 형식(영숫자·letter+digit·6~20)만으로 안전 검증.
+      const _bn = String(it.blNumber || '').toUpperCase();
+      const _blOk = it.blNumber && it.conf !== 'red' && !_BL_REJECT.test(_bn)
+                    && /^[A-Z0-9-]{6,20}$/.test(_bn) && /[A-Z]/.test(_bn) && /\d/.test(_bn);
       if (it.docType === 'bl' && _blOk) {
         const row = bookingState.rows.find(x => x.id === it.shipId);
         let cur = '';
