@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.121</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.122</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.121</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.122</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -16689,17 +16689,53 @@ function _shipDateFromName(s) {
   const d = m[1]; return `20${d.slice(0, 2)}-${d.slice(2, 4)}-${d.slice(4, 6)}`;
 }
 // [v3.2.80] 출발지 — BL 내용 'Port of Loading' 또는 항구 키워드. WEIHAI→웨이하이/SHIDAO→석도/YANTAI→연태, 미인식 원문 보존.
-const _PORT_MAP = { WEIHAI: '웨이하이', SHIDAO: '석도', YANTAI: '연태' };
-function _portOfLoading(text) {
+// [v3.2.122] 적출항 맵 EN/KO + 검증기 — 키워드 우선, 라벨앵커는 회사/연락처 reject(거짓값 차단). _portOfLoading(ko)·_portEn(en) 공유.
+const PORT_MAP = {
+  SHIDAO:  { ko: '석도',     en: 'SHIDAO, CHINA' },
+  WEIHAI:  { ko: '웨이하이', en: 'WEIHAI, CHINA' },
+  YANTAI:  { ko: '연태',     en: 'YANTAI, CHINA' },
+  QINGDAO: { ko: '칭다오',   en: 'QINGDAO, CHINA' },
+  RIZHAO:  { ko: '르자오',   en: 'RIZHAO, CHINA' },
+};
+const _PORT_MAP = { WEIHAI: '웨이하이', SHIDAO: '석도', YANTAI: '연태' };   // [호환] _coNormPort 등 기존 참조 보존
+const _PORT_REJECT = /CO\.?,?\s*LTD|SEA\s*&?\s*AIR|\bAIR\b|LOGIS|EXPRESS|SHIPPING|FORWARD|CONTACT|RELEASE|PARTY|&|\d/;
+// 캐논 키 추출: ① 알려진 항구 키워드 우선(닫힌집합) → ② 라벨앵커+검증(회사/연락처 거부) → '' (회사명 반환 금지).
+function _portCanonical(text) {
   const T = String(text || '').toUpperCase();
   if (!T) return '';
-  let raw = '';
-  const m = T.match(/PORT\s*OF\s*LOADING\s*[:\-]?\s*([A-Z][A-Z ,]{2,30})/);
-  if (m) raw = m[1].split(/[,\n]/)[0].trim();
-  if (!raw) { for (const k of Object.keys(_PORT_MAP)) { if (T.includes(k)) { raw = k; break; } } }
-  if (!raw) return '';
-  for (const k of Object.keys(_PORT_MAP)) { if (raw.includes(k)) return _PORT_MAP[k]; }
-  return raw;   // 미인식 → 원문 보존
+  for (const k of Object.keys(PORT_MAP)) { if (T.includes(k)) return k; }   // ① 키워드 우선 (★if(!raw) 가드 제거 — 봉쇄 해소)
+  const m = T.match(/PORT\s*OF\s*LOADING\s*[:\-]?\s*([A-Z][A-Z .,&]{2,40})/);   // ② 라벨앵커(폴백)
+  if (m) {
+    const full = m[1].trim();
+    if (!_PORT_REJECT.test(full)) {
+      const cand = full.split(',')[0].trim();
+      if (/^[A-Z][A-Z ]{2,}$/.test(cand)) {   // 깨끗한 도시/항구명만
+        for (const k of Object.keys(PORT_MAP)) { if (cand.includes(k)) return k; }
+        return cand;   // 미등록 항구명(검증 통과)
+      }
+    }
+  }
+  return '';
+}
+function _portOfLoading(text) {   // 출발지(한글, 기존 호환). 미등록은 원문.
+  const c = _portCanonical(text);
+  if (!c) return '';
+  return (PORT_MAP[c] && PORT_MAP[c].ko) || c;
+}
+function _portEn(text) {   // [v3.2.122] 선적항(영문, IP용). 미등록은 "{원문}, CHINA".
+  const c = _portCanonical(text);
+  if (!c) return '';
+  return (PORT_MAP[c] && PORT_MAP[c].en) || (c + ', CHINA');
+}
+// [v3.2.122] 선적항(IP) 덮어쓰기 정책 — 비었거나 기본 'Weihai, China'면 검증된 en 기록 / 다른 수동값이면 토스트+미기록(수동 우선).
+async function _setShipPortIp(shipId, en, label) {
+  if (!shipId || !en) return false;
+  let cur = '';
+  try { const rec = await api('GET', `/${TABLES.Shipments}/${shipId}`); cur = String((rec.fields || {})['선적항'] || '').trim(); } catch (e) {}
+  const isEmptyOrDefault = !cur || cur.replace(/[\s,]/g, '').toUpperCase() === 'WEIHAICHINA';
+  if (isEmptyOrDefault) { try { await api('PATCH', `/${TABLES.Shipments}/${shipId}`, { fields: { '선적항': en }, typecast: true }); return true; } catch (e) { return false; } }
+  if (cur.toUpperCase() !== en.toUpperCase()) { if (typeof toastWarn === 'function') toastWarn(`${label || ''} 선적항 수동값('${cur}') ≠ BL('${en}') — 덮어쓰지 않음(수동 확인)`, { title: '선적항' }); return false; }
+  return false;   // 이미 동일
 }
 
 async function handleBatchDocFiles(fileList) {
@@ -16774,7 +16810,8 @@ async function handleBatchDocFiles(fileList) {
         coRefMatch = !!(coRefBl && shipBl && _nc(coRefBl) === shipBl);
       }
       // [v3.2.80] 출발지(BL 내용 Port of Loading) + 마스터 선적일(TALE{YYMMDD})
-      const port = (docType === 'bl' || docType === 'co') ? _portOfLoading(pdfText) : '';   // [v3.2.88] 원본 CO도 출발지 추출
+      const port = (docType === 'bl' || docType === 'co') ? _portOfLoading(pdfText) : '';   // [v3.2.88] 출발지(ko·배차)
+      const portEn = (docType === 'bl' || docType === 'co') ? _portEn(pdfText) : '';   // [v3.2.122] 선적항(en·IP)
       const masterShipDate = isMaster ? (_shipDateFromName(file.name) || _shipDateFromName(pdfText)) : '';
       let conf;
       if (isMaster) conf = 'amber';             // 마스터BL — 사서함 매칭 안 함(N/M), 현재 건너뜀
@@ -16787,7 +16824,7 @@ async function handleBatchDocFiles(fileList) {
       // [v3.2.113] ★CO 강한키 게이트: 🟢는 CO 참조 B/L == 사서함 BL번호 일치 시만. 추출실패/불일치/사서함BL빈값 → 🟡(사람 확인). AP만으론 🟢 금지.
       //   (정상 CO는 본문 참조 B/L이 Shipments.BL과 일치 → 그대로 🟢. 강한키 없으면 🟢 금지 — 거짓초록불 차단.)
       if (docType === 'co' && !isMaster && conf === 'green' && !coRefMatch) conf = 'amber';
-      items.push({ file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '', docType, conf, contentAp, isPdf, isImg, thumbUrl, isMaster, blNumber, blMismatch, coRefBl, coRefMatch, port, masterShipDate });
+      items.push({ file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '', docType, conf, contentAp, isPdf, isImg, thumbUrl, isMaster, blNumber, blMismatch, coRefBl, coRefMatch, port, portEn, masterShipDate });
     } catch (e) {
       console.warn('[일괄업로드] 파일 분석 실패(격리):', file && file.name, e.message);
       items.push({ file, filename: (file && file.name) || '(이름없음)', mailbox: '', shipId: '', docType: '', conf: 'red', contentAp: '', isPdf: false, isImg: false, thumbUrl: '', isMaster: false, blNumber: '', port: '', masterShipDate: '' });
@@ -16880,6 +16917,7 @@ async function saveBatchDocs() {
           await api('PATCH', `/${TABLES.Shipments}/${r.id}`, { fields: { '마스터BL파일': [] }, typecast: true });   // 1장 replace
           await uploadAirtableAttachment(r.id, ATTACH_FIELD_IDS['마스터BL파일'], it.file);
           if (it.port) { await api('PATCH', `/${TABLES.Shipments}/${r.id}`, { fields: { '출발지': it.port }, typecast: true }); portSet++; }
+          if (it.portEn) { try { await _setShipPortIp(r.id, it.portEn, r.mailbox); } catch (e) {} }   // [v3.2.122] 선적항(IP) — 정책 적용
           ok++;
         } catch (e) { failed++; console.warn('[마스터BL]', r.mailbox, e.message); }
       }
@@ -16912,7 +16950,8 @@ async function saveBatchDocs() {
         if (doUpdate) { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { 'BL번호': it.blNumber }, typecast: true }); blNoUpdated++; if (row) row && (it._blSaved = it.blNumber); }
       }
       // [v3.2.80] 하우스BL 출발지 → 그 사서함 Shipments.출발지 (추출 성공 시).
-      if ((it.docType === 'bl' || it.docType === 'co') && it.port) { try { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { '출발지': it.port }, typecast: true }); portSet++; } catch (e) {} }   // [v3.2.88] 원본 CO도 출발지 저장(있으면)
+      if ((it.docType === 'bl' || it.docType === 'co') && it.port) { try { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { '출발지': it.port }, typecast: true }); portSet++; } catch (e) {} }   // [v3.2.88] 출발지(ko·배차)
+      if ((it.docType === 'bl' || it.docType === 'co') && it.portEn) { try { await _setShipPortIp(it.shipId, it.portEn, it.mailbox); } catch (e) {} }   // [v3.2.122] 선적항(en·IP) — 정책 적용
       if (el) el.querySelectorAll('tbody tr')[i] && (el.querySelectorAll('tbody tr')[i].style.background = '#e8f5e9');
     } catch (e) { failed++; console.warn('[일괄저장]', it.filename, e.message); }
   }
