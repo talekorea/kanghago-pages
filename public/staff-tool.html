@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.123</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.124</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.123</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.124</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -10453,7 +10453,8 @@ function renderFinalConfirm() {
   const blFileOk = !!(f['BL파일'] && Array.isArray(f['BL파일']) && f['BL파일'].length);
   const coFileOk = !!(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length);
   const matchOk = f['대조확인상태'] === '확인완료';   // v3.2.49 [Phase 1-G]: BL/CO 대조 확인 게이트
-  const finalReady = s1 && hasBoxes && rOk && hasWorkCosts
+  // [v3.2.124] ★작업비 = soft(하드 요건 제외) — 강하고 작업 없는 사서함은 작업비 0이 정상(AP1520 등). 표시만 ✓/—, 차단 안 함.
+  const finalReady = s1 && hasBoxes && rOk
                   && s2 && blNumOk && blFileOk && coFileOk && matchOk;
 
   // v3.1.0 발행 후 진행 추적 (게이트 X, 정보만)
@@ -10483,7 +10484,7 @@ function renderFinalConfirm() {
   if (_hsTag) finalMiss.push(_hsTag);          // [v3.2.101] 최종=+HS
   if (_hdrTag) finalMiss.push(_hdrTag);        // [v3.2.101] 최종=+신고 헤더필드
   if (!rOk) finalMiss.push('환율');
-  if (!hasWorkCosts) finalMiss.push('작업비');
+  // [v3.2.124] 작업비 누락은 finalMiss에서 제외(soft) — 작업비 0 정상 사서함 차단 방지.
   if (!s2) finalMiss.push('관세사확정');
   if (!blNumOk) finalMiss.push('BL번호');
   if (!blFileOk) finalMiss.push('BL파일');
@@ -10499,7 +10500,7 @@ function renderFinalConfirm() {
       ${chk(s1, '① 직원 추출 — 제품 ' + prods.length + '개')}
       ${chk(hasBoxes, '② 박스 정보 입력')}
       ${chk(rOk, '③ 환율 입력')}
-      ${chk(hasWorkCosts, '④ 강하고 작업비 입력')}
+      <div style="padding:3px 0; color:${hasWorkCosts ? '#0a7b40' : '#888'};">${hasWorkCosts ? '✓' : '—'} ④ 강하고 작업비${hasWorkCosts ? '' : ' <span style="font-size:11px;">(없음 — 작업 없는 사서함은 정상, 차단 안 함)</span>'}</div>
       <div style="font-weight:700; color:var(--navy); margin:10px 0 4px; padding-bottom:4px; border-bottom:1px solid #eee;">📋 최종 다운로드 (관세사 전달용)</div>
       ${chk(s2, '⑤ 관세사 분류 — ' + confN + '/' + prods.length + ' 확정')}
       ${chk(blNumOk, '⑥ BL 번호', f['BL번호'] || '')}
@@ -11175,7 +11176,7 @@ async function downloadInvoiceExcel(opts) {
 
   if (stage === 'final') {
     if (!rOk) miss.push('환율');
-    if (!hasWorkCosts) miss.push('작업비');
+    // [v3.2.124] ★작업비 = soft(하드 제외) — 강하고 작업 없는 사서함은 작업비 0 정상. 1차 게이트와 동일하게 차단 안 함.
     const prods = state.products || [];
     const confN = prods.filter(p => p.fields['관세사확정'] === true).length;
     if (confN < prods.length) miss.push('관세사확정');
