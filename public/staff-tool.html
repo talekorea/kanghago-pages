@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.105</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.113</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.105</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.113</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1334,6 +1334,17 @@
           <button type="button" id="coCmpConfirmBtn" onclick="confirmCoCompare()" disabled style="padding:7px 16px; background:#0a7b40; color:#fff; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:not-allowed; opacity:.5;">✓ CO 대조 확정</button>
         </div>
         <div id="coCmpResult"></div>
+      </div>
+    </div>
+    <div style="border-top:1px solid #dbe8f5;"></div>
+    <!-- 5️⃣ 수입면장 (관세사 업로드 — 사장 도구는 읽기/다운로드 전용) [v3.2.111] -->
+    <div style="padding:9px 0;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="flex:none; width:26px; height:26px; line-height:26px; text-align:center; border-radius:50%; background:#C9973A; color:#fff; font-size:12px; font-weight:700;">5</span>
+        <div style="flex:1;"><strong style="color:#1B2A3B;">수입면장</strong> <span style="font-size:11px; color:#888;">관세사 업로드 · 보기/다운로드</span> <span id="licViewStatus" style="font-size:11px; margin-left:4px;"></span></div>
+      </div>
+      <div style="margin-left:38px; margin-top:6px;">
+        <div id="licFileList" style="font-size:11px; color:#666;"></div>
       </div>
     </div>
     <div style="font-size:11px; color:#888; margin-top:10px;">
@@ -5950,6 +5961,20 @@ function renderBlCoFiles() {
   };
   renderList('blFileList', 'bl', f['BL파일']);
   renderList('coFileList', 'co', f['CO파일']);
+  // [v3.2.111] 수입면장(면허파일) — 사장 도구는 읽기/다운로드 전용(삭제 X, 관세사가 업로드). 여러 장 전부 나열.
+  const licEl = document.getElementById('licFileList');
+  if (licEl) {
+    const lf = f['면허파일'] || [];
+    licEl.innerHTML = lf.length
+      ? lf.map((file, i) => {
+          const name = file.filename || (file.url ? file.url.split('/').pop() : ('수입면장_' + (i + 1)));
+          const size = file.size ? ` (${Math.round(file.size / 1024)}KB)` : '';
+          return `<div style="padding:3px 0;">${file.url ? `<a href="${file.url}" target="_blank" rel="noopener" style="color:#1B5E9A; text-decoration:none;">📋 ${name}</a>` : `<span>📋 ${name}</span>`}<span style="color:#888; font-size:10px;">${size}</span></div>`;
+        }).join('')
+      : '<span style="color:#aaa;">업로드된 수입면장 없음 (관세사 업로드 대기)</span>';
+    const ls = document.getElementById('licViewStatus');
+    if (ls) { ls.textContent = lf.length ? `✓ ${lf.length}장` : '미업로드'; ls.style.color = lf.length ? '#0a7b40' : '#888'; }
+  }
   const blStatus = document.getElementById('blFileStatus');
   const coStatus = document.getElementById('coFileStatus');
   if (blStatus) blStatus.textContent = (f['BL파일'] && f['BL파일'].length) ? '✓ 업로드됨' : '미업로드';
@@ -6243,6 +6268,8 @@ async function loadPdfJs() {
 }
 
 const BL_PREFIXES = ['XWK', 'WY', 'TALE', 'HBL', 'MBL', 'SITC'];   // 접두 폴백 — 발견 시 한 줄 추가
+// [v3.2.112] 포워더 상호·전화 오인식 차단(거짓 BL — ICOFKOREA1661-5776류). 거짓초록불 사고(260617 9건) 근본 처방.
+const _BL_REJECT = /KOREA|CO[.,]?LTD|LTD|INC\b|CORP|LOGIS|EXPRESS|SHIPPING|FORWARD|HANSUNG/;
 function extractBlCandidates(text) {
   const T = String(text || '').replace(/ /g, ' ');
   const seen = new Map();   // value -> rank (0 라벨 / 1 접두 / 2 일반)
@@ -6252,15 +6279,17 @@ function extractBlCandidates(text) {
     if (/^[A-Z]{4}\d{7}$/.test(v)) return;          // ISO 컨테이너번호 제외
     if (/^\d+$/.test(v)) return;                     // 순수 숫자 제외
     if (!/[A-Z]/.test(v) || !/\d/.test(v)) return;   // BL은 영문+숫자 혼합
+    if (_BL_REJECT.test(v)) return;                  // [v3.2.112] 포워더 상호 제외(ICOFKOREA…)
+    if (/^\d{2,4}-\d{3,4}/.test(v)) return;          // [v3.2.112] 전화번호꼴 제외
     if (!seen.has(v) || seen.get(v) > rank) seen.set(v, rank);
   };
   let m;
-  // (a) 라벨 우선
+  // [v3.2.112] (a) 접두(HBL) 최우선 — 실제 선사 접두
   const labelRe = /(?:HOUSE\s*B\s*\/?\s*L|H\s*\/?\s*B\s*\/?\s*L|B\s*\/?\s*L|BILL\s*OF\s*LADING)\s*(?:No\.?|NO\.?|NUMBER|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\- ]{4,22})/ig;
-  while ((m = labelRe.exec(T))) add(m[1].split(/\s{2,}/)[0], 0);
-  // (b) 접두 폴백
+  while ((m = labelRe.exec(T))) add(m[1].split(/\s{2,}/)[0], 1);
+  // (b) 접두(HBL) — ★최우선(rank 0): 선사 접두가 라벨/일반보다 신뢰
   const preRe = new RegExp('\\b((?:' + BL_PREFIXES.join('|') + ')[A-Z0-9-]{4,})\\b', 'ig');
-  while ((m = preRe.exec(T))) add(m[1], 1);
+  while ((m = preRe.exec(T))) add(m[1], 0);
   // (c) 일반 폴백
   const genRe = /\b([A-Z]{2,5}\d{5,}[A-Z0-9]*)\b/g;
   while ((m = genRe.exec(T))) add(m[1], 2);
@@ -7351,7 +7380,12 @@ function renderOverhead() {
       amount = (v != null && v !== '' && parseFloat(v) > 0)
         ? (parseFloat(v) || 0)
         : ((typeof calcParcelTotalKrwPreVat === 'function') ? calcParcelTotalKrwPreVat() : 0);
-      desc = `택배 매트릭스 (부피·무게 반영) — pre-VAT · ${parcelCount}박스`;
+      // v3.2.106: 박스별 합 근거 간단 표시 — ★§6 박스 테이블·청구식과 동일 소스(getParcelDetailByBox). 표시만.
+      const _pd = (typeof getParcelDetailByBox === 'function') ? getParcelDetailByBox() : [];
+      const _basis = _pd.length
+        ? ' · 박스별 ' + _pd.map(d => d && d.exceeded ? '수동' : ('₩' + (parseFloat(d.amount)||0).toLocaleString())).join('+')
+        : '';
+      desc = `택배 매트릭스 (부피·무게 반영) — pre-VAT · ${parcelCount}박스${_basis}`;
     } else if (p.type === 'manual') {
       amount = parseFloat(state.overheadAmounts[p.key]) || 0;
       editable = true;
@@ -10533,8 +10567,17 @@ function getInvoiceFilename(purpose) {
 function getInvoiceRemarks() {
   const cf = (state.customer && state.customer.fields) || {};
   const sf = (state.shipment && state.shipment.fields) || {};
-  const FTA_LABEL = { '한중FTA': '한중 FTA', '아태FTA': '아태협정', '일반': '일반 세율', '미선택': '미선택' };
-  const ftaDisplay = FTA_LABEL[sf['선택FTA']] || sf['선택FTA'] || '미선택';
+  // [v3.2.107] Applied FTA 라벨 소스 = 적용FTA확정(통관 확정값) 우선, 없으면(1차 등) 선택FTA 폴백.
+  //   ★표시/메타만 — 인보이스 세율 컬럼(FTA_한중·기본세율·taxMode)과 무관(세율 로직 미변경).
+  //   매핑 보강: 적용FTA확정 옵션(일반/한중FTA/아태협정/RCEP협정) 전부 + 선택FTA 레거시 키 호환.
+  const FTA_LABEL = {
+    '한중FTA': '한중 FTA', '아태협정': '아태협정', 'RCEP협정': 'RCEP 협정', '일반': '일반 세율',
+    '아태FTA': '아태협정', '미선택': '미선택',   // 선택FTA 레거시 키 호환
+  };
+  const ftaSrc = (sf['적용FTA확정'] && String(sf['적용FTA확정']).trim()) || sf['선택FTA'] || '미선택';
+  const ftaDisplay = FTA_LABEL[ftaSrc] || ftaSrc || '미선택';
+  // [v3.2.107] C: CO 동봉 접미 — CO파일 첨부 시 " (C/O attached)". 없으면 접미 없음.
+  const coAttached = !!(sf['CO파일'] && Array.isArray(sf['CO파일']) && sf['CO파일'].length);
   const taxpayer = cf['회사명'] || cf['회원명'] || '-';
   return [
     'country of origin: MADE IN CHINA',
@@ -10543,7 +10586,7 @@ function getInvoiceRemarks() {
     '통관고유부호: ' + (cf['통관고유부호'] || '-'),
     'Tel: ' + (cf['연락처'] || '-'),
     'Mail: ' + (cf['이메일'] || '-'),
-    'Applied FTA: ' + ftaDisplay,
+    'Applied FTA: ' + ftaDisplay + (coAttached ? ' (C/O attached)' : ''),
   ];
 }
 
@@ -11088,11 +11131,32 @@ async function downloadInvoiceExcel(opts) {
     const ws1 = wb.addWorksheet('테일코리아인보이스');
     // [C] CI 세율 칸 단계별: 1차=3칸(기본/CO미/CO발) 빈칸 / 최종+CO업로드=CO발행 1칸(한중FTA) / 최종+CO없음=기본 1칸(기본세율).
     //   CO 신호 = f['CO파일'].length (CO 정합 경고가 쓰던 신호와 동일). ※현 최종 게이트는 CO파일 필수 → 최종은 사실상 'co' 모드.
-    const coUploaded = !!(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length);
-    const taxMode = (stage === 'first') ? 'first' : (coUploaded ? 'co' : 'base');
+    // [v3.2.108] ★세율·라벨·taxMode 단일소스 = Shipments.적용FTA확정. 한중FTA 하드코딩 제거.
+    //   매핑: 한중FTA→FTA_한중/CN · RCEP협정→FTA_RCEP중국/RC · 아태협정→아태세율/E1 · 일반(그외)→기본세율/A(base).
+    //   ★일반인데 CO파일만 있어도 base(기본세율) — 한중세율 오노출 차단(구버전 coUploaded 분기 버그 교정).
+    //   WTO 양허가 더 낮은 건은 관세사 확정에 맡김(IP는 적용FTA확정 세율 표시).
+    const FTA_RATE_MAP = {
+      '한중FTA':  { field: 'FTA_한중',     live: 'CN', label: 'CO발행 (한중FTA)' },
+      'RCEP협정': { field: 'FTA_RCEP중국', live: 'RC', label: 'CO발행 (RCEP)' },
+      '아태협정': { field: '아태세율',     live: 'E1', label: 'CO발행 (APTA)' },
+    };
+    const _ftaConf = String(f['적용FTA확정'] || '').trim();
+    const _ftaMap = FTA_RATE_MAP[_ftaConf] || null;   // null = 일반/미선택 → base(기본세율)
+    // [v3.2.108] 세율 해석: 제품 캐시 필드 우선 → 빈값이면 lookupTariff(hs) 실시간 보강(KANGHAGO_TARIFF, RC/E1 완비).
+    const _resolveRate = (pf, fieldName, liveKey) => {
+      const cached = pf[fieldName];
+      if (cached != null && cached !== '') return cached;
+      const hs = pf['HS코드'];
+      if (hs && typeof lookupTariff === 'function') {
+        const t = lookupTariff(hs);
+        if (t && t[liveKey] != null && t[liveKey] !== '') return t[liveKey];
+      }
+      return '';
+    };
+    const taxMode = (stage === 'first') ? 'first' : (_ftaMap ? 'co' : 'base');
     const rateCols = (taxMode === 'first')
       ? [{ label: '기본', src: 'blank' }, { label: 'CO미발행', src: 'blank' }, { label: 'CO발행', src: 'blank' }]
-      : (taxMode === 'co') ? [{ label: 'CO발행 (한중FTA)', src: 'fta' }]
+      : (taxMode === 'co') ? [{ label: _ftaMap.label, src: 'fta' }]
       : [{ label: '기본', src: 'base' }];
     const nRate = rateCols.length;
     const ws1Cols = 5 + nRate + 1;   // Desc,Qty,UnitPrice,Amount,HS + 세율 + Material
@@ -11129,8 +11193,9 @@ async function downloadInvoiceExcel(opts) {
       const m = invMerge.get(key);
       m.qty += qty; m.amount += amount;
       if (m.hs === '' && pf['HS코드']) m.hs = pf['HS코드'];
-      if (m.baseR === '' && pf['기본세율'] != null && pf['기본세율'] !== '') m.baseR = pf['기본세율'];
-      if (m.ftaR === '' && pf['FTA_한중'] != null && pf['FTA_한중'] !== '') m.ftaR = pf['FTA_한중'];
+      // [v3.2.108] 기본세율: 캐시→live A 폴백. FTA세율: 적용FTA확정이 가리키는 필드(_ftaMap)만, 캐시→live 폴백. 한중 하드코딩 제거.
+      if (m.baseR === '') { const r = _resolveRate(pf, '기본세율', 'A'); if (r !== '') m.baseR = r; }
+      if (_ftaMap && m.ftaR === '') { const r = _resolveRate(pf, _ftaMap.field, _ftaMap.live); if (r !== '') m.ftaR = r; }
     });
     [...invMerge.values()].forEach(m => {
       const unitPrice = m.qty > 0 ? m.amount / m.qty : 0;
@@ -11138,7 +11203,8 @@ async function downloadInvoiceExcel(opts) {
       const rateVals = rateCols.map(rc => {
         if (rc.src === 'blank') return '';
         const v = (rc.src === 'fta') ? m.ftaR : m.baseR;
-        if (v === '' || v == null) { if (rc.src !== 'blank') _rateMissing = true; return ''; }
+        // [v3.2.108] 캐시·live 모두 빈값 → "관세사 확정" 표시. ★빈칸/잘못된 한중세율 노출 금지(통관 안전).
+        if (v === '' || v == null) { _rateMissing = true; return '관세사 확정'; }
         return v;
       });
       const row = ws1.addRow([
@@ -11173,7 +11239,7 @@ async function downloadInvoiceExcel(opts) {
       cell.border = { top: MEDIUM, left: THIN, bottom: MEDIUM, right: THIN };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8F4E9' } };
     }
-    if (taxMode !== 'first' && _rateMissing) toastWarn('일부 품목 세율 미확정 — 해당 칸 빈칸 (관세사 확정 필요)', { title: '⚠ 세율' });
+    if (taxMode !== 'first' && _rateMissing) toastWarn("일부 품목 세율 미확정 — 해당 칸 '관세사 확정' 표시 (한중세율 오노출 차단)", { title: '⚠ 세율' });
 
     // 도장 — 우측 하단 (col F~J 영역), 180×180, TOTAL 아래 한 줄 띄움
     const stampStartRow = invTot.number + 2;
@@ -14939,6 +15005,29 @@ function renderParcelInfoSection() {
         </div>
         <span id="parcelSaveStatus" style="font-size:11px; color:#888;"></span>
       </div>
+      ${(() => {
+        // v3.2.106: 박스별 택배 요금 컬럼 — ★표시만. §9 getParcelDetailByBox()와 동일 소스(매트릭스).
+        //   계산·청구식(calcInvoiceBreakdownKrw)·합계 로직 무변경. boxNums와 동일 정렬(박스순번 오름차순)이라 index 정합.
+        const parcelDetail = (typeof getParcelDetailByBox === 'function') ? getParcelDetailByBox() : [];
+        const feeRowsTotal = parcelDetail.reduce((s, d) => s + (d && !d.exceeded ? (parseFloat(d.amount) || 0) : 0), 0);
+        const rowsHtml = boxNums.map((bn, i) => {
+          const b = boxes[bn] || {};
+          const tn = (b.송장번호 != null) ? b.송장번호 : (f[`송장번호_${bn}`] || (bn === '1' ? (f['송장번호'] || '') : ''));
+          const det = parcelDetail[i] || {};
+          const feeCell = det.exceeded
+            ? `<span style="color:#c0392b; font-weight:600;">수동 입력 필요</span>`
+            : `₩${(parseFloat(det.amount)||0).toLocaleString()}`;
+          return `<tr>
+              <td style="padding:7px 10px;"><strong>${mailbox}-${bn}</strong></td>
+              <td style="padding:7px 10px;">
+                <input type="text" data-parcel-box="${bn}" value="${escAttr(tn)}" placeholder="송장번호" oninput="onBoxTrackingInput(this)" style="width:240px; padding:5px 8px; border:1px solid #ccc; border-radius:4px; font-family:monospace;" />
+              </td>
+              <td style="padding:7px 10px; color:#666;">${fmtCBM(parseFloat(b.cbm)||0)}</td>
+              <td style="padding:7px 10px; color:#666;">${(parseFloat(b.kg)||0).toFixed(1)}</td>
+              <td style="padding:7px 10px; text-align:right; font-weight:600; color:var(--navy);">${feeCell}</td>
+            </tr>`;
+        }).join('');
+        return `
       <table style="width:100%; font-size:13px; border-collapse:collapse; background:#fff;">
         <thead style="background:var(--ivory);">
           <tr>
@@ -14946,23 +15035,22 @@ function renderParcelInfoSection() {
             <th style="padding:8px 10px; text-align:left;">송장번호</th>
             <th style="padding:8px 10px; text-align:left; width:100px;">CBM</th>
             <th style="padding:8px 10px; text-align:left; width:80px;">KG</th>
+            <th style="padding:8px 10px; text-align:right; width:110px;">택배 요금 <span style="font-size:10px; color:#999; font-weight:normal;">(매트릭스)</span></th>
           </tr>
         </thead>
         <tbody>
-          ${boxNums.map(bn => {
-            const b = boxes[bn] || {};
-            const tn = (b.송장번호 != null) ? b.송장번호 : (f[`송장번호_${bn}`] || (bn === '1' ? (f['송장번호'] || '') : ''));
-            return `<tr>
-              <td style="padding:7px 10px;"><strong>${mailbox}-${bn}</strong></td>
-              <td style="padding:7px 10px;">
-                <input type="text" data-parcel-box="${bn}" value="${escAttr(tn)}" placeholder="송장번호" oninput="onBoxTrackingInput(this)" style="width:240px; padding:5px 8px; border:1px solid #ccc; border-radius:4px; font-family:monospace;" />
-              </td>
-              <td style="padding:7px 10px; color:#666;">${fmtCBM(parseFloat(b.cbm)||0)}</td>
-              <td style="padding:7px 10px; color:#666;">${(parseFloat(b.kg)||0).toFixed(1)}</td>
-            </tr>`;
-          }).join('')}
+          ${rowsHtml}
         </tbody>
+        <tfoot>
+          <tr style="border-top:2px solid var(--gold); background:var(--ivory);">
+            <td colspan="4" style="padding:8px 10px; text-align:right; font-weight:700;">택배 요금 합계 <span style="font-size:10px; color:#888; font-weight:normal;">(pre-VAT · §8 부대비용·청구식과 동일)</span></td>
+            <td style="padding:8px 10px; text-align:right; font-weight:700; color:var(--gold);">₩${feeRowsTotal.toLocaleString()}</td>
+          </tr>
+        </tfoot>
       </table>
+      <div style="font-size:11px; color:#888; margin-top:6px;">💡 택배 요금은 박스 CBM·KG → 강하고 택배 요율표(매트릭스) 자동 책정. 표시용이며 실제 청구는 §9 합계에서 부가세 한 번 적용.</div>
+    `;
+      })()}
     `;
   } else if (method === '밀크런') {
     if (sub) sub.textContent = '(밀크런 — ⌈CBM/1.5⌉×30,000)';
@@ -16467,11 +16555,22 @@ async function handleBatchDocFiles(fileList) {
       // [v3.2.79] 마스터BL 판별 — 독립적으로 먼저(MBL은 _guessDocType이 'bl' 미인식하므로 게이트 두면 안 됨). 마스터면 docType=bl(마스터, option1 저장 건너뜀).
       const isMaster = _isMasterBl(file.name, pdfText);
       const docType = isMaster ? 'bl' : (_guessDocType(file.name, '') || contentType || '');
-      // [v3.2.79] 하우스BL이면 BL번호 추출: 내용("B/L No." 후보) 우선 → 파일명 폴백.
-      let blNumber = '';
+      // [v3.2.112] 하우스BL 번호 — ★파일명 WY = 진실 앵커. 있으면 채택(내용 노이즈 무시), 내용 BL과 다르면 mismatch 표시.
+      let blNumber = '', blMismatch = false;
       if (docType === 'bl' && !isMaster) {
-        if (pdfText) { const c = extractBlCandidates(pdfText); blNumber = (c[0] && c[0].value) || ''; }
-        if (!blNumber) blNumber = _blNoFromName(file.name);
+        const _n = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const nameWy = (typeof _blNoFromName === 'function') ? _blNoFromName(file.name) : '';
+        const contentBl = pdfText ? ((extractBlCandidates(pdfText)[0] || {}).value || '') : '';
+        if (nameWy) { blNumber = nameWy; if (contentBl && _n(contentBl) !== _n(nameWy)) blMismatch = true; }
+        else blNumber = contentBl;   // 파일명 앵커 없음 → 내용(접두우선) 후보
+      }
+      // [v3.2.113] CO 참조 B/L번호 — CO 본문에서 추출(extractBlCandidates 재사용·접두우선·상호reject) → 매칭 사서함 Shipments.BL번호와 대조.
+      let coRefBl = '', coRefMatch = false;
+      if (docType === 'co' && !isMaster && pdfText) {
+        const _nc = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        coRefBl = (extractBlCandidates(pdfText)[0] || {}).value || '';
+        const shipBl = matchedRow ? _nc(matchedRow.blNo) : '';
+        coRefMatch = !!(coRefBl && shipBl && _nc(coRefBl) === shipBl);
       }
       // [v3.2.80] 출발지(BL 내용 Port of Loading) + 마스터 선적일(TALE{YYMMDD})
       const port = (docType === 'bl' || docType === 'co') ? _portOfLoading(pdfText) : '';   // [v3.2.88] 원본 CO도 출발지 추출
@@ -16481,7 +16580,13 @@ async function handleBatchDocFiles(fileList) {
       else if (!matchedRow) conf = 'red';       // 사서함 미매칭(위챗 이미지 등 — 정상, 드롭다운 지정)
       else if (isPdf && contentAp) conf = (_apBase(contentAp) === base) ? 'green' : 'red';   // 내용 AP 대조
       else conf = 'amber';                       // 이미지 또는 내용 AP 미발견 → 사람 확인
-      items.push({ file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '', docType, conf, contentAp, isPdf, isImg, thumbUrl, isMaster, blNumber, port, masterShipDate });
+      // [v3.2.112] ★BL 강한키 게이트: 🟢는 BL번호 확정(파일명 WY 앵커) 시만. 앵커 없음/내용 불일치 → 🟡(사람 확인). 거짓초록불 금지.
+      //   (정상 문서는 파일명 WY가 내용과 일치 → 그대로 🟢. false-🔴 0.)
+      if (docType === 'bl' && !isMaster && conf === 'green' && (!blNumber || blMismatch)) conf = 'amber';
+      // [v3.2.113] ★CO 강한키 게이트: 🟢는 CO 참조 B/L == 사서함 BL번호 일치 시만. 추출실패/불일치/사서함BL빈값 → 🟡(사람 확인). AP만으론 🟢 금지.
+      //   (정상 CO는 본문 참조 B/L이 Shipments.BL과 일치 → 그대로 🟢. 강한키 없으면 🟢 금지 — 거짓초록불 차단.)
+      if (docType === 'co' && !isMaster && conf === 'green' && !coRefMatch) conf = 'amber';
+      items.push({ file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '', docType, conf, contentAp, isPdf, isImg, thumbUrl, isMaster, blNumber, blMismatch, coRefBl, coRefMatch, port, masterShipDate });
     } catch (e) {
       console.warn('[일괄업로드] 파일 분석 실패(격리):', file && file.name, e.message);
       items.push({ file, filename: (file && file.name) || '(이름없음)', mailbox: '', shipId: '', docType: '', conf: 'red', contentAp: '', isPdf: false, isImg: false, thumbUrl: '', isMaster: false, blNumber: '', port: '', masterShipDate: '' });
@@ -16517,7 +16622,7 @@ function renderBatchDocTable() {
       : `<span style="font-size:22px;" title="${it.isPdf ? 'PDF' : '파일'}">${it.isPdf ? '📄' : '🗎'}</span>`;
     h += `<tr style="border-bottom:1px solid #eee;">
       <td style="padding:5px 6px; text-align:center;">${thumb}</td>
-      <td style="padding:5px 6px; font-family:ui-monospace,monospace; font-size:11px;">${it.filename}${it.isPdf && it.contentAp ? `<br><span style="color:#888;">내용 AP: ${it.contentAp}</span>` : ''}${it.isMaster ? `<br><span style="color:#1B5E9A; font-weight:700;">📦 마스터BL${it.masterShipDate ? ' · 선적일 ' + it.masterShipDate + ' 전체 사서함 저장' : ' (선적일 미상 → 현재 부킹분 적용)'}</span>` : ''}${it.blNumber ? `<br><span style="color:#0a7b40;">BL No: ${it.blNumber}</span>` : ''}${it.port ? `<br><span style="color:#8a6d3b;">출발지: ${it.port}</span>` : ''}</td>
+      <td style="padding:5px 6px; font-family:ui-monospace,monospace; font-size:11px;">${it.filename}${it.isPdf && it.contentAp ? `<br><span style="color:#888;">내용 AP: ${it.contentAp}</span>` : ''}${it.isMaster ? `<br><span style="color:#1B5E9A; font-weight:700;">📦 마스터BL${it.masterShipDate ? ' · 선적일 ' + it.masterShipDate + ' 전체 사서함 저장' : ' (선적일 미상 → 현재 부킹분 적용)'}</span>` : ''}${it.blNumber ? `<br><span style="color:#0a7b40;">BL No: ${it.blNumber}</span>` : ''}${it.docType === 'co' && it.coRefBl ? `<br><span style="color:${it.coRefMatch ? '#0a7b40' : '#c0392b'};">참조 B/L: ${it.coRefBl}${it.coRefMatch ? ' ✓일치' : ' ⚠불일치/확인'}</span>` : ''}${it.docType === 'co' && !it.coRefBl ? `<br><span style="color:#b26a00;">참조 B/L 미추출 — 확인 필요</span>` : ''}${it.port ? `<br><span style="color:#8a6d3b;">출발지: ${it.port}</span>` : ''}</td>
       <td style="padding:5px 6px;"><select onchange="setBatchDocField(${i},'mailbox',this.value)" style="font-size:11px; padding:3px;"${it.isMaster ? ' disabled' : ''}><option value="">(미선택)</option>${mboxOpts(it.mailbox)}</select></td>
       <td style="padding:5px 6px;"><select onchange="setBatchDocField(${i},'docType',this.value)" style="font-size:11px; padding:3px;"><option value="">(미선택)</option><option value="bl"${it.docType === 'bl' ? ' selected' : ''}>BL</option><option value="co"${it.docType === 'co' ? ' selected' : ''}>CO</option></select></td>
       <td style="padding:5px 6px; text-align:center; color:${cColor[it.conf]}; font-weight:700;">${cLabel[it.conf]}</td></tr>`;
@@ -16593,7 +16698,10 @@ async function saveBatchDocs() {
       await uploadAirtableAttachment(it.shipId, fieldId, it.file);
       saved++;
       // [v3.2.79] 하우스BL 번호 갱신 — 빈값이면 바로, 기존값 다르면 ★확인 게이트. (통관이 Shipments.BL번호 읽음 — 자동연결)
-      if (it.docType === 'bl' && it.blNumber) {
+      // [v3.2.112] ★거짓초록불 금지: 🔴/접두 없는 값/포워더 상호(reject)면 BL번호 저장 안 함(통관·면장 오염 방지). 파일명 앵커 우선이라 정상건은 통과.
+      const _blOk = it.blNumber && it.conf !== 'red' && !_BL_REJECT.test(String(it.blNumber).toUpperCase())
+                    && new RegExp('^(?:' + BL_PREFIXES.join('|') + ')', 'i').test(String(it.blNumber));
+      if (it.docType === 'bl' && _blOk) {
         const row = bookingState.rows.find(x => x.id === it.shipId);
         let cur = '';
         try { const rec = await api('GET', `/${TABLES.Shipments}/${it.shipId}`); cur = String((rec.fields || {})['BL번호'] || '').trim(); } catch (e) {}
