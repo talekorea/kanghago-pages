@@ -496,10 +496,14 @@
     const up = document.getElementById('docsHubUpload');
     const sf = (shipment && shipment.fields) || {};
     const cf = (customer && customer.fields) || {};
+    // [v3.2.116] IP 노출 게이팅 = BL파일 업로드됨 AND 스냅샷 존재일 때만 ⬇ (아니면 미등록). BL 없으면 IP도 미노출.
+    const _blUp = Array.isArray(sf['BL파일']) && sf['BL파일'].length;
     if (dl) dl.innerHTML =
       _docRow('PI (결제 인보이스)', sf['PI파일'], 'PI') +
       _docRow('CO (원산지증명서)', sf['CO파일'], 'CO') +
       _docRow('BL (선하증권)', sf['BL파일'], 'BL') +
+      _docRow('1차 IP', _blUp ? sf['1차IP파일'] : [], '1차IP') +
+      _docRow('최종 IP', _blUp ? sf['최종IP파일'] : [], '최종IP') +
       _docRow('위임장', cf['위임장'], '위임장') +
       _docRow('사업자등록증', cf['사업자등록증'], '사업자등록증');
     if (up) up.innerHTML = _docRow('수입면장', sf['면허파일'], '수입면장');
