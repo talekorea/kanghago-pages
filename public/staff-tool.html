@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.124</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.125</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.124</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.125</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -16740,6 +16740,25 @@ function _guessDocType(name, content) {
   if (/BILL\s*OF\s*LADING|(^|[^A-Z])B\/?L([^A-Z]|$)|[_\-]BL[_\-.]|(^|[^A-Z])WY\d{2,}/.test(s)) return 'bl';
   return '';
 }
+// [v3.2.125] ★서류 자동분류 — 내용 키워드 스코어링 우선(CO 전용 vs BL 전용), 우세한 쪽 confident. 비등/약함·이미지 → 파일명 휴리스틱(미확정 ⚠).
+//   PORT OF LOADING은 BL·CO 공통이라 판별에서 제외. 반환 { type:'bl'|'co'|'', confident:bool }.
+function _classifyDoc(name, content, hasText) {
+  const C = String(content || '').toUpperCase();
+  const N = String(name || '').toUpperCase();
+  const coKw = [/CERTIFICATE\s*OF\s*ORIGIN/, /CCPIT/, /ORIGIN\s*CRITERION/, /CHINA[\s-]*KOREA\s*FTA/, /原产地/, /원산지/];
+  const blKw = [/BILL\s*OF\s*LADING/, /B\/?L\s*NO/, /提单/, /电放/, /SHIPPED\s*ON\s*BOARD/];
+  if (hasText && C.replace(/\s/g, '').length >= 30) {
+    const coS = coKw.filter(r => r.test(C)).length;
+    const blS = blKw.filter(r => r.test(C)).length;
+    if (coS > blS && coS > 0) return { type: 'co', confident: true };
+    if (blS > coS && blS > 0) return { type: 'bl', confident: true };
+    // 비등/약함 → 파일명 폴백(미확정)
+  }
+  // 이미지/내용 약함 → 파일명 휴리스틱(★confident=false → 🟡 사람 확인). Weixin/원산지→CO, WY/DH/提单→BL.
+  if (/WEIXIN|微信|원산지|CCPIT|CERTIFICATE|[_\-.]CO[_\-.]/.test(N)) return { type: 'co', confident: false };
+  if (/\bWY\d|\bDH\d|提单|电放|[_\-.]BL[_\-.]|B\/?L/.test(N)) return { type: 'bl', confident: false };
+  return { type: '', confident: false };   // 모호 → 미설정 ⚠
+}
 // [v3.2.79] 마스터BL 판별 — 파일명 'MBL'·'TALE{날짜}A##' or 내용 'MASTER B/L'·Marks 'N/M'. (option1=하우스만 저장, 마스터는 감지·건너뜀)
 function _isMasterBl(name, content) {
   const s = (String(name || '') + ' ' + String(content || '')).toUpperCase();
@@ -16860,7 +16879,11 @@ async function handleBatchDocFiles(fileList) {
       if (isImg) { try { thumbUrl = URL.createObjectURL(file); } catch (e) {} }
       // [v3.2.79] 마스터BL 판별 — 독립적으로 먼저(MBL은 _guessDocType이 'bl' 미인식하므로 게이트 두면 안 됨). 마스터면 docType=bl(마스터, option1 저장 건너뜀).
       const isMaster = _isMasterBl(file.name, pdfText);
-      const docType = isMaster ? 'bl' : (_guessDocType(file.name, '') || contentType || '');
+      // [v3.2.125] 자동분류 — 내용 스코어링(_classifyDoc) 우선. type 미설정이면 미선택 ⚠. confident=false면 🟡.
+      const _hasTxt = !!(isPdf && pdfText && pdfText.replace(/\s/g, '').length >= 30);
+      const _cls = isMaster ? { type: 'bl', confident: true } : _classifyDoc(file.name, pdfText, _hasTxt);
+      const docType = _cls.type;
+      const docConfident = _cls.confident;
       // [v3.2.112] 하우스BL 번호 — ★파일명 WY = 진실 앵커. 있으면 채택(내용 노이즈 무시), 내용 BL과 다르면 mismatch 표시.
       let blNumber = '', blMismatch = false;
       if (docType === 'bl' && !isMaster) {
@@ -16893,7 +16916,9 @@ async function handleBatchDocFiles(fileList) {
       // [v3.2.113] ★CO 강한키 게이트: 🟢는 CO 참조 B/L == 사서함 BL번호 일치 시만. 추출실패/불일치/사서함BL빈값 → 🟡(사람 확인). AP만으론 🟢 금지.
       //   (정상 CO는 본문 참조 B/L이 Shipments.BL과 일치 → 그대로 🟢. 강한키 없으면 🟢 금지 — 거짓초록불 차단.)
       if (docType === 'co' && !isMaster && conf === 'green' && !coRefMatch) conf = 'amber';
-      items.push({ file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '', docType, conf, contentAp, isPdf, isImg, thumbUrl, isMaster, blNumber, blMismatch, coRefBl, coRefMatch, port, portEn, masterShipDate });
+      // [v3.2.125] ★분류 미확정(이미지 휴리스틱·모호)이면 🟢 금지 → 🟡(사람 확인). 자동분류+번호 둘 다 confident여야 🟢.
+      if (!isMaster && conf === 'green' && !docConfident) conf = 'amber';
+      items.push({ file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '', docType, docConfident, conf, contentAp, isPdf, isImg, thumbUrl, isMaster, blNumber, blMismatch, coRefBl, coRefMatch, port, portEn, masterShipDate });
     } catch (e) {
       console.warn('[일괄업로드] 파일 분석 실패(격리):', file && file.name, e.message);
       items.push({ file, filename: (file && file.name) || '(이름없음)', mailbox: '', shipId: '', docType: '', conf: 'red', contentAp: '', isPdf: false, isImg: false, thumbUrl: '', isMaster: false, blNumber: '', port: '', masterShipDate: '' });
@@ -17013,10 +17038,9 @@ async function saveBatchDocs() {
         const row = bookingState.rows.find(x => x.id === it.shipId);
         let cur = '';
         try { const rec = await api('GET', `/${TABLES.Shipments}/${it.shipId}`); cur = String((rec.fields || {})['BL번호'] || '').trim(); } catch (e) {}
-        let doUpdate = false;
-        if (!cur) doUpdate = true;   // 빈값 → 바로
-        else if (cur !== it.blNumber) doUpdate = confirm(`[${it.mailbox}] BL번호 대체 확인\n\n기존: ${cur}\n추출: ${it.blNumber}\n\n추출값으로 대체할까요? (통관 조회가 이 번호를 사용합니다)`);
-        if (doUpdate) { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { 'BL번호': it.blNumber }, typecast: true }); blNoUpdated++; if (row) row && (it._blSaved = it.blNumber); }
+        // [v3.2.125] 빈칸+형식검증 통과 → 자동저장 / 기존값과 다름 → ★자동저장 안 함 + ⚠(선적항 정책과 동일, confirm 다이얼로그 제거).
+        if (!cur) { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { 'BL번호': it.blNumber }, typecast: true }); blNoUpdated++; if (row) it._blSaved = it.blNumber; }
+        else if (cur !== it.blNumber) { if (typeof toastWarn === 'function') toastWarn(`[${it.mailbox}] BL번호 기존('${cur}') ≠ 추출('${it.blNumber}') — 자동저장 안 함(수동 확인)`, { title: 'BL번호' }); it._blSkipped = true; }
       }
       // [v3.2.80] 하우스BL 출발지 → 그 사서함 Shipments.출발지 (추출 성공 시).
       if ((it.docType === 'bl' || it.docType === 'co') && it.port) { try { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { '출발지': it.port }, typecast: true }); portSet++; } catch (e) {} }   // [v3.2.88] 출발지(ko·배차)
