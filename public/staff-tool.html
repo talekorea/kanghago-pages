@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.115</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.121</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.115</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.121</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1330,6 +1330,7 @@
           <label style="font-size:11px; color:#666;">FTA종류<input id="coCmpFta" placeholder="예: 한중 / RCEP" style="width:100%; padding:5px 7px; border:1px solid #ccc; border-radius:4px; font-size:12px;"></label>
         </div>
         <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button type="button" onclick="autoFillCoFromAttachment()" title="업로드된 CO PDF에서 값 자동 추출(확인 요망) — 텍스트 CO만, 이미지는 수동" style="padding:7px 16px; background:#fff7e6; color:#b26a00; border:1px solid #e0c060; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">📄 CO 자동채움</button>
           <button type="button" onclick="runCoCompare()" style="padding:7px 16px; background:#1B5E9A; color:#fff; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">🔍 비교</button>
           <button type="button" id="coCmpConfirmBtn" onclick="confirmCoCompare()" disabled style="padding:7px 16px; background:#0a7b40; color:#fff; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:not-allowed; opacity:.5;">✓ CO 대조 확정</button>
         </div>
@@ -4341,6 +4342,10 @@ async function loadShipment(forceId) {
     renderTapeColor();   // v3.0.5: 테이프 색상 칩
     renderBlCoFiles();   // v3.0.7 [Phase C.2]: BL/CO 파일 UI
     bindBlCoFileInputs();// v3.0.7 [Phase C.2]: 파일 input 핸들러 바인딩
+    // [v3.2.120] 사서함 전환 시 CO 대조 패널 초기화 — 이전 사서함 입력값·자동비교 상태 잔존(stale) 방지.
+    _coCompareState = null;
+    ['coCmpHs', 'coCmpQty', 'coCmpPkg', 'coCmpMark', 'coCmpOrigin', 'coCmpFta'].forEach(id => { const el = document.getElementById(id); if (el) { el.value = ''; el.style.background = ''; el.title = ''; } });
+    { const _cr = document.getElementById('coCmpResult'); if (_cr) _cr.innerHTML = ''; }
     renderOverhead();
     recalculate();
     renderInvoicePreview();
@@ -6128,12 +6133,19 @@ function resetDocMatch() {
     state.shipment.fields['대조확인자'] = '';
     state.shipmentDirty = true;
   }
+  _coCompareState = null;   // [v3.2.120] CO/BL 변경 → 자동비교 상태 무효(스테일 우회 차단)
   renderDocMatchBadge();
 }
 
 // v3.2.49: [확인 완료] — 사람이 눈으로 대조 후. 직원/관세사 공용(도구=staff).
 function confirmDocMatch() {
   if (!state.shipment) { toastWarn && toastWarn('사서함 먼저 불러오세요'); return; }
+  // [v3.2.120 A] ★대조 게이트 통일 — 자동비교 실행됨(_coCompareState) AND 불일치(스킵 제외)면 [대조 확인 완료] 차단.
+  //   자동비교 가능 시 패널 불일치 우회 금지. 이미지 CO(비교 미실행=_coCompareState null)는 현행 사람 게이트 그대로 통과.
+  if (_coCompareState && !_coCompareState.ok) {
+    if (typeof toastWarn === 'function') toastWarn(`패널 불일치 ${_coCompareState.mismatches}건 — 해소 후 확인하세요(자동비교 우회 금지)`, { title: '⛔ 대조 불일치' });
+    return;
+  }
   state.shipment.fields = state.shipment.fields || {};
   state.shipment.fields['대조확인상태'] = '확인완료';
   state.shipment.fields['대조확인일시'] = new Date().toISOString().slice(0, 10);
@@ -6158,7 +6170,8 @@ function _coNormPort(s) {
 function _coInvoiceSource() {
   const f = (state.shipment && state.shipment.fields) || {};
   const prods = (state.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0);
-  const hsSet = [...new Set(prods.map(p => String((p.fields || {})['HS코드'] || '').replace(/[^0-9]/g, '')).filter(Boolean))].sort();
+  // [v3.2.119] CO는 6자리 HS, 인보이스는 10자리 HSK → ★앞 6자리로 정규화 후 비교(거짓 불일치 차단). 집합·정렬이라 순서무관.
+  const hsSet = [...new Set(prods.map(p => String((p.fields || {})['HS코드'] || '').replace(/[^0-9]/g, '').slice(0, 6)).filter(Boolean))].sort();
   const qtyTotal = prods.reduce((s, p) => s + (parseInt((p.fields || {})['수량'], 10) || 0), 0);
   const boxCount = Object.keys(state.boxes || {}).length;
   const apMark = baseMailbox(f['사서함'] || '').toUpperCase();
@@ -6171,7 +6184,7 @@ function runCoCompare() {
   if (!state.shipment) { toastWarn && toastWarn('사서함 먼저 불러오세요'); return; }
   const src = _coInvoiceSource();
   const gv = id => ((document.getElementById(id) || {}).value || '').trim();
-  const inHs = [...new Set(String(gv('coCmpHs')).split(/[\s,]+/).map(x => x.replace(/[^0-9]/g, '')).filter(Boolean))].sort();
+  const inHs = [...new Set(String(gv('coCmpHs')).split(/[\s,]+/).map(x => x.replace(/[^0-9]/g, '').slice(0, 6)).filter(Boolean))].sort();   // [v3.2.119] 6자리 정규화(CO↔HSK 정합)
   const inQty = parseInt(String(gv('coCmpQty')).replace(/[^0-9]/g, ''), 10);
   const inPkg = parseInt(String(gv('coCmpPkg')).replace(/[^0-9]/g, ''), 10);
   const inMark = baseMailbox(gv('coCmpMark')).toUpperCase();
@@ -6183,7 +6196,11 @@ function runCoCompare() {
   items.push({ label: '포장수(C/T)', input: isNaN(inPkg) ? '(미입력)' : String(inPkg), invoice: String(src.boxCount), match: src.boxCount ? (isNaN(inPkg) ? false : (inPkg === src.boxCount)) : null });
   items.push({ label: '마크(AP)',    input: inMark || '(미입력)', invoice: src.apMark || '(없음)', match: src.apMark ? (inMark === src.apMark) : null });
   items.push({ label: '출발지',      input: inOrigin || '(미입력)', invoice: src.origin || '(소스 없음)', match: src.origin ? (_coNormPort(inOrigin) === _coNormPort(src.origin)) : null });
-  items.push({ label: 'FTA종류',     input: inFta.join(', ') || '(미입력)', invoice: src.ftaSet.join(', ') || '(소스 없음)', match: src.ftaSet.length ? (inFta.join('|') === src.ftaSet.join('|')) : null });
+  // [v3.2.121] ★FTA종류 = 정보(닭-달걀 방지). 확정([✓ CO 대조 확정])이 적용FTA확정을 set하므로 차단 전제조건에서 제외(match=null·info).
+  //   confirm 시 set될 값 안내. (제품 적용FTA와의 실불일치는 §3 세율/적용FTA에서 별도 관리.)
+  const _coFtaRaw = String(gv('coCmpFta')).trim().toUpperCase();
+  const _willSet = /한중|CHINA[\s-]*KOREA|^KC$/.test(_coFtaRaw) ? '한중FTA' : (/RCEP/.test(_coFtaRaw) ? 'RCEP협정' : (/아태|APTA|ASEAN|ASIA/.test(_coFtaRaw) ? '아태협정' : ''));
+  items.push({ label: 'FTA종류', input: inFta.join(', ') || '(미입력)', invoice: src.ftaSet.join(', ') || '(제품 적용FTA)', match: null, info: true, willSet: _willSet });
   const compared = items.filter(it => it.match !== null);
   const mismatches = compared.filter(it => it.match === false).length;
   _coCompareState = { items, ok: compared.length > 0 && mismatches === 0, mismatches };
@@ -6194,10 +6211,11 @@ function renderCoCompare() {
   const btn = document.getElementById('coCmpConfirmBtn');
   if (!area || !_coCompareState) return;
   const rows = _coCompareState.items.map(it => {
-    const icon = it.match === null ? '<span style="color:#999;">— 소스 없음(스킵)</span>'
+    const icon = it.info ? `<span style="color:#1B5E9A; font-weight:700;">ℹ️ ${it.willSet ? '확정 시 적용FTA확정=' + it.willSet : 'FTA 미식별 — 수동'}</span>`
+      : it.match === null ? '<span style="color:#999;">— 소스 없음(스킵)</span>'
       : it.match ? '<span style="color:#0a7b40; font-weight:700;">✅ 일치</span>'
       : '<span style="color:#c0392b; font-weight:700;">🔴 불일치</span>';
-    const bg = it.match === false ? '#fff5f5' : (it.match === null ? '#fafafa' : '#f1f8f1');
+    const bg = it.info ? '#eef5ff' : (it.match === false ? '#fff5f5' : (it.match === null ? '#fafafa' : '#f1f8f1'));
     return `<tr style="background:${bg};"><td style="padding:4px 8px; font-weight:600;">${it.label}</td><td style="padding:4px 8px; font-family:ui-monospace,monospace;">${it.input}</td><td style="padding:4px 8px; font-family:ui-monospace,monospace; color:#555;">${it.invoice}</td><td style="padding:4px 8px; text-align:center; white-space:nowrap;">${icon}</td></tr>`;
   }).join('');
   area.innerHTML = `<table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;">
@@ -6217,14 +6235,94 @@ async function confirmCoCompare() {
       대조자: document.body.classList.contains('mode-staff') ? '직원' : '사장님',
       일시: new Date().toISOString(),
     };
-    await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: { 'CO대조': JSON.stringify(payload) }, typecast: true });
+    // [v3.2.120 B2] 사람 확정 시점에 CO FTA → Shipments.적용FTA확정 자동설정(자동확정 아님 — 사람 클릭 연동). 비-한중/미식별이면 미설정(수동).
+    const _coFta = (((document.getElementById('coCmpFta') || {}).value) || '').trim().toUpperCase();
+    let _ftaConf = '';
+    if (/한중|CHINA[\s-]*KOREA|^KC$/.test(_coFta)) _ftaConf = '한중FTA';
+    else if (/RCEP/.test(_coFta)) _ftaConf = 'RCEP협정';
+    else if (/아태|APTA|ASEAN|ASIA/.test(_coFta)) _ftaConf = '아태협정';
+    const _fields = { 'CO대조': JSON.stringify(payload) };
+    if (_ftaConf) _fields['적용FTA확정'] = _ftaConf;
+    await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: _fields, typecast: true });
     if (!state.shipment.fields) state.shipment.fields = {};
     state.shipment.fields['CO대조'] = JSON.stringify(payload);
-    toastSuccess && toastSuccess('CO 블라인드 대조 확정·저장', { title: '🔍 CO' });
+    if (_ftaConf) state.shipment.fields['적용FTA확정'] = _ftaConf;
+    toastSuccess && toastSuccess('CO 대조 확정·저장' + (_ftaConf ? ` · 적용FTA확정=${_ftaConf}` : ' (FTA 미식별 — 적용FTA확정 수동)'), { title: '🔍 CO' });
+    if (_ftaConf && typeof log === 'function') log(`✓ CO 대조 확정 → 적용FTA확정=${_ftaConf} 자동설정`, 'ok');
   } catch (e) {
     console.warn('[CO대조] 저장 경고(필드 미생성 가능):', e.message);
     toastWarn && toastWarn('대조 확인은 완료됐으나 CO대조 필드 저장 실패 — Airtable Shipments에 "CO대조"(긴 텍스트) 필드 추가 필요', { title: '🔍 CO' });
   }
+}
+
+// ===== [v3.2.118] CO 자동채움 — 텍스트 CO PDF(CCPIT 한중 등)에서 대조 패널 값 추출. ★확정은 사람 게이트(confirmCoCompare) 유지, 자동값=확인요망. =====
+//   평탄 토큰 로컬 regex(컬럼위치 의존 X) — extractBlTextFromPdf 재사용. 이미지/스캔/텍스트없음 → 폴백(수동).
+function extractCoFields(text) {
+  const T = String(text || '').replace(/ /g, ' ');
+  if (T.replace(/\s/g, '').length < 30) return { hasText: false };
+  const out = { hasText: true };
+  // FTA종류 (form 헤더)
+  if (/China[\s-]*Korea\s*FTA/i.test(T)) out.fta = '한중';
+  else if (/\bRCEP\b/i.test(T)) out.fta = 'RCEP';
+  else if (/China[\s-]*ASEAN|ASEAN[\s-]*China|\bAPTA\b|Asia[\s-]*Pacific/i.test(T)) out.fta = '아태';
+  // 출발지 (Port of loading)
+  const pm = T.match(/Port of loading[:\s]*([A-Za-z][A-Za-z ]{2,30})/i);
+  if (pm) out.origin = (typeof _coNormPort === 'function' ? _coNormPort(pm[1].split(/\s{2,}|CHINA|,/i)[0].trim()) : pm[1].trim());
+  // 마크 (AP번호)
+  const mk = T.match(/\bAP\d{1,}-?\d{0,6}\b/i);
+  if (mk) out.mark = mk[0].toUpperCase();
+  // 포장수 CTNS — "(N) CTNS" / "(N)CTNS" (단일·TOTAL 공통)
+  const pk = T.match(/\((\d{1,5})\)\s*CTNS/i);
+  if (pk) out.pkg = parseInt(pk[1], 10);
+  // HS 6자리 — 하이픈 앞(날짜/송장번호)·선적일(yymmdd) 제외한 독립 6자리
+  const shipYmd = String((state.shipment && state.shipment.fields && state.shipment.fields['선적일']) || '').slice(2).replace(/-/g, '');
+  const hs = []; const seen = {}; let m; const re = /(\D|^)(\d{6})(\D|$)/g;
+  while ((m = re.exec(T))) { if (m[1] === '-') continue; const c = m[2]; if (c === shipYmd) continue; if (!seen[c]) { seen[c] = 1; hs.push(c); } re.lastIndex = m.index + m[0].length - 1; }
+  if (hs.length) out.hs = hs;
+  // 수량 PCS — 단일=자동 / 다항목=합산(★확인요망, 자동채움 보류)
+  const pcs = (T.match(/(\d{1,6})\s*PCS?\b/gi) || []).map(s => parseInt(s.replace(/[^0-9]/g, ''), 10)).filter(n => n > 0);
+  if (pcs.length === 1) { out.qty = pcs[0]; out.qtyMulti = false; }
+  else if (pcs.length > 1) { out.qty = pcs.reduce((a, b) => a + b, 0); out.qtyMulti = true; }
+  return out;
+}
+function applyCoAutofill(co) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el && val != null && val !== '') { el.value = val; el.style.background = '#fff8e1'; el.title = 'CO 자동추출 — 확인 요망'; } };
+  set('coCmpFta', co.fta || '');
+  set('coCmpOrigin', co.origin || '');
+  set('coCmpMark', co.mark || '');
+  set('coCmpHs', (co.hs || []).join(', '));
+  set('coCmpPkg', co.pkg != null ? co.pkg : '');
+  // [v3.2.120 B1] 수량(총) 자동합산 채움(단일·다항목 모두). 새로고침 시 재추출 복원→손입력 소실 0. 틀린 합산은 인보이스 총수량 대조에서 🔴로 잡힘.
+  if (co.qty != null) set('coCmpQty', co.qty);
+  const area = document.getElementById('coCmpResult');
+  const warnQty = co.qtyMulti ? ' · ⚠ 다항목 CO — 수량(총)=항목별 PCS 자동합산, 인보이스 총수량과 대조 확인 필수' : '';
+  const noFta = !co.fta ? ' · ⚠ FTA종류 미식별(비-한중 form?) — 수동 확인' : '';
+  if (area) area.innerHTML = `<div style="color:#b26a00;font-size:12px;font-weight:600;padding:7px 9px;background:#fff8e1;border:1px solid #e0c060;border-radius:6px;">📄 CO 자동추출 완료 — <strong>전 값 "확인 요망"</strong>(노란칸). CO 원본과 대조 후 [🔍 비교] → [✓ 확정]. ★확정은 사람이 합니다.${warnQty}${noFta}</div>`;
+}
+async function autoFillCoFromFile(file) {
+  const area = document.getElementById('coCmpResult');
+  // [v3.2.119] 폴백 안내 = 눈에 띄는 박스(이미지/스캔/파싱실패 — 수동 입력 확실히 노출).
+  const _fb = (msg) => { if (area) area.innerHTML = `<div style="color:#a14a00;font-size:12px;font-weight:600;padding:7px 9px;background:#fff3e0;border:1px solid #e0a040;border-radius:6px;">${msg}</div>`; };
+  if (!file) { _fb('CO 파일이 없습니다 — 업로드 후 다시 시도하거나 수동 입력하세요.'); return; }
+  const isPdf = /\.pdf$/i.test(file.name || '') || file.type === 'application/pdf';
+  if (!isPdf) { _fb('🖼 이미지/스캔 CO (PNG·JPG) — 자동추출 불가. CO를 보고 아래 값을 <strong>직접 입력</strong> 후 [🔍 비교]하세요.'); return; }
+  let text = '';
+  try { text = await extractBlTextFromPdf(file); } catch (e) { _fb('⚠ CO PDF 파싱 실패 — <strong>수동 입력</strong> 후 [🔍 비교]하세요.'); return; }
+  const co = extractCoFields(text);
+  if (!co.hasText) { _fb('🖼 텍스트 없는 스캔 CO — 자동추출 불가. <strong>수동 입력</strong> 후 [🔍 비교]하세요.'); return; }
+  applyCoAutofill(co);
+}
+// 버튼용 — 이미 업로드된 CO파일 attachment URL에서 재추출(재로드/수동 트리거). CORS 차단 시 안내.
+async function autoFillCoFromAttachment() {
+  const area = document.getElementById('coCmpResult');
+  const co = ((state.shipment && state.shipment.fields && state.shipment.fields['CO파일']) || [])[0];
+  if (!co || !co.url) { if (area) area.innerHTML = '<div style="color:#a14a00;font-size:12px;">업로드된 CO 파일이 없습니다.</div>'; return; }
+  if (!/\.pdf$/i.test(co.filename || '') && co.type !== 'application/pdf') { if (area) area.innerHTML = '<div style="color:#a14a00;font-size:12px;">🖼 이미지 CO — 자동추출 불가. 수동 입력.</div>'; return; }
+  if (area) area.innerHTML = '<div style="color:#888;font-size:12px;">🔎 CO 자동추출 중…</div>';
+  try {
+    const r = await fetch(co.url); const blob = await r.blob();
+    await autoFillCoFromFile(new File([blob], co.filename || 'co.pdf', { type: 'application/pdf' }));
+  } catch (e) { if (area) area.innerHTML = '<div style="color:#a14a00;font-size:12px;">⚠ 브라우저가 CO 다운로드를 차단 — CO를 다시 업로드하면 자동채움됩니다. (또는 수동 입력)</div>'; }
 }
 
 // 파일 → base64 data URL
@@ -6242,7 +6340,24 @@ const ATTACH_FIELD_IDS = {
   'BL파일': 'fldIduUraSKlNagTI', 'CO파일': 'fldWsl4lpHtY6dhAT',
   'PI파일': 'fldvGTfavZZOjj5rT', '면허파일': 'fldYmUhtUuJG5RP0R',
   '마스터BL파일': 'fld25HKypUON1oRZG',   // [v3.2.80] 내부 전용(관세사/고객 비노출)
+  '1차IP파일': 'fldcJsCPqawLRy6ZW', '최종IP파일': 'fldFdbQsut1R0xTQM',   // [v3.2.116] IP 스냅샷(관세사 다운로드용)
 };
+// [v3.2.116] IP 스냅샷 1장 replace 저장 — 개별·배치 공용. clear는 직접 PATCH(배치 무쓰기 가드 우회 — 의도된 스냅샷 쓰기), 업로드는 content endpoint.
+//   ★downloadInvoiceExcel 생성(wb) 로직과 분리 — blob 생성 후 저장만. stage: 'first'→1차IP파일 / 'final'→최종IP파일.
+async function _snapshotIp(shipmentId, stage, blob, filename) {
+  const NAME = stage === 'first' ? '1차IP파일' : (stage === 'final' ? '최종IP파일' : '');
+  if (!NAME || !shipmentId || !blob) return;
+  const fieldId = ATTACH_FIELD_IDS[NAME];
+  try {
+    const pat = airtablePat();
+    // 1장 replace: 기존 비움(직접 fetch — _batchMode api() 가드와 무관). 실패해도 업로드는 시도.
+    try {
+      await fetch(`https://api.airtable.com/v0/${BASE_ID}/${shipmentId}`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${pat}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: { [NAME]: [] }, typecast: true }) });
+    } catch (e) { /* clear 실패 → append로라도 진행 */ }
+    const file = new File([blob], filename || (NAME + '.xlsx'), { type: blob.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    await uploadAirtableAttachment(shipmentId, fieldId, file, filename);
+  } catch (e) { console.warn('[IP 스냅샷 저장 실패]', stage, shipmentId, e && e.message); }
+}
 // [v3.2.73] ★Airtable 첨부 업로드 단일 헬퍼 — content endpoint(uploadAttachment). data:URL 직접 PATCH(422 INVALID_ATTACHMENT_OBJECT) 폐기.
 //   recordId의 fieldId 필드에 base64 1건 append. 응답 result.fields[fieldId] = 갱신된 첨부 목록. ★표시·저장 분리(본 PATCH와 독립).
 async function uploadAirtableAttachment(recordId, fieldId, file, filenameOverride) {
@@ -6290,6 +6405,7 @@ async function handleBlCoFileUpload(kind, fileInput) {
     if (typeof saveAll === 'function') { try { await saveAll({ silent: true }); } catch (e) {} }
     // [v3.2.54] BL PDF면 BL번호 자동추출 (미저장 채우기 — 확정 버튼 전까지 저장 안 됨)
     if (kind === 'bl' && files[0]) { try { extractBlNumberFromFile(files[0]); } catch (e) {} }
+    if (kind === 'co' && files[0]) { try { autoFillCoFromFile(files[0]); } catch (e) {} }   // [v3.2.118] CO 업로드 시 대조 패널 자동채움(확인요망·확정은 사람)
     if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();
   } catch (e) {
     console.error(e);
@@ -11535,6 +11651,8 @@ async function downloadInvoiceExcel(opts) {
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const fname = getInvoiceFilename(stage === 'first' ? 'IP' : 'IP+BL(CO용)');   // [B v3.2.65] 1차=IP / 최종(CO 전달)=IP+BL(CO용)
+    // [v3.2.116] ★IP 스냅샷 저장 — 개별·배치 공용. 생성된 그 blob을 1차IP파일/최종IP파일에 1장 replace(관세사 다운로드용). wb 빌드·청구식 미변경.
+    try { await _snapshotIp((state.shipment && state.shipment.id), stage, blob, fname); } catch (e) { console.warn('[IP 스냅샷]', e && e.message); }
     if (_rb) return { blob, filename: fname };   // [v3.2.98] 배치=저장 안 하고 반환(무손상 — 생성 로직 동일, 출력만 분기)
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
