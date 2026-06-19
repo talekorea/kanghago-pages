@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.128</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.129</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.128</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.129</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -16269,7 +16269,8 @@ async function fetchBookingSummary(mode) {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
       const base = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}`
               + `&fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=도착지거리km`
-              + `&fields[]=BL파일&fields[]=BL번호&fields[]=CO파일`;   // [v3.2.87] 문서 누락 감지(읽기만) [v3.2.95] 도착지거리km(화물 견적)
+              + `&fields[]=BL파일&fields[]=BL번호&fields[]=CO파일`   // [v3.2.87] 문서 누락 감지(읽기만) [v3.2.95] 도착지거리km(화물 견적)
+              + `&fields[]=선명&fields[]=선적항&fields[]=출발지`;   // [v3.2.129] CO 요청 메시지 — 선명항차·적출항
       try { return await apiPaged(base + _dispQ); }
       catch (e) { return await apiPaged(base); }   // 배차 필드 미생성 → 폴백
     }));
@@ -16324,6 +16325,10 @@ async function fetchBookingSummary(mode) {
         차량번호: sf['차량번호'] || '', 기사전화번호: sf['기사전화번호'] || '', 배차완료일: sf['배차완료일'] || '', 배차상태: sf['배차상태'] || '대기',
         boxIds: boxes.map(b => b.id),
         송장번호: (boxes.map(b => String((b.fields||{})['송장번호']||'').trim()).filter(Boolean)[0]) || '',   // 대표(첫 박스) 송장 표시
+        // [v3.2.129] CO 요청 메시지용 — 선명항차(선명)·적출항(선적항, 폴백 출발지)
+        선명: String(sf['선명'] || '').trim(),
+        선적항: String(sf['선적항'] || '').trim(),
+        출발지: String(sf['출발지'] || '').trim(),
       };
     }));
 
@@ -16428,6 +16433,7 @@ function renderBookingTable(rows, dateLabel) {
   if (allReady) {
     html += `<div style="font-size:13px; color:#1b5e20; font-weight:600; margin-bottom:8px;">✓ 모든 사서함 박스 입력 완료 — 위챗 복사 가능</div>`;
     html += `<button onclick="copyBookingText()" style="padding:9px 18px; background:#0a7b40; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">💬 위챗 복사</button>`;
+    html += `<button onclick="copyCoRequest()" style="margin-left:8px; padding:9px 18px; background:#C9973A; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;" title="화물 사서함 BL정보 기반 중국어 CO 발급 요청 메시지 복사">📋 CO 요청 복사</button>`;
   } else {
     html += `<div style="font-size:13px; color:#9a7b2a; font-weight:600; margin-bottom:6px;">🔒 박스 미입력 사서함 ${notReady.length}건 — 위챗 복사 잠금</div>`;
     html += `<div style="font-size:12px; color:#7a5a1a;">`;
@@ -16438,6 +16444,7 @@ function renderBookingTable(rows, dateLabel) {
     });
     html += `</div>`;
     html += `<button disabled style="margin-top:8px; padding:9px 18px; background:#ccc; color:#fff; border:none; border-radius:6px; cursor:not-allowed; font-weight:700; font-size:13px;">💬 위챗 복사 (잠금)</button>`;
+    html += `<button onclick="copyCoRequest()" style="margin-top:8px; margin-left:8px; padding:9px 18px; background:#C9973A; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;" title="화물 사서함 BL정보 기반 중국어 CO 발급 요청 메시지 복사 (박스 게이트와 무관)">📋 CO 요청 복사</button>`;
   }
   html += `</div>`;
 
@@ -17066,6 +17073,70 @@ async function copyBookingText() {
     ta.select(); document.execCommand('copy'); ta.remove();
     if (typeof toastSuccess === 'function') toastSuccess('복사 완료 (폴백)');
     else alert('복사 완료 (폴백)');
+  }
+}
+
+// ===== [v3.2.129] CO 발급 요청 메시지 (중국어) — 부킹 요약의 화물 사서함 BL정보 기반, 새 API 0 =====
+//   화물 사서함만(택배 제외). 선적일별 그룹 → 船名航次(선명)·适出港(선적항)·건수·날짜. 공통값 못 만들면 ⚠.
+const _CO_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function _coPortToken(s){ return String(s||'').split(',')[0].trim().toUpperCase(); }   // "SHIDAO, CHINA" → "SHIDAO"
+function _coMostCommon(arr){ const m={}; let best='', bn=0; arr.forEach(v=>{ if(!v) return; m[v]=(m[v]||0)+1; if(m[v]>bn){bn=m[v];best=v;} }); return best; }
+function buildCoRequestText() {
+  const rows = (bookingState.rows || []);
+  const warnings = [];
+  if (!rows.length) return { text: '', warnings: ['선적일을 먼저 조회하세요'] };
+  // 화물만 (택배 제외). 밀크런 등은 CO(해상 LCL) 대상 아님 — '화물'/'cargo'만.
+  const cargo = rows.filter(r => r.shipMethod === '화물' || r.shipMethod === 'cargo');
+  if (!cargo.length) return { text: '', warnings: ['이 선적일에 화물 사서함이 없습니다 (택배만)'] };
+  // 선적일별 그룹 (range7이면 날짜별 블록)
+  const byDate = {};
+  cargo.forEach(r => { const d = r.shipDate || ''; (byDate[d] = byDate[d] || []).push(r); });
+  const blocks = [];
+  Object.keys(byDate).sort().forEach(d => {
+    const grp = byDate[d];
+    // 날짜 파싱
+    const md = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const mD = md ? `${parseInt(md[2],10)}/${parseInt(md[3],10)}` : (d || '');
+    const depDate = md ? `${_CO_MONTHS[parseInt(md[2],10)-1]}.${md[3]},${md[1]}` : '';
+    // 선명항차 (선명) — 공통값
+    const vessels = [...new Set(grp.map(r => String(r.선명||'').trim()).filter(Boolean))];
+    let vessel = '';
+    if (vessels.length === 1) vessel = vessels[0];
+    else if (vessels.length === 0) warnings.push(`[${mD}] 선명항차 미입력 — 수동 보완`);
+    else { vessel = _coMostCommon(grp.map(r=>String(r.선명||'').trim())); warnings.push(`[${mD}] 선명 사서함마다 다름(${vessels.join(' / ')}) — '${vessel}' 사용, 확인 요망`); }
+    // 적출항 (선적항 첫 토큰) — 공통값
+    const ports = [...new Set(grp.map(r => _coPortToken(r.선적항)).filter(Boolean))];
+    let port = '';
+    if (ports.length === 1) port = ports[0];
+    else if (ports.length === 0) warnings.push(`[${mD}] 적출항(선적항) 미입력 — 수동 보완`);
+    else { port = _coMostCommon(grp.map(r=>_coPortToken(r.선적항))); warnings.push(`[${mD}] 적출항 사서함마다 다름(${ports.join(' / ')}) — '${port}' 사용, 확인 요망`); }
+    const arrival = 'INCHON';   // 도착항 필드 없음 → 기본
+    const kind = 'LCL';         // FCL 구분 필드 없음 → LCL 고정
+    const cnt = grp.length;
+    blocks.push(
+      `您好~\n` +
+      `${mD} ${kind} ${cnt}票，麻烦帮忙出一下CO~\n` +
+      `● 船名航次：${vessel}\n` +
+      `● ${port}-${arrival}\n` +
+      `● Departure Date：${depDate}`
+    );
+  });
+  return { text: blocks.join('\n\n'), warnings: [...new Set(warnings)] };
+}
+async function copyCoRequest() {
+  const { text, warnings } = buildCoRequestText();
+  if (!text) { if (typeof toastWarn === 'function') toastWarn(warnings[0] || 'CO 요청 메시지를 만들 수 없습니다'); else alert(warnings[0] || 'CO 요청 생성 불가'); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  }
+  if (warnings.length) {
+    if (typeof toastWarn === 'function') toastWarn('CO 요청 복사됨 — ⚠ ' + warnings.join(' · '));
+    else alert('CO 요청 복사됨\n⚠ ' + warnings.join('\n'));
+  } else {
+    if (typeof toastSuccess === 'function') toastSuccess('CO 요청 메시지가 복사됐습니다 (위챗 붙여넣기)');
+    else alert('CO 요청 복사 완료 — 위챗에 붙여넣으세요');
   }
 }
 
