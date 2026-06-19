@@ -377,7 +377,7 @@
       for (const r of ready) {
         n++; loading.textContent = `⏳ 묶는 중… ${n}/${ready.length} (${r.mailbox})`;
         const folder = zip.folder(safe(r.mailbox));
-        await fetchInto(folder, '최종IP', r.finalIp);
+        await fetchInto(folder, '최종IP', (r.finalIp || []).slice(-1));   // [v3.2.132] 방어적 — 최종IP는 최신 1장만(서버도 1장 보장)
         await fetchInto(folder, 'CO', r.co);
         await fetchInto(folder, 'BL', r.bl);
       }

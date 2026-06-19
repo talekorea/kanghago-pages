@@ -903,7 +903,9 @@ module.exports = async (req, res) => {
         const att = (arr) => (Array.isArray(arr) ? arr : []).map(a => ({ url: a.url, filename: a.filename || 'file' })).filter(a => a.url);
         const rows = ships.map(s => {
           const sf = s.fields || {};
-          const finalIp = att(sf['최종IP파일']); const co = att(sf['CO파일']); const bl = att(sf['BL파일']);
+          // [v3.2.132] 최종IP는 ★최신(마지막) 1장만 — 과거 append 누적분(예: CO 전/후 2장)이 남아도 가장 최근것만 담음. (1차IP파일은 ZIP 미포함)
+          const _ipAll = att(sf['최종IP파일']); const finalIp = _ipAll.length ? [_ipAll[_ipAll.length - 1]] : [];
+          const co = att(sf['CO파일']); const bl = att(sf['BL파일']);
           const missing = [].concat(finalIp.length ? [] : ['최종IP'], co.length ? [] : ['CO'], bl.length ? [] : ['BL']);
           return { id: s.id, mailbox: sf['사서함'] || '', shipDate: shipDateMap[s.id] || '', status: sf['상태'] || '', blNo: sf['BL번호'] || '', finalIp, co, bl, ready: missing.length === 0, missing };
         });

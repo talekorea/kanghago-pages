@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.131</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.132</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.131</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.132</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6411,20 +6411,27 @@ const ATTACH_FIELD_IDS = {
   '마스터BL파일': 'fld25HKypUON1oRZG',   // [v3.2.80] 내부 전용(관세사/고객 비노출)
   '1차IP파일': 'fldcJsCPqawLRy6ZW', '최종IP파일': 'fldFdbQsut1R0xTQM',   // [v3.2.116] IP 스냅샷(관세사 다운로드용)
 };
-// [v3.2.116] IP 스냅샷 1장 replace 저장 — 개별·배치 공용. clear는 직접 PATCH(배치 무쓰기 가드 우회 — 의도된 스냅샷 쓰기), 업로드는 content endpoint.
-//   ★downloadInvoiceExcel 생성(wb) 로직과 분리 — blob 생성 후 저장만. stage: 'first'→1차IP파일 / 'final'→최종IP파일.
+// [v3.2.116] IP 스냅샷 1장 replace 저장 — 개별·배치 공용. stage: 'first'→1차IP파일 / 'final'→최종IP파일.
+//   ★downloadInvoiceExcel 생성(wb) 로직과 분리 — blob 생성 후 저장만.
+// [v3.2.132] ★누적(append) 버그 fix — 기존 "clear 후 append"는 REST PATCH(api.airtable.com) clear와
+//   content endpoint(content.airtable.com) append가 별도 서비스라 정합성 레이스 → clear 누락 시 2~4장 누적.
+//   해법: 먼저 append → 응답의 전체 첨부 목록에서 ★최신(마지막) 1장 id만 남기고 PATCH로 trim(레이스 없음).
 async function _snapshotIp(shipmentId, stage, blob, filename) {
   const NAME = stage === 'first' ? '1차IP파일' : (stage === 'final' ? '최종IP파일' : '');
   if (!NAME || !shipmentId || !blob) return;
   const fieldId = ATTACH_FIELD_IDS[NAME];
   try {
-    const pat = airtablePat();
-    // 1장 replace: 기존 비움(직접 fetch — _batchMode api() 가드와 무관). 실패해도 업로드는 시도.
-    try {
-      await fetch(`https://api.airtable.com/v0/${BASE_ID}/${shipmentId}`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${pat}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: { [NAME]: [] }, typecast: true }) });
-    } catch (e) { /* clear 실패 → append로라도 진행 */ }
     const file = new File([blob], filename || (NAME + '.xlsx'), { type: blob.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    await uploadAirtableAttachment(shipmentId, fieldId, file, filename);
+    const res = await uploadAirtableAttachment(shipmentId, fieldId, file, filename);   // append(레이스 없는 단일 upload)
+    // append 직후 응답 목록 = 갱신된 전체 첨부. 마지막(방금 올린 것)만 남기고 나머지 제거 → 항상 1장.
+    const atts = (res && res.fields && res.fields[fieldId]) || [];
+    if (atts.length > 1) {
+      const latest = atts[atts.length - 1];
+      try {
+        const pat = airtablePat();
+        await fetch(`https://api.airtable.com/v0/${BASE_ID}/${shipmentId}`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${pat}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: { [NAME]: [{ id: latest.id }] }, typecast: true }) });
+      } catch (e) { console.warn('[IP 스냅샷 trim 실패]', stage, shipmentId, e && e.message); }
+    }
   } catch (e) { console.warn('[IP 스냅샷 저장 실패]', stage, shipmentId, e && e.message); }
 }
 // [v3.2.73] ★Airtable 첨부 업로드 단일 헬퍼 — content endpoint(uploadAttachment). data:URL 직접 PATCH(422 INVALID_ATTACHMENT_OBJECT) 폐기.
