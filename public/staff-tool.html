@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.129</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.130</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.129</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.130</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6376,6 +6376,7 @@ function extractBlFields(text) {
   if (ci >= 0) { const ni = U.indexOf('NOTIFY', ci + 1); const region = U.slice(ci, ni > ci ? ni : ci + 400); const rb = region.match(/\d{3}-\d{2}-\d{5}/); if (rb) out.consigneeBiz = rb[0].replace(/[^0-9]/g, ''); }
   const mk = U.match(/\bAP\d{1,}-?\d{0,6}\b/); if (mk) out.mark = mk[0];
   out.origin = (typeof _portOfLoading === 'function') ? _portOfLoading(T) : '';
+  out.vessel = (typeof _vesselVoyage === 'function') ? _vesselVoyage(T) : '';   // [v3.2.130] 선명·항차
   out.blNo = (typeof extractBlCandidates === 'function') ? ((extractBlCandidates(T)[0] || {}).value || '') : '';
   return out;
 }
@@ -16817,6 +16818,36 @@ function _portEn(text) {   // [v3.2.122] 선적항(영문, IP용). 미등록은 
   if (!c) return '';
   return (PORT_MAP[c] && PORT_MAP[c].en) || (c + ', CHINA');
 }
+// [v3.2.130] 선명·항차 추출 — 적출항과 동형(라벨 앵커 + 검증, 쓰레기 금지). "HUADONG PEARL 8 7302E" 형태(선명+항차).
+//   라벨(Ocean Vessel/Voy.) 없으면 미추출(모호 차단). 라벨 이후 윈도(≤350자) 내 첫 검증 통과 후보만.
+const _VESSEL_REJECT = /TEL|FAX|MAIL|HTTP|WWW|KOREA|CHINA|BUILDING|TOWER|STREET|ROAD|FLOOR|ROOM|DAERO|DARO|CO\.|LTD|INC\b|CORP|NOTIFY|CONSIGN|SHIPPER|GROSS|WEIGHT|MEASUREMENT|PACKAGE|CONTAINER|FREIGHT|DISCHARGE|DELIVERY|RECEIPT/;
+function _vesselVoyage(text) {
+  const U = String(text || '').replace(/ /g, ' ').toUpperCase();
+  if (!U) return '';
+  // 라벨 앵커. NAME\b — 상단 보일러플레이트 "vessel NAMED herein" 오매칭 차단.
+  const lm = U.match(/OCEAN\s+VESSEL|VESSEL\s*\/\s*VOY|VESSEL\s+NAME\b|VSL\s*\/?\s*VOY/);
+  if (!lm) return '';   // 라벨 없으면 미기록(모호 차단)
+  const li = U.indexOf(lm[0]);
+  const win = U.slice(li + lm[0].length, li + lm[0].length + 350);   // 라벨 직후 350자 윈도(슬라이스 — 글로벌 lastIndex 소비 버그 회피)
+  const re = /\b([A-Z]{3,}(?:\s+[A-Z]+){0,3}(?:\s+\d{1,2})?\s+\d{3,5}[A-Z]{0,2})\b/g;
+  let m;
+  while ((m = re.exec(win))) {
+    const v = m[1].replace(/\s+/g, ' ').trim();
+    if (_VESSEL_REJECT.test(v)) continue;            // 회사/주소/화물표 숫자 차단
+    if (v.replace(/[^A-Z]/g, '').length < 4) continue;   // 선명 글자수 최소(약어 차단)
+    return v;
+  }
+  return '';
+}
+// [v3.2.130] 선명 덮어쓰기 정책 — 비었으면 BL값 기록 / 수동값 있으면 토스트+미기록(적출항 _setShipPortIp과 동형).
+async function _setShipVessel(shipId, vessel, label) {
+  if (!shipId || !vessel) return false;
+  let cur = '';
+  try { const rec = await api('GET', `/${TABLES.Shipments}/${shipId}`); cur = String((rec.fields || {})['선명'] || '').trim(); } catch (e) {}
+  if (!cur) { try { await api('PATCH', `/${TABLES.Shipments}/${shipId}`, { fields: { '선명': vessel }, typecast: true }); return true; } catch (e) { return false; } }
+  if (cur.toUpperCase() !== vessel.toUpperCase()) { if (typeof toastWarn === 'function') toastWarn(`${label || ''} 선명 수동값('${cur}') ≠ BL('${vessel}') — 덮어쓰지 않음(수동 확인)`, { title: '선명' }); return false; }
+  return false;   // 이미 동일
+}
 // [v3.2.122] 선적항(IP) 덮어쓰기 정책 — 비었거나 기본 'Weihai, China'면 검증된 en 기록 / 다른 수동값이면 토스트+미기록(수동 우선).
 async function _setShipPortIp(shipId, en, label) {
   if (!shipId || !en) return false;
@@ -16906,6 +16937,7 @@ async function handleBatchDocFiles(fileList) {
       // [v3.2.80] 출발지(BL 내용 Port of Loading) + 마스터 선적일(TALE{YYMMDD})
       const port = (docType === 'bl' || docType === 'co') ? _portOfLoading(pdfText) : '';   // [v3.2.88] 출발지(ko·배차)
       const portEn = (docType === 'bl' || docType === 'co') ? _portEn(pdfText) : '';   // [v3.2.122] 선적항(en·IP)
+      const vessel = (docType === 'bl' || isMaster) ? _vesselVoyage(pdfText) : '';   // [v3.2.130] 선명·항차(BL/마스터BL에서)
       const masterShipDate = isMaster ? (_shipDateFromName(file.name) || _shipDateFromName(pdfText)) : '';
       let conf;
       if (isMaster) conf = 'amber';             // 마스터BL — 사서함 매칭 안 함(N/M), 현재 건너뜀
@@ -16920,7 +16952,7 @@ async function handleBatchDocFiles(fileList) {
       if (docType === 'co' && !isMaster && conf === 'green' && !coRefMatch) conf = 'amber';
       // [v3.2.125] ★분류 미확정(이미지 휴리스틱·모호)이면 🟢 금지 → 🟡(사람 확인). 자동분류+번호 둘 다 confident여야 🟢.
       if (!isMaster && conf === 'green' && !docConfident) conf = 'amber';
-      items.push({ file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '', docType, docConfident, conf, contentAp, isPdf, isImg, thumbUrl, isMaster, blNumber, blMismatch, coRefBl, coRefMatch, port, portEn, masterShipDate });
+      items.push({ file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '', docType, docConfident, conf, contentAp, isPdf, isImg, thumbUrl, isMaster, blNumber, blMismatch, coRefBl, coRefMatch, port, portEn, vessel, masterShipDate });
     } catch (e) {
       console.warn('[일괄업로드] 파일 분석 실패(격리):', file && file.name, e.message);
       items.push({ file, filename: (file && file.name) || '(이름없음)', mailbox: '', shipId: '', docType: '', conf: 'red', contentAp: '', isPdf: false, isImg: false, thumbUrl: '', isMaster: false, blNumber: '', port: '', masterShipDate: '' });
@@ -17016,6 +17048,7 @@ async function saveBatchDocs() {
           await uploadAirtableAttachment(r.id, ATTACH_FIELD_IDS['마스터BL파일'], it.file);
           if (it.port) { await api('PATCH', `/${TABLES.Shipments}/${r.id}`, { fields: { '출발지': it.port }, typecast: true }); portSet++; }
           if (it.portEn) { try { await _setShipPortIp(r.id, it.portEn, r.mailbox); } catch (e) {} }   // [v3.2.122] 선적항(IP) — 정책 적용
+          if (it.vessel) { try { await _setShipVessel(r.id, it.vessel, r.mailbox); } catch (e) {} }   // [v3.2.130] 선명·항차 — 정책 적용
           ok++;
         } catch (e) { failed++; console.warn('[마스터BL]', r.mailbox, e.message); }
       }
@@ -17052,6 +17085,7 @@ async function saveBatchDocs() {
       // [v3.2.80] 하우스BL 출발지 → 그 사서함 Shipments.출발지 (추출 성공 시).
       if ((it.docType === 'bl' || it.docType === 'co') && it.port) { try { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { '출발지': it.port }, typecast: true }); portSet++; } catch (e) {} }   // [v3.2.88] 출발지(ko·배차)
       if ((it.docType === 'bl' || it.docType === 'co') && it.portEn) { try { await _setShipPortIp(it.shipId, it.portEn, it.mailbox); } catch (e) {} }   // [v3.2.122] 선적항(en·IP) — 정책 적용
+      if (it.docType === 'bl' && it.vessel) { try { await _setShipVessel(it.shipId, it.vessel, it.mailbox); } catch (e) {} }   // [v3.2.130] 선명·항차(BL에서) — 정책 적용
       if (el) el.querySelectorAll('tbody tr')[i] && (el.querySelectorAll('tbody tr')[i].style.background = '#e8f5e9');
     } catch (e) { failed++; console.warn('[일괄저장]', it.filename, e.message); }
   }
