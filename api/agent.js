@@ -878,6 +878,38 @@ module.exports = async (req, res) => {
         const rows = Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
         return res.json({ rows, cutoff });
       }
+
+      // [v3.2.128] 관세사 최종파일 다운로드 — 선적일(Orders.실제출고요청일)별 사서함의 최종IP+CO+BL 첨부 URL 반환.
+      //   읽기 전용 · 서버 PAT만(브라우저 노출 0). ZIP 묶음은 브라우저(JSZip). 부킹 요약과 동일한 날짜→사서함 해석.
+      //   최종 IP = downloadInvoiceExcel({stage:'final'})가 _snapshotIp로 저장한 Shipments.최종IP파일(v3.2.127 게이트 반영본).
+      //   CO·BL·최종IP 중 하나라도 없으면 ready=false → 브라우저가 ❌ 표시 후 ZIP에서 스킵.
+      if (op === 'final_files') {
+        const daysParam = (req.query.days || '').trim();
+        const days = daysParam ? daysParam.split(',').map(s => s.trim()).filter(Boolean) : [];
+        if (!days.length) return res.status(400).json({ error: 'days 누락' });
+        const orderFormula = `OR(${days.map(d => `IS_SAME({실제출고요청일},'${d}','day')`).join(',')})`;
+        const orders = await atListAll(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(orderFormula)}&fields[]=Shipment&fields[]=실제출고요청일`);
+        if (!orders.length) return res.json({ rows: [], days });
+        const shipDateMap = {};
+        orders.forEach(o => { const ships = (o.fields || {}).Shipment || []; const d = (o.fields || {})['실제출고요청일']; ships.forEach(sid => { if (!d) return; if (!shipDateMap[sid] || d < shipDateMap[sid]) shipDateMap[sid] = d; }); });
+        const shipIds = Object.keys(shipDateMap);
+        if (!shipIds.length) return res.json({ rows: [], days });
+        const chunk = (a, n) => { const o = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
+        let ships = [];
+        for (const c of chunk(shipIds, 50)) {
+          const f = `OR(${c.map(id => `RECORD_ID()='${id}'`).join(',')})`;
+          ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=상태&fields[]=BL번호&fields[]=최종IP파일&fields[]=CO파일&fields[]=BL파일`));
+        }
+        const att = (arr) => (Array.isArray(arr) ? arr : []).map(a => ({ url: a.url, filename: a.filename || 'file' })).filter(a => a.url);
+        const rows = ships.map(s => {
+          const sf = s.fields || {};
+          const finalIp = att(sf['최종IP파일']); const co = att(sf['CO파일']); const bl = att(sf['BL파일']);
+          const missing = [].concat(finalIp.length ? [] : ['최종IP'], co.length ? [] : ['CO'], bl.length ? [] : ['BL']);
+          return { id: s.id, mailbox: sf['사서함'] || '', shipDate: shipDateMap[s.id] || '', status: sf['상태'] || '', blNo: sf['BL번호'] || '', finalIp, co, bl, ready: missing.length === 0, missing };
+        });
+        rows.sort((a, b) => (a.shipDate || '').localeCompare(b.shipDate || '') || a.mailbox.localeCompare(b.mailbox));
+        return res.json({ rows, days });
+      }
       return res.status(400).json({ error: 'Unknown op' });
     }
 

@@ -40,6 +40,7 @@
   <div>
     <span class="me" id="meLabel">로딩 중...</span>
     <button onclick="openAgentBooking()" style="background:#e8f7ef; color:#1B2A3B; border:1px solid #2BB673; border-radius:6px; padding:6px 12px; cursor:pointer;">📦 선적일별 부킹 요약</button>
+    <button onclick="openAgentFinalFiles()" style="background:#eef5ff; color:#1B2A3B; border:1px solid #1B5E9A; border-radius:6px; padding:6px 12px; cursor:pointer;">📥 선적일별 최종파일</button>
     <button onclick="logout()">로그아웃</button>
   </div>
 </header>
@@ -68,6 +69,25 @@
       </div>
       <div id="licBatchResult" style="margin-top:10px;"></div>
     </div>
+  </div>
+</div>
+
+<!-- [v3.2.128] 선적일별 최종파일 다운로드 모달 — 최종IP+CO+BL 일괄 ZIP (서버 op=final_files, PAT 브라우저 노출 0) -->
+<div id="agentFinalModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.7); z-index:9999; padding:20px; overflow-y:auto;">
+  <div style="max-width:900px; margin:40px auto; background:#fff; border-radius:10px; padding:20px 24px; box-shadow:0 12px 40px rgba(0,0,0,0.4);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="margin:0; font-size:17px; color:#1B2A3B;">📥 선적일별 최종파일 다운로드 <span style="font-size:11px; color:#888; font-weight:400;">(최종 IP + CO + BL 일괄 ZIP)</span></h3>
+      <button onclick="document.getElementById('agentFinalModal').style.display='none'" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888;">×</button>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+      <input type="date" id="agentFinalDate" style="padding:7px 10px; border:1px solid #ccc; border-radius:6px;" />
+      <button onclick="fetchAgentFinal('single')" style="padding:8px 14px; font-size:13px; background:#1B5E9A; color:#fff; border:none; border-radius:6px; cursor:pointer;">📅 그날만 조회</button>
+      <button onclick="fetchAgentFinal('range7')" style="padding:8px 14px; font-size:13px; background:#eef5ff; color:#1B2A3B; border:1px solid #1B5E9A; border-radius:6px; cursor:pointer;">📆 오늘~+7일</button>
+      <button onclick="downloadAgentFinalZip()" id="agentFinalZipBtn" style="padding:8px 14px; font-size:13px; background:#1B2A3B; color:#fff; border:none; border-radius:6px; cursor:pointer; display:none;">📦 ZIP 다운로드</button>
+      <span id="agentFinalLoading" style="font-size:12px; color:#888;"></span>
+    </div>
+    <div style="font-size:11px; color:#888; margin-bottom:8px;">ℹ️ 최종 IP·CO·BL 3종이 모두 있는 사서함만 ZIP에 담깁니다. 하나라도 없으면 ❌ 표시 후 스킵. 최종 IP는 사장님이 발행한 최종(통관) 인보이스/패킹입니다.</div>
+    <div id="agentFinalResult"><div style="padding:18px; text-align:center; color:#999; font-size:13px;">날짜 선택 후 조회하세요.</div></div>
   </div>
 </div>
 
@@ -286,6 +306,89 @@
   window.copyAgentBooking = async () => {
     try { await navigator.clipboard.writeText(agentBookingCopyText); const b = document.getElementById('agentBookingCopyBtn'); const t = b.textContent; b.textContent = '✓ 복사됨'; setTimeout(() => b.textContent = t, 1500); }
     catch (e) { alert('복사 실패 — 수동 선택하세요'); }
+  };
+
+  // ===== [v3.2.128] 선적일별 최종파일(최종IP+CO+BL) 일괄 ZIP 다운로드 =====
+  //   서버 op=final_files로 사서함별 첨부 URL 수신 → 브라우저(JSZip)가 fetch해 ZIP 묶음. PAT 노출 0.
+  //   Airtable 첨부 URL은 브라우저 fetch 허용(CORS OK, 코드베이스 검증 사실). 3종 모두 있는 사서함만 ZIP에 담음.
+  let agentFinalRows = [];
+  let agentFinalLabel = '';
+  window.openAgentFinalFiles = () => {
+    const inp = document.getElementById('agentFinalDate');
+    if (inp && !inp.value) inp.value = new Date().toISOString().slice(0, 10);
+    document.getElementById('agentFinalResult').innerHTML = '<div style="padding:18px; text-align:center; color:#999; font-size:13px;">날짜 선택 후 조회하세요.</div>';
+    document.getElementById('agentFinalZipBtn').style.display = 'none';
+    agentFinalRows = [];
+    document.getElementById('agentFinalModal').style.display = 'block';
+  };
+  window.fetchAgentFinal = async (mode) => {
+    const base = document.getElementById('agentFinalDate').value || new Date().toISOString().slice(0, 10);
+    const days = (mode === 'range7') ? isoDayList(base, 8) : [base];
+    agentFinalLabel = (mode === 'range7') ? `${days[0]}~${days[days.length - 1]}` : base;
+    const loading = document.getElementById('agentFinalLoading');
+    const box = document.getElementById('agentFinalResult');
+    const zipBtn = document.getElementById('agentFinalZipBtn');
+    loading.textContent = '⏳ 조회 중...'; box.innerHTML = ''; zipBtn.style.display = 'none';
+    try {
+      const data = await fetchAgent('GET', '?op=final_files&days=' + encodeURIComponent(days.join(',')));
+      const rows = data.rows || [];
+      agentFinalRows = rows;
+      loading.textContent = '';
+      if (!rows.length) { box.innerHTML = `<div style="padding:18px; text-align:center; color:#999; font-size:13px;">📭 <strong>${agentFinalLabel}</strong> 선적 예정 사서함 0건</div>`; return; }
+      const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+      const mark = (arr, label) => arr.length ? `<span style="color:#0a7b40;font-weight:700;">✅${arr.length > 1 ? '×' + arr.length : ''}</span>` : `<span style="color:#c0392b;font-weight:700;">❌${label}</span>`;
+      const trs = rows.map(r => `<tr style="background:${r.ready ? '#fff' : '#fff3e0'};">
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.shipDate)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.mailbox)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${mark(r.finalIp, '')}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${mark(r.co, '')}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${mark(r.bl, '')}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;color:${r.ready ? '#0a7b40' : '#c0392b'};">${r.ready ? '다운로드 대상' : '스킵 (' + r.missing.join('·') + ' 없음)'}</td></tr>`).join('');
+      const readyN = rows.filter(r => r.ready).length;
+      box.innerHTML = `<div style="font-size:12px;color:#666;margin-bottom:6px;">${esc(agentFinalLabel)} · ${rows.length} 사서함 · 다운로드 대상 <strong>${readyN}</strong>건</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="background:#1B2A3B;color:#fff;"><th style="padding:7px 8px;text-align:left;">선적일</th><th style="padding:7px 8px;text-align:left;">사서함</th><th style="padding:7px 8px;">최종IP</th><th style="padding:7px 8px;">CO</th><th style="padding:7px 8px;">BL</th><th style="padding:7px 8px;text-align:left;">상태</th></tr></thead>
+        <tbody>${trs}</tbody></table>`;
+      zipBtn.style.display = readyN ? '' : 'none';
+    } catch (e) { loading.textContent = ''; box.innerHTML = `<div style="padding:18px;text-align:center;color:#c0392b;font-size:13px;">조회 실패: ${e.message || e}</div>`; }
+  };
+  window.downloadAgentFinalZip = async () => {
+    const ready = (agentFinalRows || []).filter(r => r.ready);
+    if (!ready.length) { alert('다운로드 대상이 없습니다 (최종IP·CO·BL 3종 모두 있는 사서함 없음)'); return; }
+    const btn = document.getElementById('agentFinalZipBtn'); const loading = document.getElementById('agentFinalLoading');
+    const orig = btn.textContent; btn.disabled = true;
+    try {
+      const JSZipMod = await import(/* webpackIgnore: true */ 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
+      const JSZip = JSZipMod.default || JSZipMod;
+      const zip = new JSZip();
+      const safe = s => String(s || 'file').replace(/[\/\\:*?"<>|]/g, '_');
+      let added = 0, failed = 0, n = 0;
+      const fetchInto = async (folder, prefix, att) => {
+        for (let i = 0; i < att.length; i++) {
+          const a = att[i];
+          try {
+            const r = await fetch(a.url); if (!r.ok) throw new Error('HTTP ' + r.status);
+            const blob = await r.blob();
+            const nm = att.length > 1 ? `${prefix}_${i + 1}_${safe(a.filename)}` : `${prefix}_${safe(a.filename)}`;
+            folder.file(nm, blob); added++;
+          } catch (e) { failed++; console.warn('[최종파일 ZIP] fetch 실패', a.filename, e.message); }
+        }
+      };
+      for (const r of ready) {
+        n++; loading.textContent = `⏳ 묶는 중… ${n}/${ready.length} (${r.mailbox})`;
+        const folder = zip.folder(safe(r.mailbox));
+        await fetchInto(folder, '최종IP', r.finalIp);
+        await fetchInto(folder, 'CO', r.co);
+        await fetchInto(folder, 'BL', r.bl);
+      }
+      loading.textContent = '⏳ ZIP 생성 중…';
+      const out = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(out);
+      const a = document.createElement('a'); a.href = url; a.download = `최종파일_${safe(agentFinalLabel)}.zip`; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      loading.textContent = `✓ ZIP 완료 — 사서함 ${ready.length} / 파일 ${added}${failed ? ' / 실패 ' + failed : ''}`;
+    } catch (e) { loading.textContent = ''; alert('ZIP 생성 실패: ' + (e.message || e)); }
+    finally { btn.disabled = false; btn.textContent = orig; }
   };
 
   // ===== [수입면장 일괄업로드 v3.2.109] BL번호 내용 매칭 → 수입면장 저장 (도구 유틸 소규모 포팅) =====

@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.127</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.128</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.127</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.128</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6453,8 +6453,13 @@ async function handleBlCoFileUpload(kind, fileInput) {
   if (!state.shipment.fields) state.shipment.fields = {};
   try {
     // [v3.2.73] ★content endpoint(uploadAttachment)로 업로드 — base64 data:URL 직접 PATCH(422) 폐기.
-    //   BL은 1장 replace(기존 비우고 1장), CO는 다중 append. 첨부는 본 저장(환율·BL번호)과 분리 영속화.
-    if (kind === 'bl' && Array.isArray(state.shipment.fields[fieldName]) && state.shipment.fields[fieldName].length) {
+    // [v3.2.128] ★업로드 액션마다 replace(BL·CO 공통) — 같은 서류 재업로드 시 누적(append) 방지.
+    //   기존 첨부가 있으면 확인 1회(잘못된 덮어쓰기 방지) 후 비우고 이번 선택분으로 교체.
+    //   (한 액션에서 다중 선택한 CO 여러 장은 한 묶음으로 함께 저장 — 멀티페이지 CO 지원 유지.)
+    const _existing = Array.isArray(state.shipment.fields[fieldName]) ? state.shipment.fields[fieldName] : [];
+    if (_existing.length) {
+      const _ok = confirm(`${fieldName}에 이미 ${_existing.length}장이 있습니다.\n새로 올리는 ${files.length}장으로 교체할까요? (기존 첨부는 삭제됩니다)\n\n[확인] 교체  ·  [취소] 중단`);
+      if (!_ok) { fileInput.value = ''; return; }
       await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: { [fieldName]: [] }, typecast: true });
       state.shipment.fields[fieldName] = [];
     }
@@ -6462,7 +6467,7 @@ async function handleBlCoFileUpload(kind, fileInput) {
     for (const file of files) {
       last = await uploadAirtableAttachment(state.shipment.id, fieldId, file);
       n++;
-      if (kind === 'bl') break;   // BL은 1장만
+      if (kind === 'bl') break;   // BL은 1장만 (CO는 한 액션에서 선택한 다중 장 함께 저장)
     }
     if (last && last.fields) state.shipment.fields[fieldName] = last.fields[fieldId] || state.shipment.fields[fieldName] || [];
     resetDocMatch();   // v3.2.49: BL/CO 변경 → 대조 대기 리셋 (재확인 강제)
@@ -16986,8 +16991,10 @@ async function saveBatchDocs() {
   }
   const el = document.getElementById('batchDocResult');
   let saved = 0, skipped = 0, failed = 0, masterSkip = 0, blNoUpdated = 0, masterSaved = 0, portSet = 0;
-  // BL replace는 사서함별 1회만 비우도록 — 같은 사서함 BL 여러 파일이면 마지막만 남음(정책상 BL 1장)
-  const blClearedShip = new Set();
+  // [v3.2.128] BL·CO 모두 replace — 사서함+서류종류별 1회만 비움(append 누적 방지).
+  //   같은 사서함의 같은 종류 파일이 이 배치에 여러 개면: 첫 건에서 1회 clear → 이후는 누적(한 배치 = 한 묶음).
+  //   재업로드(다음 배치)면 기존 첨부는 다시 clear되어 교체됨. 일괄 흐름은 차단 없이 ⚠ 결과 요약으로 표시.
+  const clearedShipField = new Set();
   for (let i = 0; i < rows.length; i++) {
     const it = rows[i];
     if (it.isMaster) {
@@ -17014,9 +17021,10 @@ async function saveBatchDocs() {
     const fieldName = it.docType === 'bl' ? 'BL파일' : 'CO파일';
     const fieldId = ATTACH_FIELD_IDS[fieldName];
     try {
-      if (it.docType === 'bl' && !blClearedShip.has(it.shipId)) {
-        await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { 'BL파일': [] }, typecast: true });
-        blClearedShip.add(it.shipId);
+      const _clrKey = `${it.shipId}:${fieldName}`;
+      if (!clearedShipField.has(_clrKey)) {
+        await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { [fieldName]: [] }, typecast: true });
+        clearedShipField.add(_clrKey);
       }
       await uploadAirtableAttachment(it.shipId, fieldId, it.file);
       saved++;
@@ -17041,7 +17049,7 @@ async function saveBatchDocs() {
     } catch (e) { failed++; console.warn('[일괄저장]', it.filename, e.message); }
   }
   if (typeof toastSuccess === 'function') toastSuccess(`✓ 일괄 저장 — 사서함 ${saved} / 마스터 ${masterSaved} / BL번호 ${blNoUpdated} / 출발지 ${portSet} / 미매칭 ${skipped} / 실패 ${failed}`, { title: '📁 서류' });
-  if (el) el.innerHTML += `<div style="margin-top:8px; padding:8px; background:#f5f5f5; border-radius:5px; font-size:12px;">결과: 사서함 저장 <strong>${saved}</strong> · 마스터BL <strong>${masterSaved}</strong>건(선적일 사서함, 내부전용) · BL번호 갱신 <strong>${blNoUpdated}</strong> · 출발지 <strong>${portSet}</strong> · 미매칭 <strong>${skipped}</strong> · 마스터 미적용 <strong>${masterSkip}</strong> · 실패 <strong>${failed}</strong>. (BL=replace·CO=append·BL번호/출발지→Shipments)</div>`;
+  if (el) el.innerHTML += `<div style="margin-top:8px; padding:8px; background:#f5f5f5; border-radius:5px; font-size:12px;">결과: 사서함 저장 <strong>${saved}</strong> · 마스터BL <strong>${masterSaved}</strong>건(선적일 사서함, 내부전용) · BL번호 갱신 <strong>${blNoUpdated}</strong> · 출발지 <strong>${portSet}</strong> · 미매칭 <strong>${skipped}</strong> · 마스터 미적용 <strong>${masterSkip}</strong> · 실패 <strong>${failed}</strong>. (BL·CO=replace[재업로드 시 기존 교체]·BL번호/출발지→Shipments)</div>`;
 }
 
 async function copyBookingText() {
