@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.133</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.134</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.133</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.134</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -851,17 +851,38 @@
       <label data-i18n="cust.name">회원명</label>
       <input id="cust_name" type="text" placeholder="홍길동" />
     </div>
+    <!-- [v3.2.134] 고객유형 — 영문/식별정보 게이트 분기 단일소스(Customers.회원구분) -->
+    <div>
+      <label>고객유형 <span style="color:#c0392b;">*</span></label>
+      <select id="cust_member_type" onchange="applyCustomerTypeUI()" style="width:100%; padding:7px; border:1px solid #d4c5a8; border-radius:4px;">
+        <option value="">— 선택 —</option>
+        <option value="개인회원">개인회원 (개인통관)</option>
+        <option value="사업자회원">사업자회원 (사업자통관)</option>
+      </select>
+    </div>
     <div>
       <label data-i18n="cust.company">회사명/상호</label>
       <input id="cust_company" type="text" placeholder="(주)테스트" />
     </div>
-    <div>
+    <div class="cust-biz-only">
       <label data-i18n="cust.biz_no">사업자번호</label>
       <input id="cust_biz_no" type="text" placeholder="123-45-67890" />
     </div>
-    <div>
+    <div class="cust-biz-only">
+      <label>영문회사명 (English company)</label>
+      <input id="cust_en_company" type="text" placeholder="TEST CO., LTD." />
+    </div>
+    <div class="cust-personal-only">
       <label data-i18n="cust.customs_code">통관고유부호</label>
       <input id="cust_customs_code" type="text" placeholder="P123456789012" />
+    </div>
+    <div class="cust-personal-only">
+      <label>영문성명 (English name)</label>
+      <input id="cust_en_name" type="text" placeholder="GILDONG HONG" />
+    </div>
+    <div class="full">
+      <label>영문주소 (English address) <span style="color:#c0392b;">*</span></label>
+      <input id="cust_en_address" type="text" placeholder="123 Gangnam-daero, Gangnam-gu, Seoul, KOREA" />
     </div>
     <div>
       <label data-i18n="cust.phone">연락처</label>
@@ -3292,6 +3313,9 @@ async function ensureSchema() {
           { name: '닉네임', type: 'singleLineText' },
           { name: '사업자번호', type: 'singleLineText' },
           { name: '통관고유부호', type: 'singleLineText' },
+          { name: '영문회사명', type: 'singleLineText' },
+          { name: '영문주소', type: 'multilineText' },
+          { name: '영문성명', type: 'singleLineText' },
           { name: '우편번호', type: 'singleLineText' },
           { name: '주소', type: 'multilineText' },
           { name: '연락처', type: 'singleLineText' },
@@ -6182,6 +6206,16 @@ function primaryAgentType(orders) {
   const s = realAgentTypeSet(orders);
   return s.length === 1 ? s[0] : '구매대행';   // 1종=그 유형 / 0종(빈값·합배송 등 레거시)=구매대행 폴백
 }
+// [v3.2.134] 고객유형별 통관 필수 식별정보 단일 함수 — 게이트(importer=고객)와 §2.5 입력이 같은 필드 사용.
+//   유형 소스 = Customers.회원구분(개인회원/사업자회원). 미상(빈값·기타)=null → "유형 미확정" 차단.
+//   사업자: 사업자번호·영문회사명·영문주소 / 개인: 통관고유부호·영문성명·영문주소.
+function requiredIdentityFields(customer) {
+  const f = (customer && customer.fields) || {};
+  const t = String(f['회원구분'] || '').trim();
+  if (t === '사업자회원') return { type: '사업자', fields: ['사업자번호', '영문회사명', '영문주소'] };
+  if (t === '개인회원')   return { type: '개인',   fields: ['통관고유부호', '영문성명', '영문주소'] };
+  return null;   // 유형 미상/혼재
+}
 function _coInvoiceSource() {
   const f = (state.shipment && state.shipment.fields) || {};
   const prods = (state.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0);
@@ -7802,11 +7836,12 @@ function calcTotalCoFee() {
 
 // ========== 인보이스 미리보기 (자동 분배) ==========
 // ========== 고객 정보 ==========
-const CUST_FIELDS = ['name','company','biz_no','customs_code','phone','email','zip','address','memo'];
+// [v3.2.134] 고객유형(회원구분) + 영문 식별정보(영문회사명/영문주소/영문성명) 추가 — 게이트가 읽는 필드와 동일.
+const CUST_FIELDS = ['name','member_type','company','biz_no','customs_code','en_company','en_name','en_address','phone','email','zip','address','memo'];
 const CUST_FIELD_MAP = {
-  name: '회원명', company: '회사명', biz_no: '사업자번호',
-  customs_code: '통관고유부호', phone: '연락처', email: '이메일',
-  zip: '우편번호', address: '주소', memo: '메모'
+  name: '회원명', member_type: '회원구분', company: '회사명', biz_no: '사업자번호',
+  customs_code: '통관고유부호', en_company: '영문회사명', en_name: '영문성명', en_address: '영문주소',
+  phone: '연락처', email: '이메일', zip: '우편번호', address: '주소', memo: '메모'
 };
 
 // ========== v2.9: ProductHistory 매칭 & 학습 ==========
@@ -8157,6 +8192,15 @@ function fillCustomerForm() {
     const el = document.getElementById('cust_' + k);
     if (el) el.value = f[CUST_FIELD_MAP[k]] || '';
   });
+  if (typeof applyCustomerTypeUI === 'function') applyCustomerTypeUI();   // [v3.2.134] 유형별 입력칸 분기 반영
+}
+// [v3.2.134] §2.5 고객유형별 입력칸 분기 — 사업자=사업자번호·영문회사명 / 개인=통관고유부호·영문성명. 영문주소 공통. 미선택=양쪽 노출.
+function applyCustomerTypeUI() {
+  const sel = document.getElementById('cust_member_type');
+  const t = sel ? sel.value : '';
+  const biz = (t === '사업자회원'), per = (t === '개인회원'), unknown = !biz && !per;
+  document.querySelectorAll('.cust-biz-only').forEach(el => { el.style.display = (biz || unknown) ? '' : 'none'; });
+  document.querySelectorAll('.cust-personal-only').forEach(el => { el.style.display = (per || unknown) ? '' : 'none'; });
 }
 
 function setupCustomerListeners() {
@@ -11245,14 +11289,22 @@ async function downloadInvoiceExcel(opts) {
   const _isCustImporter = (_agentType === '배송대행' || _agentType === '결제대행');
   if (!_agentTypes.length && !_rb) toastWarn('대행유형 미상(실대행종류 없음 — 빈값/합배송 등) — 구매대행 양식으로 발행합니다.', { title: '대행유형 미상' });
 
-  // [B v3.2.66] ★배송/결제대행 영문정보 차단 게이트 — 고객이 수입자라 영문 회사명·주소 필수(통관 불가 방지). 구매대행은 차단 없음(TALE KOREA 수입자).
+  // [B v3.2.66] ★배송/결제대행 영문/식별정보 차단 게이트 — 고객이 수입자라 통관 필수정보 필요(통관 불가 방지). 구매대행은 차단 없음(TALE KOREA 수입자).
+  // [v3.2.134] 고객유형별 분기 — requiredIdentityFields(단일 함수)로 사업자/개인 필수셋 결정.
+  //   개인 고객이 영문회사명 빈칸으로 영구 차단되던 구멍 제거(개인은 회사명 안 봄). 빈 필드만 유형 라벨과 함께 지목.
+  //   유형 미상(회원구분 빈값/기타) → "유형 미확정" 차단.
   if (_isCustImporter) {
     const _ecf = (state.customer && state.customer.fields) || {};
-    const _enCo = String(_ecf['영문회사명'] || '').trim();
-    const _enAddr = String(_ecf['영문주소'] || '').trim();
-    if (!_enCo || !_enAddr) {
-      if (_rb) return { skip: '배송/결제대행 영문정보 미입력' };
-      alert('🚫 발행 차단 — 통관 불가\n\n이 고객(' + (_ecf['회원명'] || '') + ')은 ' + _agentType + '인데 영문정보가 없습니다.\n• 영문회사명: ' + (_enCo || '(비어있음)') + '\n• 영문주소: ' + (_enAddr || '(비어있음)') + '\n\n배송/결제대행은 고객이 수입자라 영문 회사명·주소가 인보이스 2) For account 칸에 들어가야 통관됩니다.\n→ §2.5 고객정보에서 영문회사명·영문주소를 먼저 입력·저장 후 다시 받으세요.');
+    const _req = requiredIdentityFields(state.customer);
+    if (!_req) {
+      if (_rb) return { skip: '고객유형(개인/사업자) 미확정' };
+      alert('🚫 발행 차단 — 고객유형 미확정\n\n이 고객(' + (_ecf['회원명'] || '') + ')은 ' + _agentType + '(고객=수입자)인데 고객유형이 미확정입니다.\n\n→ §2.5 고객정보에서 고객유형(개인회원/사업자회원)을 먼저 선택·저장하세요.\n(유형에 따라 필요한 통관 식별정보가 달라집니다.)');
+      return;
+    }
+    const _miss = _req.fields.filter(k => !String(_ecf[k] || '').trim());
+    if (_miss.length) {
+      if (_rb) return { skip: _req.type + ' 통관 식별정보 미입력(' + _miss.join('·') + ')' };
+      alert('🚫 발행 차단 — 통관 불가\n\n이 고객(' + (_ecf['회원명'] || '') + ')은 ' + _agentType + ' · ' + _req.type + '통관인데 아래 필수 정보가 비어 있습니다:\n' + _miss.map(k => '• ' + k).join('\n') + '\n\n고객이 수입자라 이 정보가 인보이스(2) For account)·통관에 들어가야 합니다.\n→ §2.5 고객정보에서 위 항목을 입력·저장 후 다시 받으세요.');
       return;
     }
   }
