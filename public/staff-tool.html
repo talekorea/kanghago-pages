@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.135</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.136</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.135</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.136</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -16972,9 +16972,7 @@ async function handleBatchDocFiles(fileList) {
   for (const file of files) {
     // [v3.2.78] ★파일별 완전 격리 — 한 파일 분석 실패가 다른 파일 매칭을 깨지 않게 전체 try.
     try {
-      const nameAp = _apFromName(file.name);
-      const base = _apBase(nameAp);
-      const matchedRow = base && rowByBase[base] ? rowByBase[base] : null;
+      const nameAp = _apFromName(file.name);   // [v3.2.136] 보조 키 — 매칭은 내용 AP 우선, 파일명은 폴백
       const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
       const isImg = /\.(jpe?g|png)$/i.test(file.name) || (file.type || '').startsWith('image/');
       let contentAp = '', contentType = '', pdfText = '';
@@ -17006,32 +17004,25 @@ async function handleBatchDocFiles(fileList) {
         else blNumber = contentBl;   // 파일명 앵커 없음 → 내용(접두우선) 후보
       }
       // [v3.2.113] CO 참조 B/L번호 — CO 본문에서 추출(extractBlCandidates 재사용·접두우선·상호reject) → 매칭 사서함 Shipments.BL번호와 대조.
-      let coRefBl = '', coRefMatch = false;
+      let coRefBl = '';
       if (docType === 'co' && !isMaster && pdfText) {
-        const _nc = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-        coRefBl = (extractBlCandidates(pdfText)[0] || {}).value || '';
-        const shipBl = matchedRow ? _nc(matchedRow.blNo) : '';
-        coRefMatch = !!(coRefBl && shipBl && _nc(coRefBl) === shipBl);
+        coRefBl = (extractBlCandidates(pdfText)[0] || {}).value || '';   // [v3.2.136] 사서함 BL 대조는 recomputeBatchVerdict에서(배정 사서함 기준 재계산)
       }
       // [v3.2.80] 출발지(BL 내용 Port of Loading) + 마스터 선적일(TALE{YYMMDD})
       const port = (docType === 'bl' || docType === 'co') ? _portOfLoading(pdfText) : '';   // [v3.2.88] 출발지(ko·배차)
       const portEn = (docType === 'bl' || docType === 'co') ? _portEn(pdfText) : '';   // [v3.2.122] 선적항(en·IP)
       const vessel = (docType === 'bl' || isMaster) ? _vesselVoyage(pdfText) : '';   // [v3.2.130] 선명·항차(BL/마스터BL에서)
       const masterShipDate = isMaster ? (_shipDateFromName(file.name) || _shipDateFromName(pdfText)) : '';
-      let conf;
-      if (isMaster) conf = 'amber';             // 마스터BL — 사서함 매칭 안 함(N/M), 현재 건너뜀
-      else if (!matchedRow) conf = 'red';       // 사서함 미매칭(위챗 이미지 등 — 정상, 드롭다운 지정)
-      else if (isPdf && contentAp) conf = (_apBase(contentAp) === base) ? 'green' : 'red';   // 내용 AP 대조
-      else conf = 'amber';                       // 이미지 또는 내용 AP 미발견 → 사람 확인
-      // [v3.2.112] ★BL 강한키 게이트: 🟢는 BL번호 확정(파일명 WY 앵커) 시만. 앵커 없음/내용 불일치 → 🟡(사람 확인). 거짓초록불 금지.
-      //   (정상 문서는 파일명 WY가 내용과 일치 → 그대로 🟢. false-🔴 0.)
-      if (docType === 'bl' && !isMaster && conf === 'green' && (!blNumber || blMismatch)) conf = 'amber';
-      // [v3.2.113] ★CO 강한키 게이트: 🟢는 CO 참조 B/L == 사서함 BL번호 일치 시만. 추출실패/불일치/사서함BL빈값 → 🟡(사람 확인). AP만으론 🟢 금지.
-      //   (정상 CO는 본문 참조 B/L이 Shipments.BL과 일치 → 그대로 🟢. 강한키 없으면 🟢 금지 — 거짓초록불 차단.)
-      if (docType === 'co' && !isMaster && conf === 'green' && !coRefMatch) conf = 'amber';
-      // [v3.2.125] ★분류 미확정(이미지 휴리스틱·모호)이면 🟢 금지 → 🟡(사람 확인). 자동분류+번호 둘 다 confident여야 🟢.
-      if (!isMaster && conf === 'green' && !docConfident) conf = 'amber';
-      items.push({ file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '', docType, docConfident, conf, contentAp, isPdf, isImg, thumbUrl, isMaster, blNumber, blMismatch, coRefBl, coRefMatch, port, portEn, vessel, masterShipDate });
+      // [v3.2.136] ★매칭 1차 = 내용 AP. 파일명 AP는 내용 AP가 부킹에 없을 때만 폴백(폴백/모호는 recompute가 자동 🟡).
+      const _cBase = contentAp ? _apBase(contentAp) : '';
+      const _nBase = nameAp ? _apBase(nameAp) : '';
+      const matchedRow = (_cBase && rowByBase[_cBase]) ? rowByBase[_cBase]
+                       : (_nBase && rowByBase[_nBase]) ? rowByBase[_nBase] : null;
+      const it = { file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '',
+        docType, docConfident, conf: 'red', contentAp, nameAp, isPdf, isImg, thumbUrl, isMaster,
+        blNumber, blMismatch, coRefBl, coRefMatch: false, port, portEn, vessel, masterShipDate };
+      recomputeBatchVerdict(it);   // ★verdict·coRefMatch·contentApMatch = 배정 사서함 기준 단일 계산(업로드·재배정 공용)
+      items.push(it);
     } catch (e) {
       console.warn('[일괄업로드] 파일 분석 실패(격리):', file && file.name, e.message);
       items.push({ file, filename: (file && file.name) || '(이름없음)', mailbox: '', shipId: '', docType: '', conf: 'red', contentAp: '', isPdf: false, isImg: false, thumbUrl: '', isMaster: false, blNumber: '', port: '', masterShipDate: '' });
@@ -17081,10 +17072,42 @@ function renderBatchDocTable() {
   el.innerHTML = h;
 }
 
+// [v3.2.136] ★verdict 단일 재대조 — 업로드/사서함 재배정 공용. 배정 사서함 기준으로 conf·coRefMatch·contentApMatch 재계산.
+//   내용 AP가 배정 사서함과 다르면 🟢 금지(🔴). 모호(내용 AP 미추출·이미지·파일명폴백) → 🟡(사람 확인). sticky 거짓🟢 제거.
+function recomputeBatchVerdict(it) {
+  if (!it) return 'red';
+  const base = _apBase(it.mailbox || '');
+  const row = it.shipId ? (bookingState.rows || []).find(r => r.id === it.shipId) : null;
+  const matched = !!(it.shipId && row);
+  const _nc = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // CO 참조BL ↔ 배정 사서함 BL번호 재대조 (배정 바뀌면 다시 평가)
+  if (it.docType === 'co' && !it.isMaster) {
+    it.coRefMatch = !!(it.coRefBl && row && row.blNo && _nc(it.coRefBl) === _nc(row.blNo));
+  }
+  // 내용 AP ↔ 배정 사서함 일치 여부 (저장 게이트도 이 값 사용)
+  it.contentApMatch = !!(it.contentAp && base && _apBase(it.contentAp) === base);
+  let conf;
+  if (it.isMaster) conf = 'amber';
+  else if (!matched) conf = 'red';
+  else if (it.isPdf && it.contentAp) conf = it.contentApMatch ? 'green' : 'red';   // ★내용 AP가 배정과 일치해야 green 후보
+  else conf = 'amber';   // 이미지/내용 AP 미추출/파일명 폴백 → 모호(사람 확인)
+  // 강한키 게이트 (green만 강등)
+  if (it.docType === 'bl' && !it.isMaster && conf === 'green' && (!it.blNumber || it.blMismatch)) conf = 'amber';
+  if (it.docType === 'co' && !it.isMaster && conf === 'green' && !it.coRefMatch) conf = 'amber';
+  if (!it.isMaster && conf === 'green' && !it.docConfident) conf = 'amber';
+  it.conf = conf;
+  return conf;
+}
+
 function setBatchDocField(idx, field, value) {
   const it = batchDocState.items[idx]; if (!it) return;
   it[field] = value;
-  if (field === 'mailbox') { const r = bookingState.rows.find(x => x.mailbox === value); it.shipId = r ? r.id : ''; if (value) { it.conf = (it.conf === 'red' && it.shipId) ? 'amber' : it.conf; batchDocState.lastMailbox = value; } }   // [v3.2.78] 직전값 기억
+  if (field === 'mailbox') {
+    const r = bookingState.rows.find(x => x.mailbox === value);
+    it.shipId = r ? r.id : '';
+    if (value) batchDocState.lastMailbox = value;   // [v3.2.78] 직전값 기억
+    recomputeBatchVerdict(it);   // [v3.2.136] ★사서함 변경 시 verdict 재대조(sticky 제거 — 내용≠선택이면 🟢 깨짐)
+  }
   renderBatchDocTable();
 }
 
@@ -17094,7 +17117,7 @@ function batchAssignAll(field, value, onlyEmpty) {
   (batchDocState.items || []).forEach(it => {
     if (onlyEmpty && it[field]) return;
     it[field] = value;
-    if (field === 'mailbox') { const r = bookingState.rows.find(x => x.mailbox === value); it.shipId = r ? r.id : ''; if (it.conf === 'red' && it.shipId) it.conf = 'amber'; }
+    if (field === 'mailbox') { const r = bookingState.rows.find(x => x.mailbox === value); it.shipId = r ? r.id : ''; recomputeBatchVerdict(it); }   // [v3.2.136] 재대조(red→amber만 X)
   });
   if (field === 'mailbox') batchDocState.lastMailbox = value;
   renderBatchDocTable();
@@ -17136,7 +17159,9 @@ async function saveBatchDocs() {
       continue;
     }
     if (!it.mailbox || !it.shipId || !it.docType) { skipped++; continue; }
-    if (it.conf === 'red' && (!it.mailbox || !it.shipId)) { skipped++; continue; }
+    // [v3.2.136] ★저장 차단 — 🔴는 배정돼 있어도 저장 안 함(내용 AP≠배정 사서함 포함). 거짓매칭 통관 오염 방지.
+    if (it.conf === 'red') { skipped++; continue; }
+    if (it.contentAp && it.contentApMatch === false) { skipped++; continue; }   // 안전망(내용 AP↔배정 명시 불일치)
     const fieldName = it.docType === 'bl' ? 'BL파일' : 'CO파일';
     const fieldId = ATTACH_FIELD_IDS[fieldName];
     try {
@@ -17151,7 +17176,9 @@ async function saveBatchDocs() {
       // [v3.2.112] ★거짓초록불 금지: 🔴/접두 없는 값/포워더 상호(reject)면 BL번호 저장 안 함(통관·면장 오염 방지). 파일명 앵커 우선이라 정상건은 통과.
       // [v3.2.126] ★접두 화이트리스트 강제 제거 — DH(电放提단) 등 미등록 선사도 저장(접두 미등록 = 저장 누락 버그). reject(상호·전화) + 형식(영숫자·letter+digit·6~20)만으로 안전 검증.
       const _bn = String(it.blNumber || '').toUpperCase();
-      const _blOk = it.blNumber && it.conf !== 'red' && !_BL_REJECT.test(_bn)
+      const _blOk = it.blNumber && it.conf !== 'red'
+                    && (!it.contentAp || it.contentApMatch)   // [v3.2.136] 내용 AP가 배정과 명시 불일치면 BL번호 자동저장 금지(통관 오염 방지). 내용 AP 없음=파일명 앵커 허용.
+                    && !_BL_REJECT.test(_bn)
                     && /^[A-Z0-9-]{6,20}$/.test(_bn) && /[A-Z]/.test(_bn) && /\d/.test(_bn);
       if (it.docType === 'bl' && _blOk) {
         const row = bookingState.rows.find(x => x.id === it.shipId);
