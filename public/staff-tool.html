@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.140</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.141</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.140</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.141</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1453,7 +1453,7 @@
 
 <!-- v3.2.0: ═══ 6. 청구서 발행 ═══ (★ 트리거 2 — 인보이스 종합 끝 → 청구서 + 페이앱 URL → 카톡/이메일) -->
 <div class="phase-header hidden" data-phase-group>
-  <span class="phase-num">6</span><span class="phase-name">청구서 발행 — PDF + 페이앱 결제 URL</span>
+  <span class="phase-num">6</span><span class="phase-name">청구서 발행 — 통합 청구서 URL (계좌이체 + 세금계산서)</span>
   <span class="phase-trigger t2">★ 트리거 2 → 카톡/이메일</span>
 </div>
 
@@ -1517,25 +1517,15 @@
     </div>
     <button class="secondary small" onclick="openInvoicePreview()" style="padding:8px 16px;">👁 미리보기</button>
     <!-- v3.2.36: PDF 다운로드 버튼 제거 (통합 청구서 URL로 대체). 함수는 미리보기 모달에서 사용 가능 — 보존 -->
-    <!-- v3.1.0 (2026-05-30, v3.0.8 archived 이식): 페이앱 결제 요청 생성 — 1단계 (수동 카톡/이메일 발송) -->
-    <button class="primary small" onclick="createPayappPayment()" id="btnPayappCreate"
-            style="padding:8px 18px; background:#2BB673; color:#fff;"
-            title="페이앱에 결제 요청 등록 → 결제 URL 받아 화면 표시 (직원이 복사해 고객에게 발송)">
-      💳 페이앱 결제 요청 생성
-    </button>
-    <!-- v3.2.3 (2026-05-30): 통합 청구서 페이지 — 사장님 통찰 "페이지 하나 + 하단 [결제하기]" -->
+    <!-- v3.2.141 (2026-06-24): 페이앱 영구 거절 → [💳 페이앱 결제 요청 생성] 버튼 제거.
+         발행 = 통합 청구서 URL(계좌이체 안내 포함) 한 개로 카톡 발송. 결제수단 = 계좌이체(테일코리아 하나은행) + 세금계산서. -->
     <button class="primary small" onclick="shareInvoiceViewUrl()" id="btnInvoiceView"
             style="padding:8px 18px; background:#1B5E9A; color:#fff;"
-            title="청구서 + 결제 통합 페이지 URL 생성 → 카톡 한 번에 발송 (페이앱 2단계)">
-      📄 통합 청구서 URL
+            title="청구서 통합 페이지 URL 생성 → 카톡 한 번에 발송 (입금계좌 안내 포함)">
+      📄 통합 청구서 URL (계좌이체)
     </button>
   </div>
   <div id="invoiceSummary" style="font-size:12px; color:#666;"></div>
-  <!-- v3.1.0: 페이앱 결제 URL 표시 (기존 결제 요청 있으면 자동 표시) -->
-  <div id="payappStatusBox" style="display:none; margin-top:12px; padding:12px 14px; background:#e8f7ef; border:1px solid #2BB673; border-radius:6px; font-size:12px;">
-    <div style="font-weight:600; color:#1b5e20; margin-bottom:6px;">💳 페이앱 결제 요청 (저장됨)</div>
-    <div id="payappStatusBody"></div>
-  </div>
 
   <!-- [Feature N] 결제용 인보이스 (QINGDAO TALELOR HK → 고객 · USD · Proforma). 통관 신고가(§8)·물류비 청구서(KRW)와 완전 별개 -->
   <div id="paymentInvoiceCard" style="margin-top:16px; padding:14px 16px; background:#eef4ff; border:1px solid #1B5E9A; border-radius:8px;">
@@ -1574,18 +1564,17 @@
   </div>
 </div>
 
-<!-- v3.1.0: 페이앱 결제 URL 모달 (생성 직후 표시) -->
+<!-- v3.2.141: 통합 청구서 URL 결과 모달 (생성 직후 표시) — shareInvoiceViewUrl이 본문(payappResultBody) 채움 -->
 <div id="payappResultModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.7); z-index:9999; padding:20px; overflow-y:auto;">
   <div style="max-width:560px; margin:60px auto; background:#fff; border-radius:10px; padding:20px 24px; box-shadow:0 12px 40px rgba(0,0,0,0.4);">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-      <h3 style="margin:0; font-size:16px; color:#1B2A3B;">💳 페이앱 결제 요청 생성 완료</h3>
+      <h3 style="margin:0; font-size:16px; color:#1B2A3B;">📄 통합 청구서 URL 생성 완료</h3>
       <button onclick="document.getElementById('payappResultModal').style.display='none'" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888;">×</button>
     </div>
     <div id="payappResultBody" style="font-size:13px; line-height:1.7;"></div>
     <div style="margin-top:14px; padding:10px 12px; background:#fff8e1; border-left:3px solid #C9973A; border-radius:4px; font-size:11px; color:#6b5d00;">
-      💡 결제 URL을 복사해서 화주에게 <strong>카톡/이메일로 직접 발송</strong>해 주세요 (1단계 — 수동).
-      결제 완료는 페이앱 관리 페이지에서 직접 확인 후 §13 입금 매칭에서 처리합니다.
-      자동화는 2단계(웹훅·알림톡)에서 도입됩니다.
+      💡 청구서 URL + 카톡 메시지(입금계좌 포함)가 클립보드에 복사됩니다 — 화주에게 <strong>카톡/이메일로 발송</strong>.
+      결제수단 = <strong>계좌이체</strong>(테일코리아 하나은행) + <strong>세금계산서</strong>. 입금 확인 후 §13 입금 매칭에서 처리합니다.
     </div>
   </div>
 </div>
@@ -4374,11 +4363,7 @@ async function loadShipment(forceId) {
     renderInvoicePreview();
     renderTariffEstimate();
 
-    // v3.1.0 (2026-05-30): 기존 페이앱 결제 요청이 있으면 §12 상자에 자동 표시
-    if (typeof renderPayappStatus === 'function') {
-      const sf = (state.shipment && state.shipment.fields) || {};
-      renderPayappStatus(sf['페이앱_결제URL'], sf['페이앱_거래번호'], sf['페이앱_요청금액'], sf['페이앱_요청일시']);
-    }
+    // v3.2.141: 페이앱 영구 거절 → 페이앱 결제요청 자동표시 제거(결제수단=계좌이체+세금계산서).
 
     // v3.1.1 (2026-05-30): 배송방식 분기 + Orders.수취인주소 자동 입력 (§11 운임계산기)
     //   + Orders 수취인이름·주소·연락처 → §2.5 빈 칸에만 자동 채움 (기존 값 보호)
@@ -6192,7 +6177,8 @@ function _publishGateReason(kind) {
   const autoMismatch = !!(_coCompareState && !_coCompareState.ok);
   if (autoMismatch) return `BL↔CO↔IP 자동대조 불일치 ${_coCompareState.mismatches}건 — §10에서 해소 후 진행`;
   if (kind === 'payapp') {
-    return matchOk ? '' : 'BL/CO 대조확인 미완 — §10 [대조 확인 완료] 후 결제 요청 생성';
+    // [v3.2.141] kind 'payapp' = 청구서 발행(계좌이체) 발송 게이트. 페이앱 제거 후에도 대조확인은 발송 전 필수.
+    return matchOk ? '' : 'BL/CO 대조확인 미완 — §10 [대조 확인 완료] 후 청구서 발송';
   }
   // kind === 'finalIp' — 특혜세율(관세사 제출용) 모드만 하드 게이트. 기본세율/미선택(CO발급용)은 통과.
   const ftaConf = String(f['적용FTA확정'] || '').trim();
@@ -10577,7 +10563,6 @@ function renderFinalConfirm() {
 
   // v3.1.0 발행 후 진행 추적 (게이트 X, 정보만)
   const hasInvoiceIssued = !!f['청구서발행일시'];
-  const hasPayappReq = !!f['페이앱_결제URL'];
   const hasPaidIn = !!f['입금완료일시'];
 
   const chk = (ok, label, when) => `<div style="padding:3px 0;">${ok ? '✅' : '🔒'} ${label}`
@@ -10628,9 +10613,8 @@ function renderFinalConfirm() {
     </div>
     <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #ddd; font-size:13px;">
       <div style="font-weight:600; color:#666; font-size:12px; margin-bottom:4px;">📊 발행 후 진행 (정보, 게이트 X)</div>
-      ${info(hasInvoiceIssued, '청구서 발행', f['청구서발행일시'] || '')}
-      ${info(hasPayappReq, '페이앱 결제 요청', f['페이앱_거래번호'] || '')}
-      ${info(hasPaidIn, '입금 완료', f['입금완료일시'] || '')}
+      ${info(hasInvoiceIssued, '청구서 발행 (통합 URL)', f['청구서발행일시'] || '')}
+      ${info(hasPaidIn, '입금 완료 (계좌이체)', f['입금완료일시'] || '')}
     </div>
     <div style="margin-top:12px; padding:12px; background:${firstReady ? '#e8f5e9' : '#fff8e1'}; border:1px solid ${firstReady ? '#0a7b40' : '#C9973A'}; border-radius:8px;">
       <strong style="color:${firstReady ? '#0a7b40' : '#9a7b2a'};">
@@ -14009,21 +13993,19 @@ async function downloadInvoicePdf() {
   }
 }
 
-// ===== v3.1.0 (2026-05-30, v3.0.8 archived 이식): 페이앱 결제 요청 생성 — 1단계 =====
-// 인보이스 도구 §12 [💳 페이앱 결제 요청 생성] → /api/payapp-create.js → 결제 URL 받음
-// → 모달로 표시 + [복사] 버튼 → 직원이 카톡/이메일로 화주에게 발송.
-// Shipments에 자동 저장 (재발급 방지, 추후 조회용). 2단계 웹훅·알림톡 자동화 예정.
-const PAYAPP_API_URL = 'https://kanghago-pages.vercel.app/api/payapp-create';
+// ===== v3.2.141 (2026-06-24): 페이앱 영구 거절 → 통합 청구서 URL 발송(계좌이체 + 세금계산서) =====
+// 인보이스 도구 §9 [📄 통합 청구서 URL] → invoice-view 페이지(청구내역 + 입금계좌 안내) URL → 카톡 발송.
+// 결제수단 = 계좌이체(테일코리아 하나은행 121-910031-58704) + 세금계산서. 페이앱 결제요청 생성 없음.
 const INVOICE_VIEW_BASE = 'https://kanghago-pages.vercel.app/invoice-view.html';
 
-// v3.2.3 (2026-05-30): 청구서 + 결제 통합 페이지 URL 생성·전송
-// 사장님 통찰: "페이지 하나를 만들어서 그 양식 하단에 결제하기 버튼이 존재하는것이 맞다"
-// 흐름: 도구에서 [📄 통합 청구서 URL] → 페이앱 결제 요청 자동 생성 (없으면) → URL 카톡 메시지 → 클립보드 복사
+// v3.2.3 (2026-05-30): 청구서 통합 페이지 URL 생성·전송
+// 사장님 통찰: "페이지 하나를 만들어서 그 양식에 청구 내역 + 입금계좌가 존재하는것이 맞다"
+// 흐름: 도구에서 [📄 통합 청구서 URL] → 금액 확인 1회 → invoice-view URL + 카톡 메시지(입금계좌 포함) → 클립보드 복사
 async function shareInvoiceViewUrl() {
   if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
-  // [v3.2.137] ★결제 경로(통합 청구서+결제하기) 하드 게이트 — 페이앱과 동일(대조확인/자동대조 불일치 차단).
+  // [v3.2.137] ★발행(돈) 하드 게이트 — BL/CO 대조확인 미완/자동대조 불일치면 청구서 발송 차단.
   const _payGate = (typeof _publishGateReason === 'function') ? _publishGateReason('payapp') : '';
-  if (_payGate) { toastWarn && toastWarn(_payGate, { title: '⛔ 결제 차단' }); return; }
+  if (_payGate) { toastWarn && toastWarn(_payGate, { title: '⛔ 발행 차단' }); return; }
   const f = state.shipment.fields || {};
   const cf = (state.customer && state.customer.fields) || {};
   const mailbox = f['사서함'] || '';
@@ -14032,58 +14014,17 @@ async function shareInvoiceViewUrl() {
   if (btn) { btn.disabled = true; btn.textContent = '📄 생성 중...'; }
 
   try {
-    // v3.2.36 🔴: [통합 청구서 URL] = 발송 시점 최신 금액 동기화.
-    //   - 현재 금액 표시 + 확인 1회 (돈 안전 게이트)
-    //   - 옛 결제요청 있으면 paycancel 시도 후 새로 생성 (페이앱 cancel 지원: cmd=paycancel)
-    //   - 신규: 그냥 createPayappPayment
+    // v3.2.141: [통합 청구서 URL] = 발송 시점 최신 금액 표시 + 확인 1회 (돈 안전 게이트). 페이앱 생성 없음.
     const grandTotalKrw = (typeof calcGrandTotalKrw === 'function') ? calcGrandTotalKrw() : 0;
     if (grandTotalKrw <= 0) {
       toastWarn && toastWarn('총 청구 금액 0원 — §6 부대비용·§11 운임 입력 후 다시 시도');
-      if (btn) { btn.disabled = false; btn.textContent = '📄 통합 청구서 URL'; }
+      if (btn) { btn.disabled = false; btn.textContent = '📄 통합 청구서 URL (계좌이체)'; }
       return;
     }
-    // 발송 직전 확인 (돈 게이트)
-    const oldUrl = f['페이앱_결제URL'];
-    const oldAmount = parseFloat(f['페이앱_요청금액']) || 0;
-    const oldMulNo = f['페이앱_거래번호'] || '';
-    let confirmMsg;
-    if (oldUrl && oldAmount !== grandTotalKrw) {
-      confirmMsg = `옛 페이앱 결제요청: ₩${oldAmount.toLocaleString()}\n새 결제요청 생성: ₩${grandTotalKrw.toLocaleString()}\n\n옛 요청 취소 시도 후 새 URL로 카톡 발송합니다. 진행하시겠습니까?`;
-    } else if (!oldUrl) {
-      confirmMsg = `페이앱 결제요청 생성: ₩${grandTotalKrw.toLocaleString()}\n\n진행하시겠습니까?`;
-    } else {
-      confirmMsg = `기존 페이앱 결제요청 사용: ₩${grandTotalKrw.toLocaleString()} (변경 없음)\n\n발송하시겠습니까?`;
-    }
-    if (!confirm(confirmMsg)) {
-      if (btn) { btn.disabled = false; btn.textContent = '📄 통합 청구서 URL'; }
+    // 발송 직전 확인 (돈 게이트) — 계좌이체 청구
+    if (!confirm(`통합 청구서 URL 발송 (계좌이체)\n\n▷ 청구 금액: ₩${grandTotalKrw.toLocaleString()}\n▷ 입금계좌: ${ISSUER.bankLine}\n\n청구서 URL + 카톡 메시지(입금계좌 포함)를 생성합니다. 진행하시겠습니까?`)) {
+      if (btn) { btn.disabled = false; btn.textContent = '📄 통합 청구서 URL (계좌이체)'; }
       return;
-    }
-    // 금액 다르면 옛 결제요청 paycancel + 새로 생성
-    if (oldUrl && oldAmount !== grandTotalKrw) {
-      if (oldMulNo) {
-        try {
-          const cr = await fetch('https://kanghago-pages.vercel.app/api/payapp-create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'cancel', mul_no: oldMulNo, memo: '금액 변경 재생성' }),
-          });
-          const cd = await cr.json();
-          console.info('[v3.2.36 페이앱 취소]', cd);
-          if (!cd.cancelled) {
-            toastWarn && toastWarn('옛 결제요청 취소 실패 — 새 URL만 발송 (옛 건 사용 안 함)', { title: '💳 페이앱' });
-          }
-        } catch (e) { console.warn('[v3.2.36 paycancel 실패]', e.message); }
-      }
-      // Shipments 옛 URL 필드 비움 → createPayappPayment 재생성 (confirm 안 띄움)
-      state.shipment.fields['페이앱_결제URL'] = '';
-      state.shipment.fields['페이앱_거래번호'] = '';
-      state.shipment.fields['페이앱_요청금액'] = 0;
-      try { await createPayappPayment(); }
-      catch (e) { toastWarn && toastWarn('페이앱 재생성 실패: ' + e.message); }
-    } else if (!oldUrl) {
-      // 신규 생성
-      try { await createPayappPayment(); }
-      catch (e) { toastWarn && toastWarn('페이앱 생성 실패: ' + e.message); }
     }
     // 2. 통합 청구서 URL 조립
     let viewUrl = `${INVOICE_VIEW_BASE}?mailbox=${encodeURIComponent(mailbox)}`;
@@ -14108,12 +14049,13 @@ async function shareInvoiceViewUrl() {
 안녕하세요, ${customerName}님.
 사서함 ${mailbox} 청구서를 발행드립니다.
 
-▷ 청구 금액: ₩${grandTotalKrw.toLocaleString()}
-▷ 청구서 + 결제: ${viewUrl}
+▷ 청구 금액: ₩${grandTotalKrw.toLocaleString()} (VAT 포함)
+▷ 청구서 상세: ${viewUrl}
 
-위 링크에서 청구 내역 확인 후
-하단 [결제하기] 버튼으로 바로 결제하실 수 있습니다.
-(영업일 기준 1~2일 내 통관 진행)
+위 링크에서 청구 내역을 확인하신 뒤
+아래 계좌로 입금해 주세요.
+▷ 입금계좌: ${ISSUER.bankLine}
+※ 세금계산서 발행 / 입금 확인 후 영업일 기준 1~2일 내 통관 진행
 
 문의: ${ISSUER.tel} / ${ISSUER.email}
 - ${ISSUER.nameKo} -`;
@@ -14127,12 +14069,13 @@ async function shareInvoiceViewUrl() {
     if (body && modal) {
       body.innerHTML = `
         <div style="margin-bottom:14px; padding:12px 14px; background:#e8f0fb; border:1px solid #1B5E9A; border-radius:6px;">
-          <div style="font-weight:600; color:#1B5E9A; margin-bottom:6px;">📄 통합 청구서 페이지 (v3.2.3)</div>
-          <div style="font-size:12px; color:#666;">청구서 본문 + 페이앱 [결제하기] 버튼이 한 페이지에 통합. 카톡 메시지 한 번에 발송.</div>
+          <div style="font-weight:600; color:#1B5E9A; margin-bottom:6px;">📄 통합 청구서 페이지 (v3.2.141 · 계좌이체)</div>
+          <div style="font-size:12px; color:#666;">청구서 본문 + 입금계좌 안내가 한 페이지에 통합. 카톡 메시지 한 번에 발송. 결제수단 = 계좌이체 + 세금계산서.</div>
         </div>
         <div style="display:grid; grid-template-columns:auto 1fr; gap:6px 14px; margin-bottom:14px;">
           <div style="color:#666;">사서함</div>      <div><strong>${payappEsc(mailbox)}</strong></div>
           <div style="color:#666;">총 청구 금액</div>  <div><strong style="color:#C9973A; font-size:15px;">₩${grandTotalKrw.toLocaleString()}</strong></div>
+          <div style="color:#666;">입금계좌</div>      <div><strong>${payappEsc(ISSUER.bankLine)}</strong></div>
         </div>
         <div style="margin-bottom:8px; font-weight:600; color:#1B2A3B;">통합 청구서 URL</div>
         <div style="display:flex; gap:6px; align-items:stretch; margin-bottom:10px;">
@@ -14156,7 +14099,7 @@ async function shareInvoiceViewUrl() {
     console.error('[v3.2.3 invoice-view]', e);
     toastError && toastError('통합 청구서 URL 생성 실패: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '📄 통합 청구서 URL'; }
+    if (btn) { btn.disabled = false; btn.textContent = '📄 통합 청구서 URL (계좌이체)'; }
   }
 }
 
@@ -14172,7 +14115,7 @@ async function shareInvoiceViewUrl() {
 // 4곳 동일 호출:
 //   1) §9·§11 총 청구 요약 (renderTariff)
 //   2) §12 청구서 미리보기·PDF (buildInvoiceData.total)
-//   3) §12 페이앱 결제 (createPayappPayment)
+//   3) §9 통합 청구서 URL 발송 (shareInvoiceViewUrl — 계좌이체 청구금액)
 //   4) invoice-view 외부 페이지 (Airtable.청구금액_KRW = data.total)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -14277,131 +14220,8 @@ function calcParcelTotalKrwPreVat() {
 // 호환 — 기존 호출처 보존 (모두 단일 함수에 위임)
 function calcGrandTotalKrw() { return calcFinalInvoiceTotalKrw(); }
 
-async function createPayappPayment() {
-  if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
-  // v3.2.1 버그 1 fix: §11 grandTotalKrw 사용
-  const grandTotalKrw = calcGrandTotalKrw();
-  if (!grandTotalKrw || grandTotalKrw <= 0) {
-    toastWarn && toastWarn('총 청구 금액이 0원 — §3 제품·§4 작업비·§6 부대비용·§11 운임을 먼저 채워주세요');
-    return;
-  }
-  // [v3.2.137] ★결제(돈) 하드 게이트 — BL/CO 대조확인 미완 또는 자동대조 불일치면 결제 요청 차단. (1차 IP·부킹과 무관)
-  const _payGate = (typeof _publishGateReason === 'function') ? _publishGateReason('payapp') : '';
-  if (_payGate) { toastWarn && toastWarn(_payGate, { title: '⛔ 결제 차단' }); return; }
-  const existingUrl = (state.shipment.fields || {})['페이앱_결제URL'];
-  if (existingUrl) {
-    if (!confirm('이미 페이앱 결제 요청이 등록되어 있습니다.\n새로 생성하면 옛 URL은 화면에서 사라지고, Shipments에는 새 URL이 저장됩니다 (옛 거래는 페이앱 관리에서 조회 가능).\n계속하시겠습니까?')) return;
-  }
-
-  const btn = document.getElementById('btnPayappCreate');
-  if (btn) { btn.disabled = true; btn.textContent = '💳 생성 중...'; }
-
-  try {
-    const cf = (state.customer && state.customer.fields) || {};
-    const f = state.shipment.fields || {};
-    const body = {
-      mailbox: f['사서함'] || '',
-      shipmentId: state.shipment.id,
-      amount: grandTotalKrw,   // v3.2.1: §11 전체 KRW
-      goodname: `강하고 통관 ${f['사서함'] || ''} 청구서`,
-      customer_name: cf['회원명'] || f['수취_수취인'] || '',
-      customer_phone: (cf['연락처'] || f['수취_전화'] || '').replace(/\D/g, ''),
-    };
-    const r = await fetch(PAYAPP_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const result = await r.json();
-    if (!r.ok || !result.ok) {
-      const hint = result.hint ? `\n\n💡 ${result.hint}` : '';
-      throw new Error((result.error || 'unknown') + (result.detail ? ' — ' + result.detail : '') + hint);
-    }
-
-    const body2 = document.getElementById('payappResultBody');
-    body2.innerHTML = `
-      <div style="display:grid; grid-template-columns:auto 1fr; gap:6px 14px; margin-bottom:14px;">
-        <div style="color:#666;">사서함</div>      <div><strong>${payappEsc(result.mailbox)}</strong></div>
-        <div style="color:#666;">결제 금액</div>    <div><strong style="color:#C9973A; font-size:15px;">₩${result.amount.toLocaleString()}</strong></div>
-        <div style="color:#666;">거래번호</div>    <div style="font-family:monospace; color:#1B2A3B;">${payappEsc(result.mul_no || '-')}</div>
-        <div style="color:#666;">생성 시각</div>   <div>${new Date(result.requestedAt).toLocaleString('ko-KR')}</div>
-        <div style="color:#666;">Airtable 저장</div><div>${result.savedToAirtable ? '✅ 저장됨' : '⚠ 저장 실패 (수동 복사 필요)'}</div>
-      </div>
-      <div style="margin-bottom:8px; font-weight:600; color:#1B2A3B;">결제 URL</div>
-      <div style="display:flex; gap:6px; align-items:stretch; margin-bottom:10px;">
-        <input id="payappUrlInput" type="text" readonly value="${payappEsc(result.payurl)}"
-               style="flex:1; padding:8px 10px; font-family:monospace; font-size:12px; border:1px solid #2BB673; border-radius:4px; background:#f0fdf4;"
-               onclick="this.select()" />
-        <button class="primary small" onclick="copyPayappUrl()" id="btnCopyPayappUrl"
-                style="padding:8px 14px; background:#2BB673; color:#fff;">📋 URL 복사</button>
-      </div>
-      <details style="font-size:11px; color:#666;">
-        <summary style="cursor:pointer;">✉ 카카오 메시지 템플릿 (복사해 사용)</summary>
-        <textarea readonly rows="6" style="width:100%; margin-top:6px; font-family:'맑은 고딕',sans-serif; font-size:11px; padding:8px; border:1px solid #ccc; border-radius:4px;">[강하고 무역] 통관 청구서 결제 안내
-
-안녕하세요, ${(cf['회원명'] || f['수취_수취인'] || '고객')}님.
-사서함 ${f['사서함'] || ''} 청구서를 발행드립니다.
-
-▷ 결제 금액: ₩${result.amount.toLocaleString()}
-▷ 결제 링크: ${result.payurl}
-▷ 결제 후 처리: 영업일 기준 1~2일 내 통관 진행
-
-문의: ${ISSUER.tel} / ${ISSUER.email}
-- 주식회사 테일코리아 -</textarea>
-      </details>
-    `;
-    document.getElementById('payappResultModal').style.display = 'block';
-    renderPayappStatus(result.payurl, result.mul_no, result.amount, result.requestedAt);
-
-    // 로컬 state도 갱신 (재생성 confirm용)
-    state.shipment.fields['페이앱_결제URL'] = result.payurl;
-    state.shipment.fields['페이앱_거래번호'] = result.mul_no;
-    state.shipment.fields['페이앱_요청금액'] = result.amount;
-    state.shipment.fields['페이앱_요청일시'] = result.requestedAt;
-    state.shipment.fields['페이앱_결제상태'] = '요청완료';
-
-    toastSuccess && toastSuccess('페이앱 결제 요청 생성 완료 — URL 모달에서 복사', { title: '💳 페이앱' });
-  } catch (e) {
-    console.error('[v3.1.0 payapp]', e);
-    toastError && toastError('페이앱 결제 요청 실패: ' + e.message, { title: '💳 페이앱', subtitle: '환경변수 PAYAPP_USERID/LINKKEY/LINKVAL 확인 또는 Vercel 재배포 필요' });
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '💳 페이앱 결제 요청 생성'; }
-  }
-}
-
-function copyPayappUrl() {
-  const inp = document.getElementById('payappUrlInput');
-  if (!inp) return;
-  inp.select();
-  try {
-    navigator.clipboard.writeText(inp.value).then(() => {
-      const btn = document.getElementById('btnCopyPayappUrl');
-      if (btn) { btn.textContent = '✓ 복사됨'; setTimeout(() => { btn.textContent = '📋 URL 복사'; }, 1500); }
-    });
-  } catch (_) { document.execCommand('copy'); }
-}
-
-function renderPayappStatus(url, mulNo, amount, requestedAt) {
-  const box = document.getElementById('payappStatusBox');
-  const body = document.getElementById('payappStatusBody');
-  if (!box || !body) return;
-  if (!url) { box.style.display = 'none'; return; }
-  const amt = amount ? `₩${parseInt(amount).toLocaleString()}` : '-';
-  const when = requestedAt ? new Date(requestedAt).toLocaleString('ko-KR') : '-';
-  body.innerHTML = `
-    <div style="display:grid; grid-template-columns:auto 1fr; gap:4px 12px;">
-      <div style="color:#666;">금액</div>     <div><strong>${amt}</strong></div>
-      <div style="color:#666;">거래번호</div> <div style="font-family:monospace;">${payappEsc(mulNo || '-')}</div>
-      <div style="color:#666;">요청 시각</div><div>${when}</div>
-      <div style="color:#666;">URL</div>
-      <div>
-        <a href="${payappEsc(url)}" target="_blank" style="color:#0a7b40; word-break:break-all; font-family:monospace; font-size:11px;">${payappEsc(url)}</a>
-        <button class="secondary small" onclick="navigator.clipboard.writeText('${payappEsc(url)}'); toastSuccess && toastSuccess('URL 복사됨', {title:'💳 페이앱'})" style="margin-left:6px; padding:3px 8px; font-size:10px;">복사</button>
-      </div>
-    </div>
-  `;
-  box.style.display = 'block';
-}
+// [v3.2.141] 페이앱 영구 거절 → createPayappPayment·copyPayappUrl·renderPayappStatus 제거.
+//   발행 = shareInvoiceViewUrl(통합 청구서 URL, 계좌이체 안내). 결제수단 = 계좌이체 + 세금계산서.
 
 // v3.1.1 (2026-05-30): 숫자 input focus 헬퍼 — 값이 0/0.0이면 비우기, 그 외엔 select-all.
 //   사용자가 22 누르면 220 되는 UI 버그 해결 (박스 §5 무게/가로/세로/높이 등).

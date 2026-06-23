@@ -63,6 +63,13 @@
     text-decoration:none; box-shadow:0 4px 12px rgba(43,182,115,0.3); transition:transform 0.1s, box-shadow 0.1s; }
   .pay-btn:hover { transform:translateY(-1px); box-shadow:0 6px 16px rgba(43,182,115,0.4); }
   .pay-btn:disabled, .pay-btn.disabled { background:#ccc; cursor:not-allowed; box-shadow:none; transform:none; }
+  /* [v3.2.141] 계좌이체 안내 (페이앱 결제하기 버튼 대체) */
+  .bank-guide { display:inline-block; text-align:center; padding:22px 40px; background:#FAF6EE; border:2px solid #C9973A; border-radius:12px; box-shadow:0 4px 12px rgba(201,151,58,0.15); max-width:520px; }
+  .bank-guide-title { font-size:15px; font-weight:700; color:#1B2A3B; margin-bottom:10px; }
+  .bank-guide-amt { font-size:26px; font-weight:800; color:#C9973A; margin-bottom:10px; }
+  .bank-guide-bank { font-size:18px; font-weight:700; color:#1B2A3B; font-family:ui-monospace,monospace; letter-spacing:0.3px; }
+  .bank-guide-holder { font-size:13px; color:#666; margin-top:3px; }
+  .bank-guide-note { font-size:12px; color:#666; margin-top:14px; line-height:1.7; text-align:left; padding-top:12px; border-top:1px dashed #d0c8b0; }
 
   .foot { font-size:11px; color:#888; text-align:center; line-height:1.7; padding-top:16px; border-top:1px solid var(--line); }
   .loading, .err { padding:60px 30px; text-align:center; color:#888; }
@@ -165,8 +172,8 @@ function render(d) {
 
   // v3.2.18 P0: 물류비 청구서. 신고가 폴백 폐기 — 청구금액_KRW = 0이면 0 표시.
   const claimAmount = t.claimKrw || 0;
-  const payappReady = !!d.payappUrl && d.payappStatus !== '결제완료';
-  const payappPaid = d.payappStatus === '결제완료';
+  // [v3.2.141] 페이앱 영구 거절 → 결제수단 = 계좌이체(테일코리아 하나은행) + 세금계산서. 결제하기 버튼 제거.
+  const paidIn = !!d.paidInAt;
 
   // 물류비 항목 — 해당분만 표시 (0 또는 빈값은 줄 자체 생략)
   // v3.2.31: CO는 절세 > 0일 때만 청구. note에 "FTA 적용 관세 ₩XXX 절감 (CO 발급 기준)"
@@ -279,11 +286,17 @@ function render(d) {
     ` : ''}
 
     <div class="pay-btn-wrap">
-      ${payappPaid
-        ? `<button class="pay-btn disabled" disabled>✅ 결제 완료 — 통관 진행 중</button>`
-        : payappReady && claimAmount > 0
-          ? `<a class="pay-btn" href="${esc(d.payappUrl)}" target="_blank" rel="noopener">💳 결제하기 (${fmtKrw(claimAmount)})</a>`
-          : `<button class="pay-btn disabled" disabled>⏳ 결제 URL 생성 대기 (직원이 §12에서 생성)</button>`
+      ${paidIn
+        ? `<button class="pay-btn disabled" disabled>✅ 입금 확인 완료 — 통관 진행 중</button>`
+        : claimAmount > 0
+          ? `<div class="bank-guide">
+               <div class="bank-guide-title">💳 아래 계좌로 입금해 주세요 (계좌이체)</div>
+               <div class="bank-guide-amt">${fmtKrw(claimAmount)} <span style="font-size:13px; font-weight:400; color:#666;">(VAT 포함)</span></div>
+               <div class="bank-guide-bank">${esc(issuer.bank)}</div>
+               ${issuer.bankHolder ? `<div class="bank-guide-holder">${esc(issuer.bankHolder)}</div>` : ''}
+               <div class="bank-guide-note">※ 입금 시 <strong>사서함번호(${esc(s.mailbox)})</strong> 또는 <strong>상호</strong>를 입금자명에 기재해 주세요.<br>※ 세금계산서를 발행해 드립니다. 입금 확인 후 영업일 기준 1~2일 내 통관을 진행합니다.</div>
+             </div>`
+          : `<button class="pay-btn disabled" disabled>⏳ 청구서 발행 대기 (직원이 §9에서 발행)</button>`
       }
     </div>
 

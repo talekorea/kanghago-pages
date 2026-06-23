@@ -1,11 +1,11 @@
 // 청구서 + 결제 통합 페이지 데이터 프록시 — v3.2.3 Phase (2026-05-30)
 //
 // GET /api/invoice-view?mailbox=AP1819
-//   returns: { shipment, customer, orders, products, totals, payappUrl, generatedAt }
+//   returns: { shipment, customer, orders, products, totals, issuer, paidInAt, generatedAt }
 //
-// 사장님 통찰: "PDF 든 html 이든 페이지 하나를 만들어서 그 양식 하단에 결제하기 버튼이 존재하는것이 맞다"
-//   1. 직원이 도구에서 [청구서 생성] 클릭 → 통합 페이지 URL 한 개로 카톡 발송
-//   2. 고객이 페이지 열어 청구 내역 보고 하단 [결제하기] 클릭 → 페이앱 결제창
+// 사장님 통찰: "페이지 하나를 만들어서 그 양식에 청구 내역 + 입금계좌가 존재하는것이 맞다"
+//   1. 직원이 도구 §9 [통합 청구서 URL] 클릭 → 페이지 URL 한 개로 카톡 발송
+//   2. 고객이 페이지 열어 청구 내역 보고 하단 [입금계좌 안내]로 계좌이체 (v3.2.141: 페이앱 거절 → 계좌이체 + 세금계산서)
 //
 // 페이지: kanghago-pages.vercel.app/invoice-view.html?mailbox=AP1819
 // 데이터: 이 API가 Shipments + Customers + Orders + Products 조인해서 반환.
@@ -139,9 +139,9 @@ module.exports = async (req, res) => {
       totals,
       breakdown,
       issuer,   // [v3.2.139] 발행주체 = 주식회사 테일코리아 + 하나은행 계좌
-      payappUrl: f['페이앱_결제URL'] || '',
-      payappStatus: f['페이앱_결제상태'] || '',
-      payappAmount: parseFloat(f['페이앱_요청금액']) || 0,
+      // [v3.2.141] 페이앱 영구 거절 → 결제수단 = 계좌이체 + 세금계산서. payappUrl/Status/Amount 제거.
+      //   입금 확인 = Shipments.입금완료일시(§13 입금 매칭에서 기록) → 페이지 "입금 확인 완료" 표시.
+      paidInAt: f['입금완료일시'] || '',
       generatedAt: new Date().toISOString(),
     });
   } catch (e) {
