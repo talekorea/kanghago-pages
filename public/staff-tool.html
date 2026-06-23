@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.138</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.139</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.138</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.139</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1489,9 +1489,8 @@
     <div>
       <label style="font-size:11px; color:#666; display:block;">발행 주체</label>
       <select id="invIssuingEntity" style="padding:6px 9px; border:1px solid #ccc; border-radius:5px;">
-        <!-- v3.2.31: 강하고 사업자 등록 완료 → 기본 발행처 전환. 테일코리아는 옵션 유지. -->
-        <option value="KANGHAGO_KR" selected>강하고 (219-43-01430)</option>
-        <option value="TALE_KOREA">주식회사 테일코리아 (162-86-01960)</option>
+        <!-- [v3.2.139] 발행주체 = 주식회사 테일코리아로 통일(기본·유일 의미값). 레거시 KANGHAGO_KR 값도 ENTITIES에서 테일코리아 출력. -->
+        <option value="TALE_KOREA" selected>주식회사 테일코리아 (162-86-01960)</option>
         <option value="TALELOR_HK">QINGDAO TALELOR (HK)</option>
       </select>
     </div>
@@ -10904,11 +10903,23 @@ const INVOICE_SHIPPER = [
   'CHENGYANG DISTRICT, QINGDAO CITY, SHANDONG, CHINA',
   'ATTN: 19033580313',
 ];
+// [v3.2.139] ★발행주체 단일 진실원(ISSUER) — 청구서·IP·페이앱·CO·통합청구URL 전부 이 상수에서. 한 곳 수정으로 전 출력 반영.
+//   고객(실화주) 정보 칸과 무관(발행주체=주식회사 테일코리아만).
+const ISSUER = {
+  nameKo: '주식회사 테일코리아',
+  nameEn: 'TALE KOREA CO.,LTD',
+  biz: '162-86-01960',
+  addrKo: '인천시 서구 북항로 207번길 55',
+  addrEn: '2F, 1-DONG, 55, BUKHANG-RO 207BEON-GIL, SEO-GU, INCHEON, REPUBLIC OF KOREA',
+  tel: '010-3622-7995',
+  email: 'admin@talekorea.com',
+  bankName: '하나은행', accountNo: '121-910031-58704', accountHolder: '주식회사 테일코리아',
+  bankLine: '하나은행 121-910031-58704 · 예금주 주식회사 테일코리아',
+};
 const INVOICE_ACCOUNT = [
-  'TALE KOREA Co.,Ltd (162-86-01960)',
-  '2F, 1-DONG, 55, Bukhang-ro 207beon-gil,',
-  'Seo-gu, Incheon, Republic of Korea',
-  '1661-5776   master@talekorea.com',
+  `${ISSUER.nameEn} (${ISSUER.biz})`,
+  ISSUER.addrEn,
+  `${ISSUER.tel}   ${ISSUER.email}`,
 ];
 
 // [Feature N 확장] 발행일 단일 헬퍼 (PI·CI·INV·파일명 공통). 입력(YYYY-MM-DD) 우선, 없으면 오늘 KST.
@@ -13551,7 +13562,7 @@ function buildInvoiceData() {
   const ship = state._shippingLatest || {};
   const seaFreight   = parseFloat((document.getElementById('invSeaFreight') || {}).value) || 0;
   const customsFee   = parseFloat((document.getElementById('invCustomsFee') || {}).value) || 0;
-  const issuingEntity= (document.getElementById('invIssuingEntity') || {}).value || 'KANGHAGO_KR';   // v3.2.31
+  const issuingEntity= (document.getElementById('invIssuingEntity') || {}).value || 'TALE_KOREA';   // [v3.2.139] default = 테일코리아
   const paymentMethod= (document.getElementById('invPaymentMethod') || {}).value || 'BANK_TRANSFER';
 
   // v3.2.13: 물류비 청구서 — BL+해상+CO+택배+화물+쿠팡밀크런 (전 항목 TAX_10, ×1.10 한 번).
@@ -13584,21 +13595,14 @@ function buildInvoiceData() {
   const mailbox = f['사서함'] || 'AP';
   const invoiceNo = `${mailbox}-INV-${_inv.yymmdd}`;
 
-  // v3.2.31: 발행처 강하고로 전환 — 강하고 사업자 등록 완료. IBK 기업은행 계좌 표시.
+  // [v3.2.139] 발행주체 = 단일 진실원(ISSUER) = 주식회사 테일코리아. KANGHAGO_KR/TALE_KOREA 모두 테일코리아로 통일(강하고 잔재 제거 — 레거시 발행주체값도 테일코리아 출력).
+  const _tk = { name: ISSUER.nameKo, biz: ISSUER.biz, addr: ISSUER.addrKo, tel: ISSUER.tel, email: ISSUER.email, bank: ISSUER.bankLine };
   const ENTITIES = {
-    KANGHAGO_KR: {
-      name: '강하고 (Kanghago)', biz: '219-43-01430',
-      addr: '인천광역시 서구 북항로207번길 55, 1동 2층', tel: '1661-5776', email: 'master@talekorea.com',
-      bank: 'IBK기업은행 491-080376-04-014 · 예금주 강지훈(강하고)',
-    },
-    TALE_KOREA: {
-      name: '주식회사 테일코리아', biz: '162-86-01960',
-      addr: '인천광역시 서구 북항로207번길 55, 1동 2층', tel: '1661-5776', email: 'master@talekorea.com',
-      bank: 'IBK기업은행 491-080376-04-014 · 예금주 강지훈(강하고)',
-    },
+    KANGHAGO_KR: { ..._tk },
+    TALE_KOREA:  { ..._tk },
     TALELOR_HK:  { name: 'QINGDAO TALELOR (HK)', biz: '', addr: '', tel: '', email: '', bank: '' },
   };
-  const entity = ENTITIES[issuingEntity] || ENTITIES.KANGHAGO_KR;   // v3.2.31: default = 강하고
+  const entity = ENTITIES[issuingEntity] || ENTITIES.TALE_KOREA;   // [v3.2.139] default = 테일코리아
 
   // 수신자 (고객)
   const customer = {
@@ -14098,8 +14102,8 @@ async function shareInvoiceViewUrl() {
 하단 [결제하기] 버튼으로 바로 결제하실 수 있습니다.
 (영업일 기준 1~2일 내 통관 진행)
 
-문의: 1661-5776 / master@talekorea.com
-- 강하고 (Kanghago) -`;
+문의: ${ISSUER.tel} / ${ISSUER.email}
+- ${ISSUER.nameKo} -`;
 
     // 4. 클립보드 복사 + 모달 표시
     try { await navigator.clipboard.writeText(message); } catch (_) {}
@@ -14329,7 +14333,7 @@ async function createPayappPayment() {
 ▷ 결제 링크: ${result.payurl}
 ▷ 결제 후 처리: 영업일 기준 1~2일 내 통관 진행
 
-문의: 1661-5776 / master@talekorea.com
+문의: ${ISSUER.tel} / ${ISSUER.email}
 - 주식회사 테일코리아 -</textarea>
       </details>
     `;

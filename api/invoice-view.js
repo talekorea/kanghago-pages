@@ -103,15 +103,15 @@ module.exports = async (req, res) => {
       coupang:  parseFloat(f['청구_쿠팡밀크런_금액']) || 0,
       shipMethod: f['배송방식'] || '',
     };
-    // v3.2.31: 발행처 강하고로 전환 (사장님 사업자 등록 완료)
+    // [v3.2.139] 발행주체 = 주식회사 테일코리아(단일 진실원). 통합 청구 URL(invoice-view)의 발행주체·입금계좌.
     const issuer = {
-      name: '강하고 (Kanghago)',
-      biz: '219-43-01430',
-      addr: '인천광역시 서구 북항로207번길 55, 1동 2층',
-      tel: '1661-5776',
-      email: 'master@talekorea.com',
-      bank: 'IBK기업은행 491-080376-04-014',
-      bankHolder: '예금주 강지훈(강하고)',
+      name: '주식회사 테일코리아',
+      biz: '162-86-01960',
+      addr: '인천시 서구 북항로 207번길 55',
+      tel: '010-3622-7995',
+      email: 'admin@talekorea.com',
+      bank: '하나은행 121-910031-58704',
+      bankHolder: '예금주 주식회사 테일코리아',
     };
 
     return res.status(200).json({
@@ -138,7 +138,7 @@ module.exports = async (req, res) => {
       products: [],
       totals,
       breakdown,
-      issuer,   // v3.2.31: 발행처 강하고 + IBK 계좌
+      issuer,   // [v3.2.139] 발행주체 = 주식회사 테일코리아 + 하나은행 계좌
       payappUrl: f['페이앱_결제URL'] || '',
       payappStatus: f['페이앱_결제상태'] || '',
       payappAmount: parseFloat(f['페이앱_요청금액']) || 0,

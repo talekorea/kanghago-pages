@@ -154,12 +154,12 @@ function renderTariffCompare() {
 function render(d) {
   const root = document.getElementById('root');
   const s = d.shipment, c = d.customer, t = d.totals, bd = d.breakdown || {};
-  // v3.2.31: 발행처 강하고로 전환 + IBK 계좌. API에 issuer 없으면 폴백 (옛 사서함)
+  // [v3.2.139] 발행주체 = 주식회사 테일코리아(단일 진실원). API에 issuer 없으면 폴백.
   const issuer = d.issuer || {
-    name: '강하고 (Kanghago)', biz: '219-43-01430',
-    addr: '인천광역시 서구 북항로207번길 55, 1동 2층',
-    tel: '1661-5776', email: 'master@talekorea.com',
-    bank: 'IBK기업은행 491-080376-04-014', bankHolder: '예금주 강지훈(강하고)',
+    name: '주식회사 테일코리아', biz: '162-86-01960',
+    addr: '인천시 서구 북항로 207번길 55',
+    tel: '010-3622-7995', email: 'admin@talekorea.com',
+    bank: '하나은행 121-910031-58704', bankHolder: '예금주 주식회사 테일코리아',
   };
   const ftaSavingKrw = (t && t.ftaSavingKrw) || 0;
 
@@ -289,7 +289,7 @@ function render(d) {
 
     <div class="foot">
       <div>강하고 (Kanghago) · 한·중 1688 무역대행 · 발행: ${esc(issuer.name)} (${esc(issuer.biz)})</div>
-      <div>문의: 1661-5776 · master@talekorea.com</div>
+      <div>문의: ${esc(issuer.tel)} · ${esc(issuer.email)}</div>
       <div style="margin-top:6px; color:#bbb;">청구번호 ${esc(s.mailbox)} · 발행 ${esc((d.shipment && d.shipment.issueDate) ? d.shipment.issueDate.slice(0,10) : d.generatedAt.slice(0, 10))}</div>
       <div style="margin-top:3px; color:#999; font-size:10px;">물류비 청구서 (BL · 해상운임 · CO · 택배 · 화물 · 밀크런 · 쿠팡밀크런) × 1.10</div>
     </div>
