@@ -1102,14 +1102,17 @@
       }
     }
 
-    // 4. 영문명 통일 — HS가 진실원. 전 행에 동일 영문명 적용 (빈 행 + 기존 영문명 모두 덮어쓰기).
-    //    v3.2.35: 사장님 정책 — '같은 HS면 같은 영문명' (통관 신고 일관성 강화).
-    //    학습 데이터 우선 (관세사 확정한 매핑만 hs_rates에 반환) → 없으면 AI hs2name 1회 호출.
-    //    공식표 매칭 (tariff) 없을 땐 AI도 안 부름 (잘못된 HS에 영문명 추천 의미 없음).
-    if (tariff && rows.length > 0) {
+    // 4. [v3.2.36] 영문명 자동채움 — ★빈 행만 채움(기존 영문명 절대 덮지 않음). 과거 '전 행 통일 덮어쓰기'(v3.2.35) 폐기.
+    //    같은 HS라도 행별 영문명 상이 허용(품명=품목 고유, HS=분류 — 결합 끊음). broadcast 오염(catch-all HS) 차단.
+    //    catch-all HS(7326.90/3926.90 등 잡품)는 자동채움 제외 — 서로 다른 품목이 한 영문명으로 통일되는 것 방지.
+    //    학습 데이터 우선 → 없으면 AI hs2name 1회. 공식표(tariff) 없으면 AI 안 부름.
+    const _CATCH_ALL_HS6 = ['732690', '392690'];  // 기타 철강제품·기타 플라스틱제품 등 catch-all (확장 가능)
+    const _hs6 = String(value || '').replace(/[^0-9]/g, '').slice(0, 6);
+    const _isCatchAllHs = _CATCH_ALL_HS6.includes(_hs6);
+    if (tariff && rows.length > 0 && !_isCatchAllHs) {
       let descToFill = '';
       let sourceLabel = '';
-      // 4a. 학습 데이터 우선 (HSMapping op=hs_rates — v3.2.35: 확정·사용횟수>0 매핑만)
+      // 4a. 학습 데이터 우선 (HSMapping op=hs_rates — 확정·사용횟수>0 매핑만)
       try {
         const rr = await api('GET', '?op=hs_rates&code=' + encodeURIComponent(value));
         if (rr && rr.description) { descToFill = rr.description; sourceLabel = '학습'; }
@@ -1127,17 +1130,19 @@
             descToFill = aiData.candidates[0].nameEn || '';
             sourceLabel = 'AI';
           }
-        } catch (e) { console.warn('[v3.2.35] AI hs2name 실패:', e.message); }
+        } catch (e) { console.warn('[v3.2.36] AI hs2name 실패:', e.message); }
       }
-      // 4c. v3.2.35: 전 행에 통일 적용 (빈 행·기존 영문명 모두 덮어쓰기).
-      //     .value= 직접 set (input 이벤트 X) → touched 안 됨 (v3.2.24 신뢰원 정책 유지)
+      // 4c. ★빈 영문명 행에만 채움(기존값 보존). .value= 직접 set (input 이벤트 X) → touched 안 됨.
       if (descToFill) {
+        let filled = 0;
         rows.forEach(r => {
           const di = r.querySelector('input[data-field="Description"]');
-          if (di) { di.value = descToFill; di.classList.add('modified'); }
+          if (di && !String(di.value || '').trim()) { di.value = descToFill; di.classList.add('modified'); filled++; }
         });
-        console.info(`[v3.2.35 영문명 통일] HS ${value} ${sourceLabel} → ${rows.length}행 전부 '${descToFill}'로 통일`);
+        if (filled) console.info(`[v3.2.36 영문명 빈행 채움] HS ${value} ${sourceLabel} → 빈 ${filled}행만 '${descToFill}' (기존 영문명 보존)`);
       }
+    } else if (_isCatchAllHs && rows.length > 0) {
+      console.info(`[v3.2.36] catch-all HS ${value} — 영문명 자동채움 제외(품목별 수기). 기존값 전부 보존.`);
     }
 
     // 5. v3.2.32: 검증 통일 — 개별 경로(saveRow)와 동일 emptyRequiredFields. tariff 로드 끝났으므로 정확.

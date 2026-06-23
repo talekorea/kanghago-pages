@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.134</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.135</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.134</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.135</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -4694,7 +4694,7 @@ function buildGroupHeader(gk, ordered) {
     const fta = ftaInp.value || '';
     const box = (boxInp.value || '').trim();
     // 빈 값은 적용 안 함(기존 값 보존). 입력된 값만 적용.
-    if (desc) applied += applyGroupField(gk, 'Description', desc);
+    if (desc) applied += applyGroupField(gk, 'Description', desc, true);   // [v3.2.135] 영문명은 빈 행만(기존 품명 보존 — broadcast 오염 차단)
     if (mat) applied += applyGroupField(gk, 'Material', mat);
     if (hs) applied += applyGroupField(gk, 'HS코드', hs);
     if (fta) applied += applyGroupField(gk, '적용FTA', fta);
@@ -4717,19 +4717,19 @@ function buildGroupHeader(gk, ordered) {
   // v3.1.2 (2026-05-30, A 패치 4): Tab/blur 자동 적용 — 빈 값이면 X, 값 있으면 그 칸만 즉시 일괄.
   //   사용자 요구: "이전 버전 회귀" — [▶ 일괄 적용] 버튼 안 누르고 Tab만 눌러도 자동 적용.
   //   기존 _applyAll(모든 칸 동시) 유지 + 칸별 blur는 칸 1개만 즉시 적용 (더 빠른 UX).
-  const _applyFieldOnBlur = (inp, field) => {
+  const _applyFieldOnBlur = (inp, field, onlyEmpty) => {
     if (!inp) return;
     inp.addEventListener('blur', () => {
       const v = String(inp.value || '').trim();
       if (!v) return;     // 빈 값은 적용 X (기존 데이터 보호)
-      const applied = applyGroupField(gk, field, v);
+      const applied = applyGroupField(gk, field, v, onlyEmpty);
       if (applied > 0) {
         refreshAll();
-        if (typeof log === 'function') log(`✓ 주문 ${gk}.${field}: 자동 일괄 (${applied}건)`, 'ok');
+        if (typeof log === 'function') log(`✓ 주문 ${gk}.${field}: 자동 일괄 (${applied}건${onlyEmpty ? ', 빈 행만' : ''})`, 'ok');
       }
     });
   };
-  _applyFieldOnBlur(descInp, 'Description');
+  _applyFieldOnBlur(descInp, 'Description', true);   // [v3.2.135] 영문명은 빈 행만(기존 품명 보존)
   _applyFieldOnBlur(matInp, 'Material');
   _applyFieldOnBlur(hsInp, 'HS코드');
   // v3.2.24: 사용자 직접 편집 추적 — input/paste 시 dataset.touchedSeq 기록.
@@ -4790,13 +4790,15 @@ function buildGroupHeader(gk, ordered) {
 //   기존 셀렉터 'input.hscode'가 실제 클래스('input.hs')와 안 맞아 동작 안 했음.
 //   data-field 기반으로 통일 + 적용 카운트 반환.
 //   '관세사확정' === true 제품은 건너뜀(확정값 보호 — v3.0.4 정책 유지).
-function applyGroupField(gk, fieldName, value) {
+function applyGroupField(gk, fieldName, value, onlyEmpty) {
   if (!value) return 0;
   let applied = 0;
   state.products.forEach(p => {
     if (groupKeyOf((p.fields || {})['상품ID']) !== gk) return;
     if (p.fields && p.fields['관세사확정'] === true) return;
     p.fields = p.fields || {};
+    // [v3.2.135] onlyEmpty: 빈 칸만 채움(기존값 보존). 영문명(Description) broadcast 오염 차단 — 같은 HS라도 행별 품명 상이 허용.
+    if (onlyEmpty && String(p.fields[fieldName] || '').trim()) return;
     p.fields[fieldName] = value;
     state.modifiedProducts.add(p.id);
     // 행 화면 동기화 (data-field 기반 — 클래스 의존 제거)
