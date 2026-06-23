@@ -829,17 +829,20 @@ module.exports = async (req, res) => {
         const days = daysParam ? daysParam.split(',').map(s => s.trim()).filter(Boolean) : [];
         if (!days.length) return res.status(400).json({ error: 'days 누락' });
         const orderFormula = `OR(${days.map(d => `IS_SAME({실제출고요청일},'${d}','day')`).join(',')})`;
-        const orders = await atListAll(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(orderFormula)}&fields[]=Shipment&fields[]=실제출고요청일&fields[]=주문번호`);
+        const orders = await atListAll(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(orderFormula)}&fields[]=Shipment&fields[]=실제출고요청일&fields[]=주문번호&fields[]=대행종류`);
         if (!orders.length) return res.json({ rows: [], days });
         const shipDateMap = {};
-        orders.forEach(o => { const ships = (o.fields || {}).Shipment || []; const d = (o.fields || {})['실제출고요청일']; ships.forEach(sid => { if (!d) return; if (!shipDateMap[sid] || d < shipDateMap[sid]) shipDateMap[sid] = d; }); });
+        // [v3.2.37] 실대행종류(구매·결제·배송)만 집계 — 합배송·엑셀업로드 등 비-대행종류 제외. 표시 전용.
+        const REAL_AGENT = ['구매대행', '결제대행', '배송대행'];
+        const agentByShip = {};   // shipId -> Set(real agent types)
+        orders.forEach(o => { const ships = (o.fields || {}).Shipment || []; const d = (o.fields || {})['실제출고요청일']; const at = String((o.fields || {})['대행종류'] || '').trim(); ships.forEach(sid => { if (d && (!shipDateMap[sid] || d < shipDateMap[sid])) shipDateMap[sid] = d; if (REAL_AGENT.includes(at)) { (agentByShip[sid] = agentByShip[sid] || new Set()).add(at); } }); });
         const shipIds = Object.keys(shipDateMap);
         if (!shipIds.length) return res.json({ rows: [], days });
         const chunk = (a, n) => { const o = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
         let ships = [];
         for (const c of chunk(shipIds, 50)) {
           const f = `OR(${c.map(id => `RECORD_ID()='${id}'`).join(',')})`;
-          ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=BL번호`));   // [v3.2.109] BL번호 = 수입면장 일괄 매칭 키
+          ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=BL번호&fields[]=배송방식`));   // [v3.2.109] BL번호 = 수입면장 일괄 매칭 키 / [v3.2.37] 배송방식
         }
         let custMap = {};
         try {
@@ -850,11 +853,14 @@ module.exports = async (req, res) => {
         for (const s of ships) {
           const sf = s.fields || {}; const mailbox = sf['사서함'] || ''; const shipDate = shipDateMap[s.id] || ''; const status = sf['상태'] || '';
           let boxes = [];
-          try { boxes = await atListAll(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=박스순번&fields[]=무게KG&fields[]=부피CBM`); } catch (e) {}
+          try { boxes = await atListAll(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=박스순번&fields[]=무게KG&fields[]=부피CBM&fields[]=배송방식`); } catch (e) {}
           let kgSum = 0, cbmSum = 0, missing = false;
           boxes.forEach(b => { const kg = parseFloat((b.fields || {})['무게KG']) || 0; const cbm = parseFloat((b.fields || {})['부피CBM']) || 0; kgSum += kg; cbmSum += cbm; if (kg <= 0 || cbm <= 0) missing = true; });
           const cust = custMap[String(mailbox).replace(/-\d{6}$/, '')] || custMap[mailbox] || { member: '', company: '' };   // [선적분 키] base 우선
-          rows.push({ id: s.id, blNo: sf['BL번호'] || '', mailbox, shipDate, status, member: cust.member, company: cust.company, boxCount: boxes.length, kgSum, cbmSum, missingMeasure: missing, isReady: boxes.length > 0 && !missing });   // [v3.2.109] id·blNo = 면장 일괄(매칭·업로드)
+          // [v3.2.37] 배송방식 — Shipments.배송방식(단일 권위) 우선, 빈값이면 Boxes.배송방식 집합 폴백. 화물+택배 섞이면 둘 다 표시.
+          const shipMethods = [...new Set([sf['배송방식'], ...boxes.map(b => (b.fields || {})['배송방식'])].map(v => String(v || '').trim()).filter(v => v === '화물' || v === '택배' || v === '밀크런'))];
+          const agentTypes = [...(agentByShip[s.id] || [])];
+          rows.push({ id: s.id, blNo: sf['BL번호'] || '', mailbox, shipDate, status, member: cust.member, company: cust.company, boxCount: boxes.length, kgSum, cbmSum, missingMeasure: missing, isReady: boxes.length > 0 && !missing, agentTypes, shipMethods });   // [v3.2.109] id·blNo / [v3.2.37] agentTypes·shipMethods(표시 전용)
         }
         rows.sort((a, b) => (a.shipDate || '').localeCompare(b.shipDate || '') || a.mailbox.localeCompare(b.mailbox));
         return res.json({ rows, days });

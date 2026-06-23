@@ -86,6 +86,7 @@
   <div class="center-block" id="shipmentMeta">
     <div><span class="label">사서함</span> <span class="val" id="mailbox">-</span></div>
     <div><span class="label">고객</span> <span class="val" id="customerLabel">-</span></div>
+    <div><span class="label">대행</span> <span class="val" id="agentTypeLabel">-</span></div>
     <div><span class="label">상태</span> <span class="status val" id="status">-</span></div>
     <!-- v3.2.49 [Phase 1-G]: BL/CO 대조 확인 배지 -->
     <div><span class="label">대조</span> <span class="val" id="docMatchBadgeAgent" style="font-weight:700;">-</span></div>
@@ -107,6 +108,8 @@
     <div class="meta" style="display:none;">
       <div style="margin-left:auto;" class="actions"></div>
     </div>
+    <!-- [v3.2.37] 고객(수입자) 정보 — 관세사 통관/신고/세관연락용 (표시 전용) -->
+    <div id="custInfoPanel" style="background:#fff; border:1px solid #ddd; border-radius:10px; padding:14px; margin-bottom:14px; font-size:13px;"></div>
     <!-- [통관 진행상황 v2] 관세사도 직원·관리자와 동일 렌더 (BL 있으면 자동조회) -->
     <div id="customsProgressAgent" style="background:#fff; border:1px solid #ddd; border-radius:10px; padding:14px; margin-bottom:14px;">
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
@@ -165,6 +168,31 @@
   const params = new URLSearchParams(location.search);
   const shipId = params.get('id');
   let supabase = null, session = null, agent = null, shipment = null, products = [], customer = null;
+
+  // [v3.2.37] 대행종류 라벨 — 실유형(구매·결제·배송)만, 합배송·엑셀업로드 등 비-대행종류 제외. 2종↑=혼재. 표시 전용.
+  const _REAL_AGENT_TYPES = ['구매대행', '결제대행', '배송대행'];
+  function agentTypeLabel(orders) {
+    const set = [...new Set((orders || []).map(o => String((o.fields || {})['대행종류'] || '').trim()).filter(v => _REAL_AGENT_TYPES.includes(v)))];
+    if (set.length === 0) return '-';
+    if (set.length >= 2) return '혼재(' + set.join('+') + ')';
+    return set[0];
+  }
+  // [v3.2.37] 고객정보 패널(관세사 통관 실무) — 상호·사업자번호·주소·연락처·이메일 + 영문/통관고유부호. 표시 전용(마스킹 없음).
+  function renderCustomerInfoAgent(cf) {
+    const el = document.getElementById('custInfoPanel'); if (!el) return;
+    const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const row = (label, v) => v && String(v).trim() ? `<div style="display:flex; gap:8px; padding:2px 0;"><span style="color:#888; min-width:84px; font-size:12px;">${label}</span><span style="font-size:13px; color:#1B2A3B; word-break:break-all;">${esc(v)}</span></div>` : '';
+    const html = [
+      row('상호(한글)', cf['회사명']), row('영문상호', cf['영문회사명']),
+      row('대표자', cf['대표자명']), row('영문성명', cf['영문성명']),
+      row('사업자번호', cf['사업자번호']), row('통관고유부호', cf['통관고유부호']),
+      row('주소(한글)', cf['주소'] || cf['사업장주소']), row('영문주소', cf['영문주소']),
+      row('연락처', cf['연락처'] || cf['사업자연락처']), row('이메일', cf['이메일']),
+    ].filter(Boolean).join('');
+    el.innerHTML = html
+      ? `<div style="font-weight:700; color:#1B2A3B; font-size:14px; margin-bottom:8px;">👤 고객(수입자) 정보 <span style="font-size:11px; font-weight:400; color:#888;">— 통관·신고·세관연락용</span></div>${html}`
+      : '<div style="color:#888; font-size:13px;">고객 정보 없음 (Customers 미등록)</div>';
+  }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // v3.2.20 (2026-05-31) 관세청 전체 세율표 (11,326 HS) + AI HS 추천 통합
@@ -263,6 +291,7 @@
 
       const data = await api('GET', '?op=shipment&id=' + shipId);
       shipment = data.shipment; products = data.products || []; customer = data.customer || null;
+      const orders = data.orders || [];
       document.getElementById('shipTitle').textContent = `🛃 ${shipment.fields['사서함']} 작업`;
       document.getElementById('mailbox').textContent = shipment.fields['사서함'];
       // v3.2.23: 헤더 가운데 고객 라벨 채움 — 회원명 + 회사명 (data.customer 있으면)
@@ -273,6 +302,11 @@
       if (customerLabel) {
         customerLabel.textContent = custName ? (custCompany ? `${custName} (${custCompany})` : custName) : '-';
       }
+      // [v3.2.37] 대행종류 라벨(표시만) — 실유형(구매·결제·배송)만, 2종↑=혼재. 합배송·엑셀업로드 제외.
+      const _atEl = document.getElementById('agentTypeLabel');
+      if (_atEl) _atEl.textContent = agentTypeLabel(orders);
+      // [v3.2.37] 고객정보 패널(관세사 통관 실무용) — 상호·사업자번호·주소·연락처·이메일 + 영문/통관고유부호. 표시만.
+      renderCustomerInfoAgent(cf);
       // v3.2.36: 상태 라벨 명확화 — '관세사확정대기' 그대로 두지 않고 동작 안내로 (저장 vs 확정 구분)
       const statusLabel = shipment.fields['상태'];
       const statusEl = document.getElementById('status');
