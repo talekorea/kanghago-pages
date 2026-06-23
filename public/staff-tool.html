@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.136</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.137</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.136</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.137</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6183,6 +6183,28 @@ function confirmDocMatch() {
   if (typeof log === 'function') log('✓ BL/CO 대조 확인 완료 — 최종 다운로드 활성화', 'ok');
 }
 
+// [v3.2.137] ★발행 하드 게이트 단일 판정 — 돈/최종 액션을 대조 결과로 차단. 빈 문자열=통과, 사유 문자열=차단.
+//   kind: 'finalIp'(최종 IP 다운로드) | 'payapp'(결제 요청). 1차 IP(stage:first)는 호출 안 함 → 부킹 무영향.
+//   원칙: ①자동비교 실행됐는데 불일치 → 항상 차단. ②결제=항상 대조확인 필요.
+//        ③최종 IP는 '특혜세율(관세사 제출/post-CO)' 모드에서만 CO+대조 필수. 기본세율(CO발급용·pre-CO)은 통과(닭-달걀 방지).
+function _publishGateReason(kind) {
+  const f = (state.shipment && state.shipment.fields) || {};
+  const matchOk = f['대조확인상태'] === '확인완료';
+  const autoMismatch = !!(_coCompareState && !_coCompareState.ok);
+  if (autoMismatch) return `BL↔CO↔IP 자동대조 불일치 ${_coCompareState.mismatches}건 — §10에서 해소 후 진행`;
+  if (kind === 'payapp') {
+    return matchOk ? '' : 'BL/CO 대조확인 미완 — §10 [대조 확인 완료] 후 결제 요청 생성';
+  }
+  // kind === 'finalIp' — 특혜세율(관세사 제출용) 모드만 하드 게이트. 기본세율/미선택(CO발급용)은 통과.
+  const ftaConf = String(f['적용FTA확정'] || '').trim();
+  if (['한중FTA', 'RCEP협정', '아태협정'].includes(ftaConf)) {
+    const coFileOk = !!(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length);
+    if (!coFileOk) return 'CO 파일 필요(특혜세율 제출용 최종 IP) — CO 업로드 후 다시';
+    if (!matchOk) return 'BL/CO 대조확인 미완(특혜세율 제출용) — §10 [대조 확인 완료] 후 다시';
+  }
+  return '';
+}
+
 // ===== [v3.2.88] CO 비교용 블라인드 대조 — 위챗 CO 이미지(자동추출 불가) → 직원 입력 → 인보이스 자동 비교 =====
 //   인보이스 소스: Products.HS코드·수량·적용FTA / Boxes 박스수 / Shipments.사서함(AP)·출발지. ★송장번호 제외.
 //   출발지·적용FTA 빈값 → '소스 없음' 비교 스킵(에러 X). 통과 시 confirmDocMatch 재사용 + CO대조(JSON) 저장.
@@ -6223,6 +6245,8 @@ function _coInvoiceSource() {
   const prods = (state.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0);
   // [v3.2.119] CO는 6자리 HS, 인보이스는 10자리 HSK → ★앞 6자리로 정규화 후 비교(거짓 불일치 차단). 집합·정렬이라 순서무관.
   const hsSet = [...new Set(prods.map(p => String((p.fields || {})['HS코드'] || '').replace(/[^0-9]/g, '').slice(0, 6)).filter(Boolean))].sort();
+  // [v3.2.137] IP 품명집합(영문명 distinct) — 제품명 대조용(CO 본문에 근거 있는지). broadcast(전 품목 동일명) 검출.
+  const nameSet = [...new Set(prods.map(p => String((p.fields || {})['Description'] || (p.fields || {})['통관품명_영문'] || '').trim()).filter(Boolean))];
   const qtyTotal = prods.reduce((s, p) => s + (parseInt((p.fields || {})['수량'], 10) || 0), 0);
   const boxCount = Object.keys(state.boxes || {}).length;
   const apMark = baseMailbox(f['사서함'] || '').toUpperCase();
@@ -6237,7 +6261,7 @@ function _coInvoiceSource() {
   const fwd = String(f['포워딩사'] || '').trim(); const seq = parseInt(f['인보이스순번']) || 0;
   const yymmdd = String(f['선적일'] || '').slice(2, 10).replace(/-/g, '');
   const invoiceNo = (fwd && seq > 0 && yymmdd) ? `${fwd}-${yymmdd}-${seq}` : '';
-  return { hsSet, qtyTotal, boxCount, apMark, origin, ftaSet, consigneeBiz, invoiceNo };
+  return { hsSet, nameSet, qtyTotal, boxCount, apMark, origin, ftaSet, consigneeBiz, invoiceNo };
 }
 let _coCompareState = null, _coExtracted = null, _blFields = null;
 async function runCoCompare() {
@@ -6273,13 +6297,22 @@ async function runCoCompare() {
   items.push(tri('consignee(사업자번호)', nBiz, bl.consigneeBiz, co.consigneeBiz, src.consigneeBiz, '사업자번호 없음 — 수동 확인'));
   // ── CO↔IP(2소스)
   // ★빈 CO입력 = null(스킵, 사람게이트) — 이미지 CO를 false로 차단하지 않음. 제공된 값이 다를 때만 🔴.
-  items.push({ label: 'HS코드', scope: 'CO↔IP', bl: '—', co: inHs.join(', ') || '(미입력)', ip: src.hsSet.join(', ') || '(없음)', match: (src.hsSet.length && inHs.length) ? (inHs.join('|') === src.hsSet.join('|')) : null });
+  // [v3.2.137] HS 6자리 ⊆(부분집합) — CO HS집합이 신고 HS집합에 모두 포함되면 일치. CO=FTA적용분만이라 신고가 더 많은 건 정상(일치 유지). CO에만 있는 HS=불일치.
+  items.push({ label: 'HS코드', scope: 'CO↔IP', bl: '—', co: inHs.join(', ') || '(미입력)', ip: src.hsSet.join(', ') || '(없음)', match: (src.hsSet.length && inHs.length) ? inHs.every(h => src.hsSet.includes(h)) : null, note: (src.hsSet.length && inHs.length && !inHs.every(h => src.hsSet.includes(h))) ? ('CO에만 있는 HS: ' + inHs.filter(h => !src.hsSet.includes(h)).join(', ')) : '' });
+  // [v3.2.137] ★제품명 대조(info→match 승격) — IP 영문명 각각이 CO 본문에 토큰 근거가 있나. 없으면 🟡(broadcast/오기재 의심). CO 텍스트 없음(이미지)=스킵.
+  const _coText = String((co && co._text) || '');
+  const _tok = s => (String(s).toLowerCase().match(/[a-z]{3,}/g) || []);
+  let _nameMatch = null, _nameNote = '';
+  if (src.nameSet && src.nameSet.length && _coText) {
+    const _miss = src.nameSet.filter(nm => { const ts = _tok(nm); return ts.length && !ts.some(t => _coText.includes(t)); });
+    _nameMatch = _miss.length === 0;
+    if (!_nameMatch) _nameNote = `CO 본문에 근거 없는 IP 품명: ${_miss.slice(0, 3).join(', ')}${_miss.length > 3 ? ' 외' : ''} — broadcast/오기재 의심(품목별 확인)`;
+  }
+  items.push({ label: '제품명', scope: 'CO↔IP', bl: '—', co: _coText ? '(CO 본문 토큰 대조)' : '(미추출/이미지)', ip: (src.nameSet || []).slice(0, 3).join(', ') + (((src.nameSet || []).length > 3) ? ' 외' : '') || '(없음)', match: _nameMatch, note: _nameNote });
   items.push({ label: '수량(총)', scope: 'CO↔IP', bl: '—', co: isNaN(inQty) ? '(미입력)' : String(inQty), ip: String(src.qtyTotal), match: isNaN(inQty) ? null : (inQty === src.qtyTotal) });
   // invoice no (CO box12 ↔ IP 생성번호)
   const coInv = String(co.invNo || '').toUpperCase();
   items.push({ label: 'invoice no', scope: 'CO↔IP', bl: '—', co: coInv || '(미추출)', ip: src.invoiceNo || '(미발행)', match: (coInv && src.invoiceNo) ? (coInv === src.invoiceNo.toUpperCase()) : null });
-  // description = ★정보표시만(자유텍스트 퍼지, 차단 제외) — 실질검증은 HS·수량
-  items.push({ label: 'description', scope: '정보', bl: '—', co: '(CO 품명)', ip: '(제품 영문명)', match: null, info: true, willSet: 'HS·수량으로 실질검증' });
   // FTA종류 = 정보(닭-달걀, 확정 시 적용FTA확정 set)
   const _coFtaRaw = String(gv('coCmpFta')).trim().toUpperCase();
   const _willSet = /한중|CHINA[\s-]*KOREA|^KC$/.test(_coFtaRaw) ? '한중FTA' : (/RCEP/.test(_coFtaRaw) ? 'RCEP협정' : (/아태|APTA|ASEAN|ASIA/.test(_coFtaRaw) ? '아태협정' : ''));
@@ -6375,6 +6408,7 @@ function extractCoFields(text) {
   if (ci >= 0) { const ni = U.search(/4\.?\s*MEANS|MEANS OF TRANSPORT/); const region = U.slice(ci, ni > ci ? ni : ci + 400); const rb = region.match(/\d{3}-\d{2}-\d{5}/); if (rb) out.consigneeBiz = rb[0].replace(/[^0-9]/g, ''); }
   // [v3.2.123] invoice no(box12, BTK/ZTK-YYMMDD-N) + date
   const iv = T.match(/\b(BTK|ZTK)-\d{6}-\d+\b/i); if (iv) out.invNo = iv[0].toUpperCase();
+  out._text = T.toLowerCase();   // [v3.2.137] CO 본문(소문자) — 제품명 토큰 대조용(IP 영문명이 CO에 근거 있는지)
   return out;
 }
 function applyCoAutofill(co) {
@@ -11263,9 +11297,11 @@ async function downloadInvoiceExcel(opts) {
     // v3.2.30: 고객 확인 요청 절차 폐기 → 고객응답 필수 게이트 제거
     if (!f['BL번호']) miss.push('BL번호');
     if (!(f['BL파일'] && Array.isArray(f['BL파일']) && f['BL파일'].length)) miss.push('BL파일');
-    // [v3.2.127] ★최종 IP = CO 발급 *전* 산출물(이 IP로 CO 발급) → CO파일·BL/CO 대조확인·적용FTA확정을 IP 다운로드 하드요건에서 제거.
-    //   세율 컬럼은 적용FTA확정 기준 자동 분기(미선택=CO미발행/기본세율=CO발급처용 / 확정=특혜세율=관세사 제출용) — 같은 IP, 모드만.
-    //   ★[최종 확정+결제창](renderFinalConfirm/발행·청구)은 CO·대조·FTA 게이트 그대로 유지(청구는 CO 후) — 본 변경은 IP 다운로드 게이트만.
+    // [v3.2.127] 최종 IP = CO 발급 *전* 산출물(기본세율·CO발급용)일 땐 CO·대조 불요(닭-달걀).
+    //   세율 모드: 적용FTA확정 미선택/기본=CO발급용(pre-CO) / 한중·RCEP·아태=특혜세율 관세사 제출용(post-CO).
+    // [v3.2.137] ★특혜세율(제출용) 모드만 하드 게이트(CO+대조) — 자동대조 불일치는 항상 차단. 단일 함수.
+    const _gr = _publishGateReason('finalIp');
+    if (_gr) miss.push(_gr);
   }
 
   if (miss.length) {
@@ -13968,6 +14004,9 @@ const INVOICE_VIEW_BASE = 'https://kanghago-pages.vercel.app/invoice-view.html';
 // 흐름: 도구에서 [📄 통합 청구서 URL] → 페이앱 결제 요청 자동 생성 (없으면) → URL 카톡 메시지 → 클립보드 복사
 async function shareInvoiceViewUrl() {
   if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
+  // [v3.2.137] ★결제 경로(통합 청구서+결제하기) 하드 게이트 — 페이앱과 동일(대조확인/자동대조 불일치 차단).
+  const _payGate = (typeof _publishGateReason === 'function') ? _publishGateReason('payapp') : '';
+  if (_payGate) { toastWarn && toastWarn(_payGate, { title: '⛔ 결제 차단' }); return; }
   const f = state.shipment.fields || {};
   const cf = (state.customer && state.customer.fields) || {};
   const mailbox = f['사서함'] || '';
@@ -14229,6 +14268,9 @@ async function createPayappPayment() {
     toastWarn && toastWarn('총 청구 금액이 0원 — §3 제품·§4 작업비·§6 부대비용·§11 운임을 먼저 채워주세요');
     return;
   }
+  // [v3.2.137] ★결제(돈) 하드 게이트 — BL/CO 대조확인 미완 또는 자동대조 불일치면 결제 요청 차단. (1차 IP·부킹과 무관)
+  const _payGate = (typeof _publishGateReason === 'function') ? _publishGateReason('payapp') : '';
+  if (_payGate) { toastWarn && toastWarn(_payGate, { title: '⛔ 결제 차단' }); return; }
   const existingUrl = (state.shipment.fields || {})['페이앱_결제URL'];
   if (existingUrl) {
     if (!confirm('이미 페이앱 결제 요청이 등록되어 있습니다.\n새로 생성하면 옛 URL은 화면에서 사라지고, Shipments에는 새 URL이 저장됩니다 (옛 거래는 페이앱 관리에서 조회 가능).\n계속하시겠습니까?')) return;
