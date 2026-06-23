@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.139</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.140</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.139</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.140</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6225,6 +6225,16 @@ function normalizeAgentType(order) {
 function realAgentTypeSet(orders) {
   return [...new Set((orders || []).map(normalizeAgentType).filter(Boolean))];
 }
+// [v3.2.140] ★수입자 그룹 단일 함수 — 혼재 차단/수입자 분기의 진짜 기준.
+//   구매대행 → 수입자=테일코리아 / 결제·배송대행 → 수입자=실화주(고객). 결제·배송은 같은 수입자 그룹(합쳐도 됨).
+//   혼재 차단은 '대행종류 distinct'가 아니라 '수입자 그룹 distinct ≥2'(구매대행 ↔ 실화주)일 때만.
+function importerGroupOf(agentType) {
+  return (agentType === '결제대행' || agentType === '배송대행') ? '실화주'
+       : (agentType === '구매대행' ? '구매대행' : null);   // 비대행종류=null(제외)
+}
+function importerGroupSet(orders) {
+  return [...new Set(realAgentTypeSet(orders).map(importerGroupOf).filter(Boolean))];
+}
 function primaryAgentType(orders) {
   const s = realAgentTypeSet(orders);
   return s.length === 1 ? s[0] : '구매대행';   // 1종=그 유형 / 0종(빈값·합배송 등 레거시)=구매대행 폴백
@@ -6251,10 +6261,10 @@ function _coInvoiceSource() {
   const apMark = baseMailbox(f['사서함'] || '').toUpperCase();
   const origin = String(f['출발지'] || f['선적항'] || '').trim();
   const ftaSet = [...new Set(prods.map(p => String((p.fields || {})['적용FTA'] || '').trim()).filter(Boolean))].sort();
-  // [v3.2.123] consignee 사업자번호 = 대행종류 분기(구매대행=TALE KOREA 162-86-01960 / 배송·결제대행=고객). + IP invoice no.
-  // [v3.2.133] 실대행종류만(합배송·엑셀업로드 제외) — 단일 함수 통일.
-  const _at = realAgentTypeSet(state.orders);
-  const _isCust = _at.length === 1 && (_at[0] === '배송대행' || _at[0] === '결제대행');
+  // [v3.2.123] consignee 사업자번호 = 수입자 분기(구매대행=TALE KOREA 162-86-01960 / 결제·배송대행=고객). + IP invoice no.
+  // [v3.2.140] ★수입자 그룹 단일소스(importerGroupSet) — 결제+배송 혼재여도 단일 '실화주' 그룹이면 고객 사업자번호(이전 distinct≥2 폴백 버그 해소). 구매↔실화주 혼재는 발행게이트가 차단.
+  const _impG = importerGroupSet(state.orders);
+  const _isCust = _impG.length === 1 && _impG[0] === '실화주';
   const cf = (state.customer && state.customer.fields) || {};
   const consigneeBiz = (_isCust ? String(cf['사업자번호'] || '').trim() : '162-86-01960').replace(/[^0-9]/g, '');
   const fwd = String(f['포워딩사'] || '').trim(); const seq = parseInt(f['인보이스순번']) || 0;
@@ -11325,17 +11335,20 @@ async function downloadInvoiceExcel(opts) {
   // [B v3.2.67] 대행유형 양식 분기 판정 — ★실대행종류 distinct. 혼재(2종+)=무조건 차단(사장님 방침: 도구에 우회 없음).
   //   구매대행 → 수입자=TALE KOREA / 배송·결제대행 → 수입자=고객(영문). writeFormHeader(클로저)·납세의무자 블록이 _isCustImporter로 분기.
   //   빈값(전부)≠혼재 → 백필 전 레거시이므로 구매대행 폴백+경고(발행 막힘 방지). 1종=그 양식 정상.
-  // [v3.2.133] ★정규화 단일 함수(realAgentTypeSet) — 합배송·엑셀업로드 등 비-대행종류 값은 집합 제외.
-  //   합배송이 섞여도 실대행종류 1종이면 통과(false-positive 차단 해소). 차단은 실대행종류 ≥2일 때만.
-  const _agentTypes = realAgentTypeSet(state.orders);
-  // ★혼재 차단 — 실대행종류 2종 이상이면 수입자가 달라 한 인보이스로 발행 불가. 자동 폴백/우회 절대 안 함. 해소는 사람이 Orders.대행종류 수동 통일.
-  if (_agentTypes.length > 1) {
-    if (_rb) return { skip: '대행유형 혼재(' + _agentTypes.join('+') + ')' };
-    alert('🚫 발행 차단 — 대행유형 혼재\n\n이 사서함에 ' + _agentTypes.join(' + ') + '이 섞여 있습니다.\n수입자가 달라 한 인보이스로 발행할 수 없습니다.\n\n→ 대행유형을 통일(Orders.대행종류 수동 변경)하거나, 유형별로 분리해 신고하세요.');
+  // [v3.2.133] 정규화 단일 함수(realAgentTypeSet) — 합배송·엑셀업로드 등 비-대행종류 값은 집합 제외.
+  // [v3.2.140] ★혼재 차단 = '수입자 그룹' distinct ≥2(구매대행=테일코리아 ↔ 실화주=결제·배송)일 때만.
+  //   결제대행+배송대행은 수입자가 같은 실화주 → 단일 그룹 → 통과(오차단 해소). 구매대행↔결제/배송 섞일 때만 수입자가 달라 차단.
+  const _agentTypes = realAgentTypeSet(state.orders);     // 표시·라벨용(실유형)
+  const _impGroups = importerGroupSet(state.orders);      // 수입자 그룹(구매대행 / 실화주)
+  if (_impGroups.length > 1) {
+    if (_rb) return { skip: '수입자 혼재(구매대행↔실화주: ' + _agentTypes.join('+') + ')' };
+    alert('🚫 발행 차단 — 수입자 혼재\n\n이 사서함에 구매대행(수입자=테일코리아)과 결제/배송대행(수입자=실화주)이 섞여 있습니다 (' + _agentTypes.join(' + ') + ').\n수입자가 달라 한 인보이스로 발행할 수 없습니다.\n\n→ 대행유형을 통일(Orders.대행종류 수동 변경, 관세사 확인)하거나, 유형별로 분리해 신고하세요.');
     return;
   }
-  const _agentType = primaryAgentType(state.orders);   // 1종=그 유형 / 0종(빈값·합배송 등)=구매대행 폴백
-  const _isCustImporter = (_agentType === '배송대행' || _agentType === '결제대행');
+  const _impGroup = _impGroups[0] || '구매대행';            // 단일 수입자 그룹(빈값·합배송 등=구매대행 폴백)
+  const _isCustImporter = (_impGroup === '실화주');         // 결제·배송=실화주(고객 수입자)
+  // 표시·문구용 대행유형명 — 단일이면 그 값, 결제+배송이면 '결제/배송대행'
+  const _agentType = _agentTypes.length === 1 ? _agentTypes[0] : (_isCustImporter ? '결제/배송대행' : '구매대행');
   if (!_agentTypes.length && !_rb) toastWarn('대행유형 미상(실대행종류 없음 — 빈값/합배송 등) — 구매대행 양식으로 발행합니다.', { title: '대행유형 미상' });
 
   // [B v3.2.66] ★배송/결제대행 영문/식별정보 차단 게이트 — 고객이 수입자라 통관 필수정보 필요(통관 불가 방지). 구매대행은 차단 없음(TALE KOREA 수입자).
@@ -16526,12 +16539,15 @@ function renderBookingTable(rows, dateLabel) {
     // [v3.2.71] 회원명(회사명) — 둘 다 있으면 "회원명 (회사명)", 하나만 있으면 그것, 둘 다 없으면 "(정보 없음)"
     const nameTag0 = (r.member && r.company) ? `${r.member}<span style="color:#888; font-size:11px;"> (${r.company})</span>`
       : (r.member || r.company || '<span style="color:#bbb;">(정보 없음)</span>');
-    // [v3.2.138] 부가 라벨(표시 전용) — 대행종류(실유형, 2종↑=혼재) · 배송방식(화물+택배 섞이면 둘 다). 빈값=생략.
-    const _atL = (r.agentTypes && r.agentTypes.length) ? (r.agentTypes.length >= 2 ? '혼재' : r.agentTypes[0]) : '';
+    // [v3.2.140] 부가 라벨(표시 전용) — 대행종류: 수입자 그룹 2개(구매↔실화주)면 '혼재'(빨강), 결제+배송(동일 실화주)은 유형 나열(파랑·오해 방지). 배송방식 별개.
+    const _ats = r.agentTypes || [];
+    const _grp = [...new Set(_ats.map(t => (t === '결제대행' || t === '배송대행') ? '실화주' : (t === '구매대행' ? '구매대행' : null)).filter(Boolean))];
+    const _atRed = _grp.length >= 2;   // 구매↔실화주 혼재만 빨강
+    const _atL = _ats.length === 0 ? '' : (_atRed ? '혼재' : _ats.join('+'));
     const _smL = (r.shipMethods && r.shipMethods.length) ? (r.shipMethods.length >= 2 ? r.shipMethods.join('+') : r.shipMethods[0]) : '';
     const _chip = (t, c) => `<span style="display:inline-block; margin-left:5px; padding:1px 6px; border-radius:9px; font-size:10.5px; font-weight:600; background:${c}1a; color:${c}; border:1px solid ${c}55;">${t}</span>`;
     const nameTag = nameTag0
-      + (_atL ? _chip(_atL, _atL === '혼재' ? '#c0392b' : '#1B5E9A') : '')
+      + (_atL ? _chip(_atL, _atRed ? '#c0392b' : '#1B5E9A') : '')
       + (_smL ? _chip(_smL, _smL.indexOf('+') >= 0 ? '#c0392b' : '#5a4a2a') : '');
     const statusBadge = r.isReady
       ? '<span style="color:#0a7b40; font-weight:600;">✓ 완료</span>'

@@ -284,7 +284,8 @@
       let kgT = 0, cbmT = 0, ctnT = 0;
       const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
       // [v3.2.37] 표시 라벨 헬퍼 — 대행종류(실유형만, 2종↑=혼재) / 배송방식(화물+택배 섞이면 둘 다). 표시 전용.
-      const atLabel = a => { const x = (a || []); return x.length === 0 ? '-' : x.length >= 2 ? '혼재' : x[0]; };
+      // [v3.2.140] 대행종류 라벨 — 수입자 그룹 2개(구매대행↔실화주)일 때만 '혼재'. 결제+배송(동일 실화주)은 유형 나열(오해 방지).
+      const atLabel = a => { const x = (a || []); if (x.length === 0) return '-'; const g = [...new Set(x.map(t => (t === '결제대행' || t === '배송대행') ? '실화주' : (t === '구매대행' ? '구매대행' : null)).filter(Boolean))]; return g.length >= 2 ? '혼재' : x.join('+'); };
       const smLabel = m => { const x = (m || []); return x.length === 0 ? '-' : x.length >= 2 ? x.join('+') : x[0]; };
       const trs = rows.map(r => {
         kgT += r.kgSum; cbmT += r.cbmSum; ctnT += r.boxCount;
