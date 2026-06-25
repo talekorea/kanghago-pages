@@ -168,6 +168,33 @@
   const params = new URLSearchParams(location.search);
   const shipId = params.get('id');
   let supabase = null, session = null, agent = null, shipment = null, products = [], customer = null;
+  // [v3.2.146 ② 재확정 게이트] 로드 시점 화물 서명(상품ID·수량·박스번호 = staff 영역, 관세사 편집과 무관) — 직원이 그 뒤 박스/품목 바꿨는지 감지.
+  let _loadedProducts = [], _loadedCargoSig = '';
+  function _cargoSig(prods) {
+    return JSON.stringify((prods || []).map(p => { const f = p.fields || {}; return [String(f['상품ID'] || p.id), Number(f['수량'] || 0), String(f['박스번호'] || '')]; })
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+  }
+  function _cargoDiff(oldP, newP) {
+    const idx = ps => { const m = {}; (ps || []).forEach(p => { const f = p.fields || {}; m[String(f['상품ID'] || p.id)] = { q: Number(f['수량'] || 0), b: String(f['박스번호'] || ''), d: f['Description'] || f['통관품명_영문'] || '' }; }); return m; };
+    const A = idx(oldP), B = idx(newP), lines = [];
+    Object.keys(B).forEach(k => { if (!A[k]) lines.push(`➕ 추가: ${k}${B[k].d ? ' (' + B[k].d + ')' : ''} · 수량 ${B[k].q} · 박스 ${B[k].b || '-'}`); else { if (A[k].q !== B[k].q) lines.push(`✏ 수량 ${k}: ${A[k].q} → ${B[k].q}`); if (A[k].b !== B[k].b) lines.push(`✏ 박스 ${k}: ${A[k].b || '-'} → ${B[k].b || '-'}`); } });
+    Object.keys(A).forEach(k => { if (!B[k]) lines.push(`➖ 삭제: ${k}`); });
+    return lines;
+  }
+  function _showStaleBanner(lines) {
+    let el = document.getElementById('staleBanner');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'staleBanner';
+      el.style.cssText = 'position:sticky; top:0; z-index:9999; background:#fdecef; border:2px solid #b3123c; color:#7a0c28; padding:10px 14px; border-radius:8px; margin:8px 0; font-size:13px; font-weight:600;';
+      const content = document.getElementById('content');
+      if (content && content.parentNode) content.parentNode.insertBefore(el, content);
+    }
+    el.innerHTML = `🔓 <strong>직원이 박스/품목을 변경했습니다 — 최신 내용으로 검토 후 확정하세요.</strong>`
+      + (lines && lines.length ? `<div style="font-weight:400; margin-top:5px; font-size:12px; white-space:pre-line;">${lines.slice(0, 8).map(x => '• ' + x.replace(/[<>]/g, '')).join('\n')}${lines.length > 8 ? '\n…외 ' + (lines.length - 8) + '건' : ''}</div>` : '')
+      + `<button onclick="location.reload()" style="margin-top:8px; background:#b3123c; color:#fff; border:none; border-radius:5px; padding:6px 14px; font-weight:700; cursor:pointer;">🔄 최신 불러오기</button>`;
+    el.style.display = '';
+  }
 
   // [v3.2.140] 대행종류 라벨 — 실유형만. 수입자 그룹 2개(구매대행↔실화주: 결제·배송)일 때만 '혼재'. 결제+배송(동일 실화주)은 유형 나열(오해 방지). 표시 전용.
   const _REAL_AGENT_TYPES = ['구매대행', '결제대행', '배송대행'];
@@ -292,6 +319,7 @@
 
       const data = await api('GET', '?op=shipment&id=' + shipId);
       shipment = data.shipment; products = data.products || []; customer = data.customer || null;
+      _loadedProducts = JSON.parse(JSON.stringify(products)); _loadedCargoSig = _cargoSig(products);   // [v3.2.146 ②] 화물 서명 스냅샷
       const orders = data.orders || [];
       document.getElementById('shipTitle').textContent = `🛃 ${shipment.fields['사서함']} 작업`;
       document.getElementById('mailbox').textContent = shipment.fields['사서함'];
@@ -327,6 +355,19 @@
       document.getElementById('content').style.display = '';
     } catch (e) { showError(e.message || String(e)); }
   }
+
+  // [v3.2.146 ②(a)] 탭 복귀(focus/가시화) 시 화물 변경 감지 → 배너(관세사 편집 보존 위해 자동 재렌더 X, 명시 [최신 불러오기]).
+  async function _checkStaleOnFocus() {
+    if (!shipment || !shipId) return;
+    try {
+      const data = await api('GET', '?op=shipment&id=' + shipId);
+      const fresh = data.products || [];
+      if (_cargoSig(fresh) !== _loadedCargoSig) _showStaleBanner(_cargoDiff(_loadedProducts, fresh));
+    } catch (e) { /* 조회 실패 시 무시(다음 focus 재시도) */ }
+  }
+  let _focusTimer = null;
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { clearTimeout(_focusTimer); _focusTimer = setTimeout(_checkStaleOnFocus, 400); } });
+  window.addEventListener('focus', () => { clearTimeout(_focusTimer); _focusTimer = setTimeout(_checkStaleOnFocus, 400); });
 
   // v3.2.49 [Phase 1-G]: BL/CO 대조 확인 배지 + 버튼 (관세사). 도구(직원)와 동일 단일 필드.
   function renderDocMatchAgent() {
@@ -1502,6 +1543,18 @@
       if (incomplete[0].tr) incomplete[0].tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
+    // [v3.2.146 ②(b)] ★재확정 직전 강제 재조회 — 직원이 박스/품목 바꿨으면 차단(stale 확정 = 오신고). diff 표시 후 [최신 불러오기] 강제.
+    try {
+      const fresh = await api('GET', '?op=shipment&id=' + shipId);
+      const freshProds = fresh.products || [];
+      if (_cargoSig(freshProds) !== _loadedCargoSig) {
+        const lines = _cargoDiff(_loadedProducts, freshProds);
+        _showStaleBanner(lines);
+        toast('⛔ 확정 차단 — 직원이 박스/품목을 변경했습니다. [🔄 최신 불러오기] 후 검토·확정하세요.', 'err');
+        const sb = document.getElementById('staleBanner'); if (sb) sb.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+    } catch (e) { toast('최신 확인 실패 — 새로고침 후 다시 시도: ' + (e.message || e), 'err'); return; }
     // 3. 통과 — 사서함 확정
     if (!confirm(shipment.fields['사서함'] + ' 사서함을 관세사확정완료로 전환합니다.\n진행하시겠습니까?')) return;
     try {

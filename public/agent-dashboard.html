@@ -572,7 +572,13 @@
     else if (filter === '완료') list = list.filter(isConfirmed);
     else if (filter === '종결') list = list.filter(isShipped);
 
-    list.sort((a, b) => (a.fields['사서함'] || '').localeCompare(b.fields['사서함'] || ''));
+    // [v3.2.146 ③] 정렬 = 선적일 임박순(오래된 것 먼저) → 같은 선적일 내 AP번호순. (탭으로 상태 분리 → 그룹핑 불요.)
+    list.sort((a, b) => {
+      const da = (a.fields['선적일'] || a.fields['출고요청일'] || '9999-99-99');
+      const db = (b.fields['선적일'] || b.fields['출고요청일'] || '9999-99-99');
+      if (da !== db) return da < db ? -1 : 1;
+      return (a.fields['사서함'] || '').localeCompare(b.fields['사서함'] || '', undefined, { numeric: true });
+    });
 
     const c = document.getElementById('list');
     if (!list.length) { c.innerHTML = '<div class="empty">해당 상태의 사서함이 없습니다.</div>'; return; }

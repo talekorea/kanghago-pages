@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.145</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.146</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.145</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.146</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1023,6 +1023,12 @@
 <!-- 5. 박스 관리 (v3.2.0 의도: §4 박스 — 트리거 1) -->
 <div class="section hidden" id="boxSection">
   <h2><span data-i18n="section.box">5. 박스 관리</span> <span class="small-dim" data-i18n="section.box.sub">(상품의 박스번호 입력 → 박스 자동 생성)</span></h2>
+  <!-- [v3.2.146 ①] 박스수정 완료 — 관세사확정 후 박스/품목 변경 시 표시. 클릭 시에만 확정해제+재확정 요청. -->
+  <div id="boxDirtyBanner" style="display:none; margin:8px 0; padding:10px 14px; background:#fff3e0; border:2px solid #e8a33d; border-radius:8px; color:#a14a00; font-size:13px; font-weight:600;">
+    ⚠ 박스/품목이 수정되었습니다 — 관세사확정이 아직 유지 중입니다.
+    <button onclick="completeBoxEdit()" style="margin-left:10px; background:#a14a00; color:#fff; border:none; border-radius:5px; padding:6px 14px; font-weight:700; cursor:pointer;">✅ 박스수정 완료 (관세사 재확정 요청)</button>
+    <div style="font-weight:400; font-size:11px; margin-top:4px;">완료를 누르면 관세사확정이 해제되고 관세사가 최신 내용으로 다시 확인합니다. 누르기 전엔 옛 확정이 유지됩니다.</div>
+  </div>
   <!-- v3.0.5: 테이프 색상 선택 (사서함 단위 1개). 패킹리스트 생성 자료로 사용. Shipments에 저장. -->
   <!-- v3.2.50 [Phase 1-F]: UI 강화 — 큰 색상 칩 + 미선택 시 박스 입력 차단 -->
   <div id="tapeColorBox" style="margin:10px 0 14px; padding:16px 18px; background:#fff8e1; border:2px solid var(--gold); border-radius:10px;">
@@ -4054,11 +4060,12 @@ function renderShipmentOptions() {
     const hay = (sname + ' ' + (c.회원명 || '') + ' ' + (c.회사명 || '')).toLowerCase();
     return hay.includes(q);   // 사서함 번호 + 회원명/회사명 검색 (번호 검색 유지)
   });
+  // [v3.2.146 ③] 정렬 = 선적일 임박순(오래된 것 먼저) → 같은 선적일 내 AP번호순. (상태 그룹핑은 아래 optgroup이 담당 — 그룹 내 이 순서 유지.)
   list.sort((a, b) => {
-    const sa = SHIP_STATUS_PRIORITY[a.fields['상태']] || 99;
-    const sb = SHIP_STATUS_PRIORITY[b.fields['상태']] || 99;
-    if (sa !== sb) return sa - sb;
-    return (a.fields['사서함'] || '').localeCompare(b.fields['사서함'] || '');
+    const da = (a.fields['선적일'] || a.fields['출고요청일'] || '9999-99-99');
+    const db = (b.fields['선적일'] || b.fields['출고요청일'] || '9999-99-99');
+    if (da !== db) return da < db ? -1 : 1;   // 임박(오래된 날짜) 먼저
+    return (a.fields['사서함'] || '').localeCompare(b.fields['사서함'] || '', undefined, { numeric: true });
   });
 
   sel.innerHTML = `<option value="">-- 선택 (${list.length}개) --</option>`;
@@ -4111,6 +4118,8 @@ async function loadShipment(forceId) {
   state.modifiedCostIds = new Set();
   state.newCostRows = [];
   state.deletedCostIds = new Set();
+  state._boxDirty = false;   // [v3.2.146 ①] 사서함 전환 시 박스수정 플래그 초기화
+  if (typeof _renderBoxDirtyBanner === 'function') _renderBoxDirtyBanner();
   if (typeof resetShipUiFields === 'function') resetShipUiFields();   // [사서함 전환] §4/5/6 이전 잔존 제거 후 새 주문 기준 재로드
   document.getElementById('savedBanner').style.display = 'none';
 
@@ -5164,7 +5173,7 @@ function renderProducts() {
           const dBtn = tr.querySelector('.del-product-btn');
           if (dBtn) dBtn.style.display = (q === 0) ? 'inline' : 'none';
           if (typeof updateGroupQtyHeader === 'function') updateGroupQtyHeader(tr.dataset.group);   // [v3.2.114] 그룹 헤더 총수량 라이브
-          if (typeof _unconfirmForBoxChange === 'function') _unconfirmForBoxChange();   // [v3.2.145 G5] 수량 변경 → 관세사확정 해제
+          if (typeof _markBoxDirty === "function") _markBoxDirty();
         }
         if (field === '단가CNY') {
           // [v3.2.144] 수동분할 제품 단가(CNY) 직접 편집 → 합계CNY = 단가 × 수량 재계산. 단가USD는 recalculate()가 환율·작업비분배로 산출. 사용자 입력 우선(비례 기본값 덮어씀).
@@ -5175,7 +5184,7 @@ function renderProducts() {
           if (totalCell) totalCell.textContent = '¥' + f['합계CNY'].toLocaleString();
         }
         recalculate();
-        if (field === '박스번호') { renderBoxes(); updateGroupBoxSummary(tr.dataset.group); if (!p._isNew) scheduleBoxAutoSave(p.id); if (typeof _unconfirmForBoxChange === 'function') _unconfirmForBoxChange(); }   // [v3.2.144] 미저장 분할행 temp id / [v3.2.145 G5] 박스배치 변경 → 확정해제
+        if (field === '박스번호') { renderBoxes(); updateGroupBoxSummary(tr.dataset.group); if (!p._isNew) scheduleBoxAutoSave(p.id); if (typeof _markBoxDirty === "function") _markBoxDirty(); }   // [v3.2.144] 미저장 분할행 temp id / [v3.2.145 G5] 박스배치 변경 → 확정해제
         if (field === '적용FTA') renderOverhead();
         renderInvoicePreview();
         renderTariffEstimate();
@@ -5879,7 +5888,7 @@ function splitProductRow(pid) {
   if (typeof renderProducts === 'function') renderProducts();
   if (typeof renderBoxes === 'function') renderBoxes();
   if (typeof refreshAll === 'function') refreshAll();
-  if (typeof _unconfirmForBoxChange === 'function') _unconfirmForBoxChange();   // [v3.2.145 G5] 품목 분할 → 관세사확정 해제(재확정 필요)
+  if (typeof _markBoxDirty === "function") _markBoxDirty();
   toastSuccess && toastSuccess(`분할 완료 — 원본 박스 ${_boxNumsToStr(remainNums)} / 새 행 박스 ${_boxNumsToStr(newNums)} (${newSid})`,
     { title: '✂ 박스별 나누기', subtitle: '새 행 품명·HS·수량 편집 후 [저장]. 새 품목이 CO에 없으면 발행 게이트가 막습니다 — CO 재발급 필요.' });
 }
@@ -6047,6 +6056,27 @@ async function _unconfirmForBoxChange() {
     console.warn('[G5 unconfirm]', e && e.message);
     sh.fields['상태'] = '관세사확정완료';   // 실패 롤백
   } finally { state._unconfirming = false; }
+}
+
+// [v3.2.146 ①] 박스수정 완료 버튼 방식 — 박스 편집은 즉시 해제 대신 _boxDirty 플래그만(로컬). 직원이 [박스수정 완료] 클릭 시에만 해제.
+//   확정(관세사확정완료) 상태에서의 박스 변경만 의미 있음 — 확정 전 편집은 정상(플래그 X).
+function _markBoxDirty() {
+  if (!state.shipment) return;
+  if ((state.shipment.fields['상태'] || '') !== '관세사확정완료') return;   // 확정 전 = 정상 편집
+  state._boxDirty = true;
+  _renderBoxDirtyBanner();
+}
+function _renderBoxDirtyBanner() {
+  const el = document.getElementById('boxDirtyBanner');
+  if (el) el.style.display = state._boxDirty ? '' : 'none';
+}
+async function completeBoxEdit() {
+  if (!state._boxDirty) { toastWarn && toastWarn('변경된 박스/품목이 없습니다'); return; }
+  if (!confirm('박스/품목 수정을 완료합니다.\n관세사확정이 해제되고 "재확정 필요"로 돌아갑니다 (관세사가 최신 내용으로 다시 확인).\n진행하시겠습니까?')) return;
+  await _unconfirmForBoxChange();
+  state._boxDirty = false;
+  _renderBoxDirtyBanner();
+  toastSuccess && toastSuccess('박스 수정 완료 — 관세사 재확정 요청됨', { title: '✅ 박스수정 완료' });
 }
 
 function applyGroupBox(gk, value) {
@@ -6984,7 +7014,7 @@ function renderBoxes() {
         recalculateBoxTotals();
         renderOverhead();
         renderInvoicePreview();
-        if (typeof _unconfirmForBoxChange === 'function') _unconfirmForBoxChange();   // [v3.2.145 G5] 박스 치수/중량 변경 → 관세사확정 해제
+        if (typeof _markBoxDirty === "function") _markBoxDirty();
         // F §12: 박스 CBM 변경 시 해상운임 즉시 갱신 (실시간 동기화)
         if (typeof autoFillSeaFreight === 'function') autoFillSeaFreight();
         // F §11: 박스 배송방식·CBM·KG 변경 시 운임 견적도 자동 재계산
@@ -7000,7 +7030,7 @@ function renderBoxes() {
         const bn2 = shipSel.dataset.box;
         if (!state.boxes[bn2]) state.boxes[bn2] = { num: bn2, products: [] };
         state.boxes[bn2].shipType = shipSel.value;
-        if (typeof _unconfirmForBoxChange === 'function') _unconfirmForBoxChange();   // [v3.2.145 G5] 박스 배송방식 변경 → 관세사확정 해제
+        if (typeof _markBoxDirty === "function") _markBoxDirty();
         renderOverhead();
         refreshAll();
         // F §11/§12: 배송방식 변경 시 견적/해상운임 동기화
@@ -10858,6 +10888,10 @@ async function confirmFinalPublish() {
   if (curStatus === '출고완료') {
     toastWarn(`${mailbox}는 이미 출고완료 상태입니다`);
     return;
+  }
+  // [v3.2.146 ①] 박스수정 미완료 경고 — 박스 변경했는데 [박스수정 완료] 안 눌러 관세사 옛 확정 유지 중.
+  if (state._boxDirty) {
+    if (!confirm(`⚠ ${mailbox} 박스/품목이 수정됐으나 [박스수정 완료]를 누르지 않았습니다.\n관세사확정이 옛 내용 기준으로 유지 중입니다(오신고 위험).\n\n먼저 [✅ 박스수정 완료]로 관세사 재확정을 받는 것을 권장합니다.\n그래도 출고완료를 진행할까요?`)) return;
   }
   // [v3.2.142] ★선입금 후출고 게이트 — 입금완료일시 없으면 미입금. 외상 우회는 admin만(직원 차단).
   const paidAt = f['입금완료일시'];
