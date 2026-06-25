@@ -733,7 +733,7 @@ module.exports = async (req, res) => {
         //   출고요청·박스확정·관세사확정대기·관세사확정완료·인보이스완료·통관중·통관완료·배송중·출고완료·입금완료 등 모두 list에.
         //   관세사 페이지의 탭이 시각 필터링 담당. API는 차단 안 함.
         // 선적일 추가(관세사 대시보드 목록 날짜 = 선적일 표시용). 출고요청일도 호환 위해 유지.
-        const url = `/${TABLES.Shipments}?fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=선적일`;
+        const url = `/${TABLES.Shipments}?fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=선적일&fields[]=입금완료일시`;   // [v3.2.142] 입금완료일시 = 종결/외상 분류용
         const recs = await atListAll(url);
         // [고객명 표시] Customers(사서함번호 → 회원명/회사명) 조인 — booking_summary와 동일 소스. 읽기 전용·표시 전용.
         let custMap = {};

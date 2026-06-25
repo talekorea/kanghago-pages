@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.141</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.142</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.141</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.142</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3865,26 +3865,33 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // v3.2.36: 고객확정 단계 제거 → 4탭 (출고요청 / 관세사확정 / 출고완료 / 입금완료)
 //   "인보이스완료" 상태는 관세사확정 그룹에 포함 (발행 직후 = 통관 진행 전).
+// [v3.2.142] ★선입금 후출고 흐름: 출고요청 → 관세사확정 → 입금완료(출고대기) → 출고완료(종착).
+//   탭 순서 = 흐름 순. done(출고완료=상태)이 최종(입금 여부 무관). 외상=출고완료+입금완료일시 없음(칩으로 추적).
 const SHIP_TABS = [
   { key: 'req',  label: '📋 출고요청',   states: ['출고요청', '박스확정'] },
   { key: 'cust', label: '🛃 관세사확정', states: ['관세사확정완료', '관세사확정대기', '인보이스완료'] },
-  { key: 'done', label: '✅ 출고완료',   states: ['통관중', '통관완료', '배송중', '출고완료'] },
-  { key: 'paid', label: '💰 입금완료',   states: ['입금완료'] },
+  { key: 'paid', label: '💰 입금완료',   states: [] },   // 입금완료일시 있고 출고완료 아님(분류는 tabOfRecord)
+  { key: 'done', label: '🏁 출고완료',   states: ['출고완료', '통관중', '통관완료', '배송중'] },
 ];
 const SHIP_STATUS_PRIORITY = {
   '관세사확정완료': 1, '관세사확정대기': 2, '인보이스완료': 3, '박스확정': 4,
   '출고요청': 5, '통관중': 6, '통관완료': 7, '배송중': 8, '출고완료': 9,
-  '입금완료': 10,
 };
-// v3.2.36: 고객응답 분기 제거. 탭 = 상태 단순 매핑.
+// [v3.2.142] 우선순위: 출고완료(상태)=종착 최우선 → 입금완료(일시·출고 전) → 관세사확정 → 출고요청.
+//   ★출고완료가 입금완료보다 우선 = 출고된 건은 종결 탭(입금 안 됐어도 done, 외상 칩으로 표시).
 function tabOfRecord(r) {
   const f = (r && r.fields) || {};
   const s = f['상태'] || '';
-  if (s === '입금완료' || f['입금완료일시']) return 'paid';
-  if (['통관중', '통관완료', '배송중', '출고완료'].includes(s)) return 'done';
+  if (s === '출고완료' || ['통관중', '통관완료', '배송중'].includes(s)) return 'done';   // 종착
+  if (f['입금완료일시']) return 'paid';                                                  // 입금했고 출고 전
   if (['관세사확정대기', '관세사확정완료', '인보이스완료'].includes(s)) return 'cust';
   if (['출고요청', '박스확정'].includes(s)) return 'req';
   return 'cust';
+}
+// [v3.2.142] 외상(미입금) 출고 = 출고완료인데 입금완료일시 없음 → 미수금 추적용 표시(입금되면 자동 해제).
+function isCreditUnpaid(r) {
+  const f = (r && r.fields) || {};
+  return (f['상태'] === '출고완료') && !f['입금완료일시'];
 }
 // 하위 호환 — 상태만 알 때 (호출처 점진 교체용)
 function tabOfStatus(status) { return tabOfRecord({ fields: { '상태': status } }); }
@@ -4069,7 +4076,7 @@ function renderShipmentOptions() {
         const opt = document.createElement('option');
         opt.value = r.id;
         const isNew = state.shipTabNewIds && state.shipTabNewIds[active] && state.shipTabNewIds[active].has(r.id);
-        opt.textContent = (isNew ? '🆕 ' : '') + shipmentLabel(r);
+        opt.textContent = (isNew ? '🆕 ' : '') + (isCreditUnpaid(r) ? '⚠외상 ' : '') + shipmentLabel(r);   // [v3.2.142] 외상(미입금) 출고 표시
         opt.dataset.shipment = JSON.stringify(r);
         opt.dataset.status = status;
         og.appendChild(opt);
@@ -10564,6 +10571,8 @@ function renderFinalConfirm() {
   // v3.1.0 발행 후 진행 추적 (게이트 X, 정보만)
   const hasInvoiceIssued = !!f['청구서발행일시'];
   const hasPaidIn = !!f['입금완료일시'];
+  const hasShipped = (f['상태'] === '출고완료');   // [v3.2.142] 종착
+  const isCredit = hasShipped && !hasPaidIn;       // [v3.2.142] 외상(미입금) 출고
 
   const chk = (ok, label, when) => `<div style="padding:3px 0;">${ok ? '✅' : '🔒'} ${label}`
     + (when ? ` <span style="color:#888; font-size:11px;">— ${when}</span>` : '') + '</div>';
@@ -10612,9 +10621,11 @@ function renderFinalConfirm() {
       ${chk(matchOk, '⑨ BL/CO 대조 확인', matchOk ? (f['대조확인일시'] || '') : '§10에서 [확인 완료]')}
     </div>
     <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #ddd; font-size:13px;">
-      <div style="font-weight:600; color:#666; font-size:12px; margin-bottom:4px;">📊 발행 후 진행 (정보, 게이트 X)</div>
-      ${info(hasInvoiceIssued, '청구서 발행 (통합 URL)', f['청구서발행일시'] || '')}
-      ${info(hasPaidIn, '입금 완료 (계좌이체)', f['입금완료일시'] || '')}
+      <div style="font-weight:600; color:#666; font-size:12px; margin-bottom:4px;">📊 발행 후 진행 (관세사확정 → 청구발행 → 입금 → 출고 · 정보, 게이트 X)</div>
+      ${info(hasInvoiceIssued, '① 청구서 발행 (통합 URL)', f['청구서발행일시'] || '')}
+      ${info(hasPaidIn, '② 입금 완료 (계좌이체)', f['입금완료일시'] || '')}
+      ${info(hasShipped, '③ 출고 완료 (종결)', hasShipped ? '완료' : '')}
+      ${isCredit ? `<div style="padding:4px 6px; margin-top:4px; background:#fff3e0; border:1px solid #e8a33d; border-radius:5px; color:#a14a00; font-weight:700; font-size:12px;">⚠ 외상(미입금) 출고 — 미수금. 입금 확인 시 자동 해제됩니다.</div>` : ''}
     </div>
     <div style="margin-top:12px; padding:12px; background:${firstReady ? '#e8f5e9' : '#fff8e1'}; border:1px solid ${firstReady ? '#0a7b40' : '#C9973A'}; border-radius:8px;">
       <strong style="color:${firstReady ? '#0a7b40' : '#9a7b2a'};">
@@ -10651,15 +10662,29 @@ async function confirmFinalPublish() {
     toastWarn(`${mailbox}는 이미 출고완료 상태입니다`);
     return;
   }
-  if (!confirm(`${mailbox} 사서함을 출고완료로 이동합니다.\n\n` +
-               `이 작업은 발행 후 추적 단계로 진입하는 의사결정입니다.\n진행하시겠습니까?`)) return;
+  // [v3.2.142] ★선입금 후출고 게이트 — 입금완료일시 없으면 미입금. 외상 우회는 admin만(직원 차단).
+  const paidAt = f['입금완료일시'];
+  let _creditMemo = null;
+  if (!paidAt) {
+    if (!loadAdminToken()) {
+      toastWarn(`${mailbox} 미입금 — 입금 확인 후 출고 가능합니다. 외상출고는 관리자만 처리할 수 있습니다.`, { title: '⛔ 미입금 출고 차단' });
+      return;
+    }
+    if (!confirm(`⚠ ${mailbox} — 미입금 상태(외상출고)입니다.\n입금완료일시가 없습니다. 그래도 출고완료 처리하시겠습니까?\n\n외상으로 기록되며, 입금되기 전까지 "외상(미입금)" 표시가 계속 유지됩니다(미수금 추적).`)) return;
+    _creditMemo = '⚠외상출고 ' + new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  } else {
+    if (!confirm(`${mailbox} 사서함을 출고완료로 이동합니다.\n(입금 확인됨 ${String(paidAt).slice(0,10)})\n진행하시겠습니까?`)) return;
+  }
   try {
+    const _patchFields = { '상태': '출고완료' };
+    if (_creditMemo) { const _prevMemo = String(f['메모'] || ''); _patchFields['메모'] = _prevMemo ? (_prevMemo + ' / ' + _creditMemo) : _creditMemo; }
     await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, {
-      fields: { '상태': '출고완료' },
+      fields: _patchFields,
       typecast: true,
     });
     state.shipment.fields['상태'] = '출고완료';
-    toastSuccess(`${mailbox} 출고완료 — 출고완료 탭으로 이동`, { title: '🏁 5단계 완료' });
+    if (_creditMemo) state.shipment.fields['메모'] = _patchFields['메모'];
+    toastSuccess(`${mailbox} 출고완료${_creditMemo ? ' (⚠외상·미입금)' : ''} — 출고완료(종결) 탭으로 이동`, { title: '🏁 출고완료' });
     // 4탭 자동 전환 + 사서함 목록 새로고침 (작업1의 D2 분류 로직이 자동 적용)
     if (typeof selectShipTab === 'function') selectShipTab('done');
     if (typeof loadShipmentList === 'function') await loadShipmentList();
@@ -15619,12 +15644,12 @@ async function searchPaymentMatch() {
 }
 
 async function markPaid(shipmentId, payer) {
-  if (!confirm('이 사서함을 입금완료로 처리합니다.\n5탭의 💰 입금완료 탭으로 이동.\n진행하시겠습니까?')) return;
+  if (!confirm('이 사서함을 입금완료로 처리합니다.\n💰 입금완료 탭으로 이동(출고 전 — 이후 [최종확정]으로 출고완료).\n진행하시겠습니까?')) return;
   try {
+    // [v3.2.142] ★상태는 안 바꿈(종착=출고완료). 입금완료일시만 기록 → 입금완료 탭은 일시로 분류. BANK_TRANSFER 유지.
     await api('PATCH', `/${TABLES.Shipments}/${shipmentId}`, {
       fields: {
-        '입금완료일시': new Date().toISOString().slice(0, 10),
-        '상태': '입금완료',
+        '입금완료일시': new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10),
         '결제방식': 'BANK_TRANSFER',
       },
       typecast: true,

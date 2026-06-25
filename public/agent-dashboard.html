@@ -98,7 +98,8 @@
   <!-- 확정 필요 탭 = 관세사확정완료 외 모든 상태. 확정 완료 = 관세사확정완료만. -->
   <div class="tabs">
     <button class="tab on" data-filter="출고요청" onclick="setFilter('출고요청')">📋 확정 필요 <span id="cnt-출고요청">·</span></button>
-    <button class="tab" data-filter="완료" onclick="setFilter('완료')">✅ 확정 완료 <span id="cnt-완료">·</span></button>
+    <button class="tab" data-filter="완료" onclick="setFilter('완료')">✅ 확정 완료(출고대기) <span id="cnt-완료">·</span></button>
+    <button class="tab" data-filter="종결" onclick="setFilter('종결')">🏁 종결(출고완료) <span id="cnt-종결">·</span></button>
     <button class="tab" data-filter="all" onclick="setFilter('all')">전체</button>
   </div>
   <div style="font-size:11px; color:#888; margin-bottom:10px;">
@@ -111,10 +112,11 @@
 <script type="module">
   let supabase = null, session = null, agent = null, shipments = [], filter = '출고요청';
 
-  // [고객명 단일 헬퍼] 부킹요약·대시보드 목록 공용 — 회사명 있으면 회사명, 없으면 회원명(둘 다 없으면 빈값).
-  //   (부킹요약 모달과 동일 표기: company || member.)
+  // [고객명 단일 헬퍼] 부킹요약·대시보드 목록 공용 — "회사명 (회원명)" 둘 다. 하나만 있으면 있는 것만.
+  //   예: 북영천ic낚시점 (박재원) / 회사명만 → 북영천ic낚시점 / 회원명만 → 박재원 / 둘 다 없으면 빈값.
   function custLabel(member, company) {
     const c = String(company || '').trim(), m = String(member || '').trim();
+    if (c && m) return c + ' (' + m + ')';
     return c || m || '';
   }
 
@@ -198,7 +200,7 @@
   let _prevPendingIds = new Set();
   function startPolling() {
     // v3.2.7+ (2026-05-30): 회의 결정 — 관세사확정완료 외 모든 상태가 작업 후보 (확정 필요)
-    const isPending = (s) => s.fields['상태'] !== '관세사확정완료';
+    const isPending = (s) => s.fields['상태'] !== '관세사확정완료' && s.fields['상태'] !== '출고완료';   // [v3.2.142] 종결 제외
     _prevPendingIds = new Set(shipments.filter(isPending).map(s => s.id));
     if (_pollTimer) clearInterval(_pollTimer);
     _pollTimer = setInterval(pollOnce, 30000);
@@ -208,7 +210,7 @@
       const list = await fetchAgent('GET', '?op=list');
       const next = list.shipments || [];
       // v3.2.7+: 관세사확정완료 외 모든 상태가 작업 후보
-      const isPending2 = (s) => s.fields['상태'] !== '관세사확정완료';
+      const isPending2 = (s) => s.fields['상태'] !== '관세사확정완료' && s.fields['상태'] !== '출고완료';   // [v3.2.142] 종결 제외
       const nextPendingIds = new Set(next.filter(isPending2).map(s => s.id));
       const newOnes = [...nextPendingIds].filter(id => !_prevPendingIds.has(id));
       shipments = next;
@@ -553,19 +555,22 @@
   };
 
   function render() {
-    // v3.2.7+ (2026-05-30): 회의 결정 "모든 상태가 관세사 페이지에 표시·작업 가능".
-    //   "확정 필요" 탭 = 관세사확정완료 외 모든 상태 (출고요청·관세사확정대기·박스확정·... 등 — 작업 대상).
-    //   "확정 완료" 탭 = 관세사확정완료만.
-    //   "전체" = 그대로.
-    const isPending = (s) => s.fields['상태'] !== '관세사확정완료';
+    // [v3.2.142] 선입금 후출고: 확정필요(진행중) / 확정완료(출고대기) / 종결(출고완료).
+    //   확정필요 = 관세사확정완료도 출고완료도 아님(작업 대상). 확정완료 = 관세사확정완료(출고 전). 종결 = 출고완료.
+    const isShipped = (s) => s.fields['상태'] === '출고완료';
+    const isPending = (s) => s.fields['상태'] !== '관세사확정완료' && !isShipped(s);
+    const isConfirmed = (s) => s.fields['상태'] === '관세사확정완료';
     const cnt출고요청 = shipments.filter(isPending).length;
-    const cnt완료 = shipments.filter(s => s.fields['상태'] === '관세사확정완료').length;
+    const cnt완료 = shipments.filter(isConfirmed).length;
+    const cnt종결 = shipments.filter(isShipped).length;
     const eP = document.getElementById('cnt-출고요청'); if (eP) eP.textContent = cnt출고요청;
     document.getElementById('cnt-완료').textContent = cnt완료;
+    const eD = document.getElementById('cnt-종결'); if (eD) eD.textContent = cnt종결;
 
     let list = shipments;
     if (filter === '출고요청') list = list.filter(isPending);
-    else if (filter === '완료') list = list.filter(s => s.fields['상태'] === '관세사확정완료');
+    else if (filter === '완료') list = list.filter(isConfirmed);
+    else if (filter === '종결') list = list.filter(isShipped);
 
     list.sort((a, b) => (a.fields['사서함'] || '').localeCompare(b.fields['사서함'] || ''));
 
@@ -576,13 +581,17 @@
       const status = s.fields['상태'] === '관세사확정완료' ? '완료' : '대기';
       const shipDate = s.fields['선적일'] || s.fields['출고요청일'] || '';   // 선적일 우선, 없으면 출고요청일 폴백
       const dateLabel = shipDate ? ('선적일 ' + String(shipDate).slice(0, 10)) : '';
-      const cust = custLabel(s.fields['회원명'], s.fields['회사명']);   // [고객명] 부킹요약과 동일 소스(회사명 우선)
+      const cust = custLabel(s.fields['회원명'], s.fields['회사명']);   // [고객명] 부킹요약과 동일 소스(회사명(회원명))
+      const credit = (s.fields['상태'] === '출고완료') && !s.fields['입금완료일시'];   // [v3.2.142] 외상(미입금) 출고
       return `<div class="item" onclick="location.href='/agent-shipment.html?id=${s.id}'">
         <div>
-          <div class="name">${esc(s.fields['사서함'] || '(이름 없음)')}${cust ? ` <span style="font-size:12px; font-weight:400; color:#1B5E9A;">· ${esc(cust)}</span>` : ''}</div>
+          <div class="name">${esc(s.fields['사서함'] || '(이름 없음)')}${cust ? ` <span style="font-size:14px; font-weight:600; color:#1B5E9A;">· ${esc(cust)}</span>` : ''}</div>
           <div style="font-size:11px; color:#888; margin-top:2px;">${dateLabel}</div>
         </div>
-        <div class="status ${status}">${esc(s.fields['상태'])}</div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          ${credit ? `<span style="background:#fff3e0; color:#a14a00; border:1px solid #e8a33d; border-radius:5px; padding:2px 7px; font-size:11px; font-weight:700;">⚠ 외상(미입금)</span>` : ''}
+          <div class="status ${status}">${esc(s.fields['상태'])}</div>
+        </div>
       </div>`;
     }).join('');
   }
