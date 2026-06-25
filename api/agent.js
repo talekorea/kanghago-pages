@@ -735,7 +735,17 @@ module.exports = async (req, res) => {
         // 선적일 추가(관세사 대시보드 목록 날짜 = 선적일 표시용). 출고요청일도 호환 위해 유지.
         const url = `/${TABLES.Shipments}?fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=선적일`;
         const recs = await atListAll(url);
-        return res.json({ count: recs.length, shipments: recs.map(r => ({ id: r.id, fields: r.fields })) });
+        // [고객명 표시] Customers(사서함번호 → 회원명/회사명) 조인 — booking_summary와 동일 소스. 읽기 전용·표시 전용.
+        let custMap = {};
+        try {
+          const custs = await atListAll(`/${TABLES.Customers}?fields[]=사서함번호&fields[]=회원명&fields[]=회사명`);
+          custs.forEach(c => { const k = (c.fields || {})['사서함번호']; if (k) custMap[k] = { member: c.fields['회원명'] || '', company: c.fields['회사명'] || '' }; });
+        } catch (e) { /* Customers 없으면 이름 생략 */ }
+        return res.json({ count: recs.length, shipments: recs.map(r => {
+          const base = String((r.fields || {})['사서함'] || '').replace(/-\d{6}$/, '');   // [선적분 키] AP-YYMMDD → base
+          const cust = custMap[base] || custMap[(r.fields || {})['사서함']] || { member: '', company: '' };
+          return { id: r.id, fields: Object.assign({}, r.fields, { '회원명': cust.member, '회사명': cust.company }) };
+        }) });
       }
       if (op === 'search_products') {
         // 자동완성: 영문명/HS/한글명 부분 일치 → 사용횟수 DESC + 마지막사용일시 DESC

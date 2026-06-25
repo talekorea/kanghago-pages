@@ -111,6 +111,13 @@
 <script type="module">
   let supabase = null, session = null, agent = null, shipments = [], filter = '출고요청';
 
+  // [고객명 단일 헬퍼] 부킹요약·대시보드 목록 공용 — 회사명 있으면 회사명, 없으면 회원명(둘 다 없으면 빈값).
+  //   (부킹요약 모달과 동일 표기: company || member.)
+  function custLabel(member, company) {
+    const c = String(company || '').trim(), m = String(member || '').trim();
+    return c || m || '';
+  }
+
   async function init() {
     try {
       const cfgRes = await fetch('/api/agent-config');
@@ -292,7 +299,7 @@
         const warn = r.missingMeasure ? ' style="background:#fff3e0;"' : '';
         return `<tr${warn}><td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.shipDate)}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.mailbox)}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.company || r.member)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(custLabel(r.member, r.company))}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#555;">${esc(atLabel(r.agentTypes))}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#555;">${esc(smLabel(r.shipMethods))}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${r.boxCount}</td>
@@ -305,7 +312,7 @@
         <thead><tr style="background:#1B2A3B;color:#fff;"><th style="padding:7px 8px;text-align:left;">선적일</th><th style="padding:7px 8px;text-align:left;">사서함</th><th style="padding:7px 8px;text-align:left;">고객</th><th style="padding:7px 8px;text-align:left;">대행</th><th style="padding:7px 8px;text-align:left;">배송</th><th style="padding:7px 8px;text-align:right;">박스</th><th style="padding:7px 8px;text-align:right;">무게KG</th><th style="padding:7px 8px;text-align:right;">CBM</th><th style="padding:7px 8px;text-align:center;">상태</th></tr></thead>
         <tbody>${trs}</tbody>
         <tfoot><tr style="font-weight:700;background:#f5f5f5;"><td colspan="5" style="padding:8px;text-align:right;">합계</td><td style="padding:8px;text-align:right;">${ctnT}</td><td style="padding:8px;text-align:right;">${kgT.toFixed(1)}</td><td style="padding:8px;text-align:right;">${cbmT.toFixed(2)}</td><td></td></tr></tfoot></table>`;
-      agentBookingCopyText = `[부킹 ${label}]\n` + rows.map(r => `${r.shipDate} ${r.mailbox} ${r.company || r.member} | ${r.boxCount}CTN ${r.kgSum.toFixed(1)}KG ${r.cbmSum.toFixed(2)}CBM${r.isReady ? '' : ' (입력대기)'}`).join('\n') + `\n합계 ${ctnT}CTN ${kgT.toFixed(1)}KG ${cbmT.toFixed(2)}CBM`;
+      agentBookingCopyText = `[부킹 ${label}]\n` + rows.map(r => `${r.shipDate} ${r.mailbox} ${custLabel(r.member, r.company)} | ${r.boxCount}CTN ${r.kgSum.toFixed(1)}KG ${r.cbmSum.toFixed(2)}CBM${r.isReady ? '' : ' (입력대기)'}`).join('\n') + `\n합계 ${ctnT}CTN ${kgT.toFixed(1)}KG ${cbmT.toFixed(2)}CBM`;
       copyBtn.style.display = '';
     } catch (e) { loading.textContent = ''; box.innerHTML = `<div style="padding:18px;text-align:center;color:#c0392b;font-size:13px;">조회 실패: ${e.message || e}</div>`; }
   };
@@ -564,16 +571,18 @@
 
     const c = document.getElementById('list');
     if (!list.length) { c.innerHTML = '<div class="empty">해당 상태의 사서함이 없습니다.</div>'; return; }
+    const esc = x => String(x == null ? '' : x).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
     c.innerHTML = list.map(s => {
       const status = s.fields['상태'] === '관세사확정완료' ? '완료' : '대기';
       const shipDate = s.fields['선적일'] || s.fields['출고요청일'] || '';   // 선적일 우선, 없으면 출고요청일 폴백
       const dateLabel = shipDate ? ('선적일 ' + String(shipDate).slice(0, 10)) : '';
+      const cust = custLabel(s.fields['회원명'], s.fields['회사명']);   // [고객명] 부킹요약과 동일 소스(회사명 우선)
       return `<div class="item" onclick="location.href='/agent-shipment.html?id=${s.id}'">
         <div>
-          <div class="name">${s.fields['사서함'] || '(이름 없음)'}</div>
+          <div class="name">${esc(s.fields['사서함'] || '(이름 없음)')}${cust ? ` <span style="font-size:12px; font-weight:400; color:#1B5E9A;">· ${esc(cust)}</span>` : ''}</div>
           <div style="font-size:11px; color:#888; margin-top:2px;">${dateLabel}</div>
         </div>
-        <div class="status ${status}">${s.fields['상태']}</div>
+        <div class="status ${status}">${esc(s.fields['상태'])}</div>
       </div>`;
     }).join('');
   }
