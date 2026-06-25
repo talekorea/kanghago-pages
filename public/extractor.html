@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>강하고 추출기 — 최신본 복사</title>
+<style>
+  :root { --bg:#F4EFE6; --gold:#C9973A; --navy:#1B2A3B; --ivory:#FAF6EE; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); font-family:'Pretendard','Apple SD Gothic Neo','맑은 고딕',sans-serif; color:var(--navy); padding:18px; }
+  .wrap { max-width:920px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:#777; font-size:13px; margin-bottom:16px; }
+  .verbar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; background:var(--ivory); border:2px solid var(--gold); border-radius:10px; padding:14px 18px; margin-bottom:14px; }
+  .verbig { font-size:26px; font-weight:800; color:var(--gold); }
+  .verlabel { font-size:13px; color:#555; }
+  .copybtn { background:var(--navy); color:#fff; border:none; border-radius:8px; padding:12px 22px; font-size:15px; font-weight:700; cursor:pointer; }
+  .copybtn:hover { background:#27405c; }
+  .copybtn.done { background:#0a7b40; }
+  .steps { background:#fff; border:1px solid #e0d8c4; border-radius:10px; padding:14px 18px; margin-bottom:14px; font-size:14px; line-height:1.9; }
+  .steps b { color:var(--gold); }
+  .chip { display:inline-block; background:#1B2A3B; color:#fff; font-family:ui-monospace,monospace; padding:2px 8px; border-radius:5px; font-size:13px; }
+  textarea { width:100%; height:300px; font-family:ui-monospace,monospace; font-size:11px; border:1px solid #ccc; border-radius:8px; padding:10px; background:#fbfaf6; }
+  .err { color:#c0392b; font-weight:700; }
+  .note { font-size:12px; color:#888; margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧩 강하고 알리피드 추출기 — 항상 최신본</h1>
+  <div class="sub">이 페이지는 <b>언제나 최신 추출기 1개</b>만 보여줍니다. 여기서 복사해 알리피드 콘솔에 붙여넣으세요. (이 주소를 즐겨찾기 해두세요.)</div>
+
+  <div class="verbar">
+    <div>
+      <div class="verlabel">현재 최신 버전</div>
+      <div class="verbig" id="ver">불러오는 중…</div>
+    </div>
+    <button class="copybtn" id="copyBtn" onclick="copyAll()">📋 추출기 전체 복사</button>
+    <div class="verlabel" id="copyState"></div>
+  </div>
+
+  <div class="steps">
+    <div><b>1.</b> 위 <b>[📋 추출기 전체 복사]</b> 클릭 (클립보드에 복사됨)</div>
+    <div><b>2.</b> 알리피드 <b>회원(koreaalipeed) 주문 목록</b> 페이지에서 <span class="chip">F12</span> → <b>콘솔(Console)</b> 탭</div>
+    <div><b>3.</b> 콘솔에 <span class="chip">Ctrl+V</span> 붙여넣기 → <span class="chip">Enter</span></div>
+    <div><b>4.</b> ★시작 시 콘솔 첫 줄에 <span class="chip" id="verCheck">[추출기 v…]</span> 가 보이는지 확인 — 이 버전과 같아야 최신</div>
+    <div><b>5.</b> 선적일은 <b>자동 도출</b>(주문 실제출고요청일) — 수동 입력 없음. 날짜 섞이면 차단되니 알리피드 검색을 한 날짜로 좁혀 실행</div>
+  </div>
+
+  <details>
+    <summary style="cursor:pointer; font-size:13px; color:#666; margin-bottom:6px;">📄 코드 미리보기 (복사 버튼 권장 — 직접 선택도 가능)</summary>
+    <textarea id="code" readonly>불러오는 중…</textarea>
+  </details>
+  <div class="note">최신본 경로: <span class="chip">/alipeed-extractor-latest.js</span> · 버전이 안 맞으면 새로고침(Ctrl+Shift+R) 후 다시 복사.</div>
+</div>
+
+<script>
+  let CODE = '';
+  async function load() {
+    try {
+      // 같은 origin 정적 파일 — 캐시 우회(항상 최신)
+      const r = await fetch('/alipeed-extractor-latest.js?t=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      CODE = await r.text();
+      const m = CODE.match(/EXTRACTOR_VERSION\s*=\s*'([^']+)'/);
+      const ver = m ? m[1] : '(버전 표기 없음)';
+      document.getElementById('ver').textContent = ver;
+      document.getElementById('verCheck').textContent = '[추출기 ' + ver + ']';
+      document.getElementById('code').value = CODE;
+      document.title = '강하고 추출기 ' + ver + ' — 최신본 복사';
+    } catch (e) {
+      document.getElementById('ver').innerHTML = '<span class="err">로드 실패</span>';
+      document.getElementById('code').value = '추출기 로드 실패: ' + (e.message || e) + '\n새로고침 후 다시 시도하세요.';
+    }
+  }
+  async function copyAll() {
+    if (!CODE) { alert('아직 로드 중입니다 — 잠시 후 다시'); return; }
+    const btn = document.getElementById('copyBtn');
+    try {
+      await navigator.clipboard.writeText(CODE);
+      btn.textContent = '✓ 복사됨 — 콘솔에 붙여넣기';
+      btn.classList.add('done');
+      document.getElementById('copyState').textContent = '클립보드에 복사됨. 알리피드 콘솔(F12)에 Ctrl+V → Enter.';
+      setTimeout(() => { btn.textContent = '📋 추출기 전체 복사'; btn.classList.remove('done'); }, 4000);
+    } catch (e) {
+      // 클립보드 권한 폴백 — textarea 선택
+      const ta = document.getElementById('code');
+      ta.closest('details').open = true; ta.focus(); ta.select();
+      document.getElementById('copyState').innerHTML = '<span class="err">자동 복사 실패 — 아래 코드가 전체 선택됨. Ctrl+C 로 복사하세요.</span>';
+    }
+  }
+  load();
+</script>
+</body>
+</html>
