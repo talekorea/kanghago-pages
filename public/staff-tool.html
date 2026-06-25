@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.147</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.148</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.147</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.148</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -5214,6 +5214,34 @@ function renderProducts() {
           }
         });
       }
+      // [v3.2.148 A] ★단가CNY 즉시 저장 — 분할그룹(원본+자식) 단가는 수량과 동일하게 blur 시 즉시 PATCH + flash. (일반 제품은 단가 input 자체가 없음.)
+      if (inp.dataset.field === '단가CNY') {
+        inp.addEventListener('change', async () => {
+          if (p._isNew) return;   // 미저장 분할행(분할은 즉시 create라 사실상 없음) — saveAll에서 저장
+          const up = parseFloat(inp.value) || 0;
+          const q = parseFloat(f['수량']) || 0;
+          const cny = Math.round(up * q * 100) / 100;
+          const _rate = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
+          f['단가CNY'] = up; f['합계CNY'] = cny;
+          if (_rate) { f['단가USD'] = up * _rate; f['합계USD'] = cny * _rate; }
+          const cell = tr.querySelector('[data-cell="합계CNY"]');
+          if (cell) cell.textContent = '¥' + cny.toLocaleString();
+          inp.style.borderColor = '#e8a04c'; inp.title = '단가 저장 중...';
+          try {
+            const _pf = { '단가CNY': up, '합계CNY': cny };
+            if (_rate) { _pf['단가USD'] = up * _rate; _pf['합계USD'] = cny * _rate; }
+            await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields: _pf, typecast: true });
+            if (state._prodBaseline) state._prodBaseline[p.id] = _prodFingerprint(f);
+            inp.style.borderColor = '#1b5e20'; inp.title = '저장됨 ✓';
+            setTimeout(() => { inp.style.borderColor = '#e8a33d'; inp.title = ''; }, 1500);
+            if (typeof toastSuccess === 'function') toastSuccess(`단가 저장: ${(f['상품ID'] || '')} = ¥${up.toLocaleString()}`);
+            if (typeof recalculate === 'function') recalculate();
+          } catch (e) {
+            inp.style.borderColor = '#c0392b'; inp.title = '저장 실패';
+            if (typeof toastError === 'function') toastError(`단가 저장 실패 (${f['상품ID'] || p.id}): ${e.message || e} — [Airtable에 저장]으로 재시도`);
+          }
+        });
+      }
     });
 
     // HS코드 blur: 포맷 정규화 + 사전/캐시 검색 + 영문명/세율 강제 자동 채움
@@ -5846,7 +5874,7 @@ function _boxNumsToStr(nums) {
 // [v3.2.143] ★박스별 나누기 — 한 제품을 박스 기준으로 2행 분할(현장 엑셀 가공 대체).
 //   원본=남는 박스 / 새 행=분리 박스(_s{n} 상품ID, 관세사확정=false). 수량·합계CNY는 박스 비례 기본값(이후 행에서 개별 편집).
 //   합집합=원본 검증(누락·중복 차단). 새 품목이 CO에 없으면 runCoCompare가 불일치로 잡아 발행 게이트가 차단.
-function splitProductRow(pid) {
+async function splitProductRow(pid) {
   const p = (state.products || []).find(x => x.id === pid);
   if (!p) { toastWarn && toastWarn('제품을 찾을 수 없습니다'); return; }
   const f = p.fields || {};
@@ -5871,33 +5899,53 @@ function splitProductRow(pid) {
   const newQty = Math.round(origQty * newNums.length / origNums.length);
   const remainQty = origQty - newQty;
   const unitCny = parseFloat(f['단가CNY']) || 0;
-  // 원본 갱신(남는 박스·수량)
-  f['박스번호'] = _boxNumsToStr(remainNums);
-  f['수량'] = remainQty;
-  f['합계CNY'] = Math.round(unitCny * remainQty * 100) / 100;
-  state.modifiedProducts.add(p.id);
+  const _rate = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
   // 새 상품ID = {원본}_s{n}
   let n = 1; const taken = new Set((state.products || []).map(x => String((x.fields || {})['상품ID'] || '')));
   while (taken.has(sid + '_s' + n)) n++;
   const newSid = sid + '_s' + n;
-  const newFields = Object.assign({}, f, {
-    '상품ID': newSid,
-    '박스번호': _boxNumsToStr(newNums),
-    '수량': newQty,
-    '합계CNY': Math.round(unitCny * newQty * 100) / 100,
-    '관세사확정': false,
+  // [v3.2.148] ★분할 새 행 = 즉시 create(Airtable 레코드 생성) — 원본과 동일하게 이후 단가 blur 즉시저장 가능(불일치 제거).
+  const newCny = Math.round(unitCny * newQty * 100) / 100;
+  const childFields = {
+    '상품ID': newSid, 'Order': Array.isArray(f['Order']) ? f['Order'] : [],
+    'Description': f['Description'] || '', '통관품명_영문': f['통관품명_영문'] || f['Description'] || '',
+    '통관품명_한글': f['통관품명_한글'] || '', 'Material': f['Material'] || '', 'HS코드': f['HS코드'] || '',
+    '적용FTA': f['적용FTA'] || '없음', '박스번호': _boxNumsToStr(newNums), '수량': newQty,
+    '단가CNY': unitCny, '합계CNY': newCny,
+    '단가USD': _rate ? unitCny * _rate : 0, '합계USD': _rate ? newCny * _rate : 0,
     '관세사메모': `수동분할 (원본 ${sid})`,
-  });
-  const tempId = 'new_' + Math.random().toString(36).slice(2, 9);
+  };
+  if (f['제품링크']) childFields['제품링크'] = f['제품링크'];
+  if (f['이미지URL']) childFields['이미지URL'] = f['이미지URL'];
+  const _imgUrl = f['이미지URL'] || ((f['상품이미지'] && f['상품이미지'][0]) ? f['상품이미지'][0].url : '');
+  if (_imgUrl) childFields['상품이미지'] = [{ url: _imgUrl }];
+  let realId;
+  try {
+    const res = await api('POST', `/${TABLES.Products}`, { records: [{ fields: childFields }], typecast: true });
+    realId = res && res.records && res.records[0] && res.records[0].id;
+    if (!realId) throw new Error('레코드 id 없음');
+  } catch (e) { toastError && toastError('분할 새 행 생성 실패 — 분할 취소: ' + (e.message || e)); return; }
+  // child 생성 성공 → 원본 갱신(남는 박스·수량) + 즉시 PATCH
+  const remainCny = Math.round(unitCny * remainQty * 100) / 100;
+  f['박스번호'] = _boxNumsToStr(remainNums); f['수량'] = remainQty; f['합계CNY'] = remainCny;
+  if (_rate) { f['단가USD'] = unitCny * _rate; f['합계USD'] = remainCny * _rate; }
+  try {
+    const _of = { '박스번호': f['박스번호'], '수량': remainQty, '합계CNY': remainCny };
+    if (_rate) { _of['단가USD'] = f['단가USD']; _of['합계USD'] = f['합계USD']; }
+    await api('PATCH', `/${TABLES.Products}/${pid}`, { fields: _of, typecast: true });
+    if (state._prodBaseline) state._prodBaseline[pid] = _prodFingerprint(f);
+  } catch (e) { state.modifiedProducts.add(pid); toastWarn && toastWarn('원본 행 저장 실패 — [Airtable에 저장]으로 재시도: ' + (e.message || e)); }
+  // state에 child 추가(실 id) + baseline
+  const newP = { id: realId, fields: Object.assign({}, childFields) };
   const idx = state.products.findIndex(x => x.id === pid);
-  state.products.splice(idx + 1, 0, { id: tempId, _isNew: true, fields: newFields });
-  state.modifiedProducts.add(tempId);
+  state.products.splice(idx + 1, 0, newP);
+  if (state._prodBaseline) state._prodBaseline[realId] = _prodFingerprint(newP.fields);
   if (typeof renderProducts === 'function') renderProducts();
   if (typeof renderBoxes === 'function') renderBoxes();
   if (typeof refreshAll === 'function') refreshAll();
   if (typeof _markBoxDirty === "function") _markBoxDirty();
-  toastSuccess && toastSuccess(`분할 완료 — 원본 박스 ${_boxNumsToStr(remainNums)} / 새 행 박스 ${_boxNumsToStr(newNums)} (${newSid})`,
-    { title: '✂ 박스별 나누기', subtitle: '새 행 품명·HS·수량 편집 후 [저장]. 새 품목이 CO에 없으면 발행 게이트가 막습니다 — CO 재발급 필요.' });
+  toastSuccess && toastSuccess(`분할 완료(저장됨) — 원본 박스 ${_boxNumsToStr(remainNums)} / 새 행 박스 ${_boxNumsToStr(newNums)} (${newSid})`,
+    { title: '✂ 박스별 나누기', subtitle: '양쪽 단가·품명·HS는 칸에서 고치면 즉시 저장됩니다. 새 품목이 CO에 없으면 발행 게이트가 막습니다 — CO 재발급 필요.' });
 }
 // [v3.2.114] stale-overwrite 가드용 — 통관/청구 직결 필드 지문. 로드 baseline ↔ 저장 직전 Airtable 비교.
 const _PROD_GUARD_FIELDS = ['수량', '적용FTA', '박스번호', '단가USD', '합계CNY', 'Description', 'Material', 'HS코드'];
