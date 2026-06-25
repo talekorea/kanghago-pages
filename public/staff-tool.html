@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.148</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.149</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.148</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.149</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6115,39 +6115,78 @@ async function _unconfirmForBoxChange() {
 
 // [v3.2.146 ①] 박스수정 완료 버튼 방식 — 박스 편집은 즉시 해제 대신 _boxDirty 플래그만(로컬). 직원이 [박스수정 완료] 클릭 시에만 해제.
 //   확정(관세사확정완료) 상태에서의 박스 변경만 의미 있음 — 확정 전 편집은 정상(플래그 X).
+// [v3.2.149] 직원 화물작업 단계 = 출고요청·박스확정·관세사확정대기·관세사확정완료·인보이스완료. 입금완료(일시)·출고완료는 작업 종료 → 버튼 제외.
+function _isStaffWorkStage() {
+  const f = (state.shipment && state.shipment.fields) || {};
+  const s = f['상태'] || '';
+  if (s === '출고완료' || f['입금완료일시']) return false;
+  return ['출고요청', '박스확정', '관세사확정대기', '관세사확정완료', '인보이스완료'].includes(s);
+}
 function _markBoxDirty() {
   if (!state.shipment) return;
-  if ((state.shipment.fields['상태'] || '') !== '관세사확정완료') return;   // 확정 전 = 정상 편집
+  if (!_isStaffWorkStage()) return;   // [v3.2.149] 작업 종료(출고/입금) 단계만 제외 — 그 외 직원 작업단계는 모두 추적
   state._boxDirty = true;
   _renderBoxDirtyBanner();
 }
-// [v3.2.147 A] 관세사확정완료 사서함이면 §5에 [박스수정 완료] ★상시 표시★. 수정 전=비활성+안내 / 수정 후=활성+경고.
-//   관세사확정완료 아닌 사서함은 미표시(확정 전 편집은 재확정 무관).
+// [v3.2.149] 직원 작업단계면 §5에 [박스수정 완료] ★상시 표시★ — 상태별 동작.
+//   관세사확정완료: 수정 시 확정해제+재확정 요청(G5). 확정대기/출고요청: 수정 시 "직원 작업완료 → 관세사 확인 요청" 신호.
 function _renderBoxDirtyBanner() {
   const el = document.getElementById('boxDirtyBanner');
   if (!el) return;
-  const confirmed = state.shipment && (state.shipment.fields['상태'] || '') === '관세사확정완료';
-  if (!confirmed) { el.style.display = 'none'; return; }
+  if (!_isStaffWorkStage()) { el.style.display = 'none'; return; }
   el.style.display = '';
-  if (state._boxDirty) {
-    el.style.background = '#fff3e0'; el.style.border = '2px solid #e8a33d'; el.style.color = '#a14a00';
-    el.innerHTML = `⚠ 박스/품목이 수정되었습니다 — 관세사확정이 아직 유지 중(옛 내용 기준).
-      <button onclick="completeBoxEdit()" style="margin-left:10px; background:#a14a00; color:#fff; border:none; border-radius:5px; padding:6px 14px; font-weight:700; cursor:pointer;">✅ 박스수정 완료 (관세사 재확정 요청)</button>
-      <div style="font-weight:400; font-size:11px; margin-top:4px;">완료를 누르면 관세사확정이 해제되고 관세사가 최신 내용으로 다시 확인합니다. 누르기 전엔 옛 확정이 유지됩니다.</div>`;
-  } else {
-    el.style.background = '#f4f6f8'; el.style.border = '1px solid #ccd2d8'; el.style.color = '#5a6672';
-    el.innerHTML = `📦 이 사서함은 <strong>관세사확정완료</strong> 상태입니다. 박스/품목을 수정하면 아래 버튼으로 관세사 재확정을 요청하세요.
-      <button disabled style="margin-left:10px; background:#cfd5da; color:#fff; border:none; border-radius:5px; padding:6px 14px; font-weight:700; cursor:not-allowed;">✅ 박스수정 완료</button>
-      <div style="font-weight:400; font-size:11px; margin-top:4px;">박스/품목(수량·박스번호·분할·치수·중량·배송방식) 수정 시 활성화됩니다.</div>`;
+  const confirmed = (state.shipment.fields['상태'] || '') === '관세사확정완료';
+  const dirty = !!state._boxDirty;
+  if (confirmed) {
+    if (dirty) {
+      el.style.background = '#fff3e0'; el.style.border = '2px solid #e8a33d'; el.style.color = '#a14a00';
+      el.innerHTML = `⚠ 박스/품목이 수정되었습니다 — 관세사확정이 아직 유지 중(옛 내용 기준).
+        <button onclick="completeBoxEdit()" style="margin-left:10px; background:#a14a00; color:#fff; border:none; border-radius:5px; padding:6px 14px; font-weight:700; cursor:pointer;">✅ 박스수정 완료 (관세사 재확정 요청)</button>
+        <div style="font-weight:400; font-size:11px; margin-top:4px;">완료를 누르면 관세사확정이 해제되고 관세사가 최신 내용으로 다시 확인합니다. 누르기 전엔 옛 확정 유지.</div>`;
+    } else {
+      el.style.background = '#f4f6f8'; el.style.border = '1px solid #ccd2d8'; el.style.color = '#5a6672';
+      el.innerHTML = `📦 <strong>관세사확정완료</strong> — 박스/품목 수정 시 재확정이 필요합니다.
+        <button disabled style="margin-left:10px; background:#cfd5da; color:#fff; border:none; border-radius:5px; padding:6px 14px; font-weight:700; cursor:not-allowed;">✅ 박스수정 완료</button>
+        <div style="font-weight:400; font-size:11px; margin-top:4px;">수량·박스번호·분할·치수·중량·배송방식 수정 시 활성화됩니다.</div>`;
+    }
+  } else {   // 출고요청·박스확정·관세사확정대기·인보이스완료 — 관세사 확정 전
+    if (dirty) {
+      el.style.background = '#e8f0fb'; el.style.border = '2px solid #1B5E9A'; el.style.color = '#1B5E9A';
+      el.innerHTML = `📦 박스/품목 입력됨 — 작업이 끝나면 [완료]를 눌러 관세사 확인을 요청하세요.
+        <button onclick="completeBoxEdit()" style="margin-left:10px; background:#1B5E9A; color:#fff; border:none; border-radius:5px; padding:6px 14px; font-weight:700; cursor:pointer;">🙋 박스수정 완료 (관세사 확인 요청)</button>
+        <div style="font-weight:400; font-size:11px; margin-top:4px;">관세사 대시보드에 "직원 입력완료"로 표시됩니다 — 관세사가 확인·확정합니다.</div>`;
+    } else {
+      el.style.background = '#f4f6f8'; el.style.border = '1px solid #ccd2d8'; el.style.color = '#5a6672';
+      el.innerHTML = `📦 박스/품목 입력 후 아래 [완료]를 눌러 관세사 확인을 요청하세요.
+        <button disabled style="margin-left:10px; background:#cfd5da; color:#fff; border:none; border-radius:5px; padding:6px 14px; font-weight:700; cursor:not-allowed;">🙋 박스수정 완료</button>
+        <div style="font-weight:400; font-size:11px; margin-top:4px;">수량·박스번호·분할·치수·중량·배송방식 입력 시 활성화됩니다.</div>`;
+    }
   }
 }
 async function completeBoxEdit() {
   if (!state._boxDirty) { toastWarn && toastWarn('변경된 박스/품목이 없습니다'); return; }
-  if (!confirm('박스/품목 수정을 완료합니다.\n관세사확정이 해제되고 "재확정 필요"로 돌아갑니다 (관세사가 최신 내용으로 다시 확인).\n진행하시겠습니까?')) return;
-  await _unconfirmForBoxChange();
+  const confirmed = (state.shipment.fields['상태'] || '') === '관세사확정완료';
+  if (confirmed) {
+    if (!confirm('박스/품목 수정 완료 — 관세사확정이 해제되고 "재확정 필요"로 돌아갑니다 (관세사가 최신 내용으로 다시 확인).\n진행하시겠습니까?')) return;
+    await _unconfirmForBoxChange();
+    toastSuccess && toastSuccess('박스 수정 완료 — 관세사 재확정 요청됨', { title: '✅ 박스수정 완료' });
+  } else {
+    if (!confirm('박스/품목 입력 완료 — 관세사에게 확인을 요청합니다 (대시보드에 "직원 입력완료" 표시).\n진행하시겠습니까?')) return;
+    await _signalStaffDone();
+    toastSuccess && toastSuccess('직원 작업 완료 — 관세사 확인 요청됨', { title: '🙋 박스수정 완료' });
+  }
   state._boxDirty = false;
   _renderBoxDirtyBanner();
-  toastSuccess && toastSuccess('박스 수정 완료 — 관세사 재확정 요청됨', { title: '✅ 박스수정 완료' });
+}
+// [v3.2.149] 확정 전 단계 직원 작업완료 신호 — 메모 마커(상태 변경 없음). 관세사 대시보드가 "직원 입력완료"로 표시.
+async function _signalStaffDone() {
+  const sh = state.shipment; if (!sh) return;
+  const prev = String(sh.fields['메모'] || '');
+  const mark = '🙋직원작업완료 ' + todayKSTStr();
+  const memo = /직원작업완료/.test(prev) ? prev : (prev ? prev + ' / ' + mark : mark);
+  sh.fields['메모'] = memo;
+  try { await api('PATCH', `/${TABLES.Shipments}/${sh.id}`, { fields: { '메모': memo }, typecast: true }); if (typeof loadShipmentList === 'function') loadShipmentList(); }
+  catch (e) { console.warn('[직원작업완료]', e && e.message); }
 }
 
 function applyGroupBox(gk, value) {
