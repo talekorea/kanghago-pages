@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.144</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.145</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.144</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.145</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -4992,6 +4992,10 @@ function renderProducts() {
     tr.innerHTML = `
       <td>${imgLinked}
         ${linkBtn}
+        <!-- [v3.2.145 G3] 제품 사진 교체/업로드(디스크) — Airtable 상품이미지 첨부. 분할 품목·잘못된 사진 교체용. -->
+        <label style="display:block; margin-top:3px; font-size:10px; text-align:center; padding:2px 4px; border:1px dashed #1B5E9A; border-radius:4px; color:#1B5E9A; cursor:pointer;" title="제품 사진 교체(컴퓨터에서 선택). 분할 새 품목도 가능 — 단 새 품목은 [저장] 후 교체.">📷 사진 교체
+          <input type="file" accept="image/*" style="display:none;" onchange="uploadProductPhoto('${escAttr(p.id)}', this)" />
+        </label>
         <input type="hidden" data-field="제품링크" value="${escAttr(link1688hidden)}" />
       </td>
       <td class="id-cell">
@@ -4999,8 +5003,8 @@ function renderProducts() {
         <div style="font-size:10px; color:#999; font-family:ui-monospace,monospace; margin-top:1px;" title="원본 상품ID (변경 불가 — Airtable 병합 키)">${f['상품ID'] || ''}</div>
         ${linkBtn}
         ${f['관세사확정'] === true
-          ? '<div style="font-size:9px;color:#0a7b40;font-weight:600;margin-top:3px;background:#e8f5e9;padding:2px 4px;border-radius:3px;text-align:center;">✓ 확정</div>'
-          : '<div style="font-size:9px;color:#b26a00;font-weight:600;margin-top:3px;background:#fff3e0;padding:2px 4px;border-radius:3px;text-align:center;" title="관세사 페이지에서 영문명·HS·세율 확정 대기">⏳ 관세사 확정 대기</div>'}
+          ? '<div style="font-size:9px;color:#0a7b40;font-weight:600;margin-top:3px;background:#e8f5e9;padding:2px 4px;border-radius:3px;text-align:center;" title="관세사 통관분류 최종 확정값 — 도구에서 영문명·HS·세율·FTA 잠김">✓ 관세사확정(최종)</div>'
+          : '<div style="font-size:9px;color:#b26a00;font-weight:600;margin-top:3px;background:#fff3e0;padding:2px 4px;border-radius:3px;text-align:center;" title="우리(테일코리아) 1차 제안 — 편집 가능. 관세사 확정 시 잠김.">⏳ 우리 1차제안 · 관세사확정 대기</div>'}
         ${f['관세사메모'] && f['관세사메모'].includes('자동 매칭')
           ? '<div style="font-size:9px;color:var(--gold);margin-top:2px;text-align:center;" title="' + escAttr(f['관세사메모']) + '">⚡ 학습</div>'
           : (f['관세사메모'] && f['관세사메모'].includes('유사 매칭')
@@ -5033,7 +5037,7 @@ function renderProducts() {
         <input type="hidden" data-rate="FTA_RCEP중국" value="${rates.FTA_RCEP중국 ?? ''}" />
       </td>
       <td style="text-align:center;">
-        <select data-field="적용FTA" style="width:82px;">
+        <select data-field="적용FTA" style="width:82px;" ${isConfirmed ? 'disabled title="관세사 확정값 — 변경 불가 (재분류는 관세사 페이지에서)"' : ''}>
           ${(() => {
             // 작업2 → v3.2.43: 4후보(기본/한중/RCEP/APTA) pickBestTariff 최저 ★ 추천 (동률 한중>RCEP>APTA>기본)
             const best = pickBestTariff({
@@ -5160,6 +5164,7 @@ function renderProducts() {
           const dBtn = tr.querySelector('.del-product-btn');
           if (dBtn) dBtn.style.display = (q === 0) ? 'inline' : 'none';
           if (typeof updateGroupQtyHeader === 'function') updateGroupQtyHeader(tr.dataset.group);   // [v3.2.114] 그룹 헤더 총수량 라이브
+          if (typeof _unconfirmForBoxChange === 'function') _unconfirmForBoxChange();   // [v3.2.145 G5] 수량 변경 → 관세사확정 해제
         }
         if (field === '단가CNY') {
           // [v3.2.144] 수동분할 제품 단가(CNY) 직접 편집 → 합계CNY = 단가 × 수량 재계산. 단가USD는 recalculate()가 환율·작업비분배로 산출. 사용자 입력 우선(비례 기본값 덮어씀).
@@ -5170,7 +5175,7 @@ function renderProducts() {
           if (totalCell) totalCell.textContent = '¥' + f['합계CNY'].toLocaleString();
         }
         recalculate();
-        if (field === '박스번호') { renderBoxes(); updateGroupBoxSummary(tr.dataset.group); if (!p._isNew) scheduleBoxAutoSave(p.id); }   // [v3.2.144] 미저장 분할행은 temp id — saveAll create에서 저장
+        if (field === '박스번호') { renderBoxes(); updateGroupBoxSummary(tr.dataset.group); if (!p._isNew) scheduleBoxAutoSave(p.id); if (typeof _unconfirmForBoxChange === 'function') _unconfirmForBoxChange(); }   // [v3.2.144] 미저장 분할행 temp id / [v3.2.145 G5] 박스배치 변경 → 확정해제
         if (field === '적용FTA') renderOverhead();
         renderInvoicePreview();
         renderTariffEstimate();
@@ -5874,6 +5879,7 @@ function splitProductRow(pid) {
   if (typeof renderProducts === 'function') renderProducts();
   if (typeof renderBoxes === 'function') renderBoxes();
   if (typeof refreshAll === 'function') refreshAll();
+  if (typeof _unconfirmForBoxChange === 'function') _unconfirmForBoxChange();   // [v3.2.145 G5] 품목 분할 → 관세사확정 해제(재확정 필요)
   toastSuccess && toastSuccess(`분할 완료 — 원본 박스 ${_boxNumsToStr(remainNums)} / 새 행 박스 ${_boxNumsToStr(newNums)} (${newSid})`,
     { title: '✂ 박스별 나누기', subtitle: '새 행 품명·HS·수량 편집 후 [저장]. 새 품목이 CO에 없으면 발행 게이트가 막습니다 — CO 재발급 필요.' });
 }
@@ -6019,6 +6025,28 @@ async function autoSaveBox(productIds) {
     productIds.forEach(pid => setBoxStatus(pid, 'error', e.message));
     toastError('박스번호 자동 저장 실패 — ' + (e.message || ''), { title: '⚠ 박스 저장', subtitle: '잠시 후 다시 입력하거나 [저장] 버튼을 눌러주세요' });
   }
+}
+
+// [v3.2.145 G5] ★박스 관련 수정 발생 시 관세사확정 해제 — 무조건(종류 불문). 상태 관세사확정완료 → 관세사확정대기 복귀 + 메모 마커.
+//   멱등: 상태를 로컬 먼저 바꿔 재진입·중복 PATCH 차단. 발행 게이트는 미확정이라 다시 막힘(정상). 관세사가 재확인.
+async function _unconfirmForBoxChange() {
+  const sh = state.shipment;
+  if (!sh || (sh.fields['상태'] || '') !== '관세사확정완료') return;
+  if (state._unconfirming) return;
+  state._unconfirming = true;
+  const prevMemo = String(sh.fields['메모'] || '');
+  const mark = '⚠박스변경 재확정필요 ' + todayKSTStr();
+  const memo = /재확정필요/.test(prevMemo) ? prevMemo : (prevMemo ? prevMemo + ' / ' + mark : mark);
+  sh.fields['상태'] = '관세사확정대기';   // 낙관적 로컬 반영 → 재진입 가드
+  sh.fields['메모'] = memo;
+  try {
+    await api('PATCH', `/${TABLES.Shipments}/${sh.id}`, { fields: { '상태': '관세사확정대기', '메모': memo }, typecast: true });
+    toastWarn && toastWarn(`${sh.fields['사서함'] || ''} 박스/품목 변경 → 관세사확정 해제(재확정 필요)`, { title: '🔓 재확정 필요', subtitle: '관세사가 다시 확인·확정해야 발행 가능합니다' });
+    if (typeof loadShipmentList === 'function') loadShipmentList();
+  } catch (e) {
+    console.warn('[G5 unconfirm]', e && e.message);
+    sh.fields['상태'] = '관세사확정완료';   // 실패 롤백
+  } finally { state._unconfirming = false; }
 }
 
 function applyGroupBox(gk, value) {
@@ -6576,6 +6604,7 @@ const ATTACH_FIELD_IDS = {
   'PI파일': 'fldvGTfavZZOjj5rT', '면허파일': 'fldYmUhtUuJG5RP0R',
   '마스터BL파일': 'fld25HKypUON1oRZG',   // [v3.2.80] 내부 전용(관세사/고객 비노출)
   '1차IP파일': 'fldcJsCPqawLRy6ZW', '최종IP파일': 'fldFdbQsut1R0xTQM',   // [v3.2.116] IP 스냅샷(관세사 다운로드용)
+  '상품이미지': 'fldGpDoqCUG8dbA6X',   // [v3.2.145 G3] Products 제품 사진(직원 교체·분할품목 사진)
 };
 // [v3.2.116] IP 스냅샷 1장 replace 저장 — 개별·배치 공용. stage: 'first'→1차IP파일 / 'final'→최종IP파일.
 //   ★downloadInvoiceExcel 생성(wb) 로직과 분리 — blob 생성 후 저장만.
@@ -6599,6 +6628,33 @@ async function _snapshotIp(shipmentId, stage, blob, filename) {
       } catch (e) { console.warn('[IP 스냅샷 trim 실패]', stage, shipmentId, e && e.message); }
     }
   } catch (e) { console.warn('[IP 스냅샷 저장 실패]', stage, shipmentId, e && e.message); }
+}
+// [v3.2.145 G3] 제품 사진 교체(디스크 업로드) — Products.상품이미지 첨부 1장 replace. 분할 품목·오사진 교체용.
+async function uploadProductPhoto(pid, inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  if (!file) return;
+  const p = (state.products || []).find(x => x.id === pid);
+  if (!p) { toastWarn && toastWarn('제품을 찾을 수 없습니다'); if (inputEl) inputEl.value = ''; return; }
+  if (p._isNew || /^new_/.test(String(pid))) { alert('새 분할 품목은 먼저 [저장]한 뒤 사진을 교체하세요.'); if (inputEl) inputEl.value = ''; return; }
+  const fieldId = ATTACH_FIELD_IDS['상품이미지'];
+  try {
+    toastSuccess && toastSuccess('사진 업로드 중…', { title: '📷' });
+    const res = await uploadAirtableAttachment(pid, fieldId, file, file.name);
+    let atts = (res && res.fields && res.fields[fieldId]) || [];
+    if (atts.length > 1) {   // 교체 = 최신 1장만 유지(append 후 trim, _snapshotIp와 동일 패턴)
+      const latest = atts[atts.length - 1];
+      const pat = airtablePat();
+      const r2 = await fetch(`https://api.airtable.com/v0/${BASE_ID}/${pid}`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${pat}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: { '상품이미지': [{ id: latest.id }] }, typecast: true }) });
+      const d2 = await r2.json();
+      atts = (d2 && d2.fields && d2.fields['상품이미지']) || [latest];
+    }
+    p.fields['상품이미지'] = atts;
+    if (state._prodBaseline) state._prodBaseline[pid] = _prodFingerprint(p.fields);
+    if (typeof renderProducts === 'function') renderProducts();
+    toastSuccess && toastSuccess(`사진 교체 완료 (${p.fields['상품ID'] || ''})`, { title: '📷' });
+  } catch (e) {
+    toastError && toastError('사진 업로드 실패: ' + (e.message || e));
+  } finally { if (inputEl) inputEl.value = ''; }
 }
 // [v3.2.73] ★Airtable 첨부 업로드 단일 헬퍼 — content endpoint(uploadAttachment). data:URL 직접 PATCH(422 INVALID_ATTACHMENT_OBJECT) 폐기.
 //   recordId의 fieldId 필드에 base64 1건 append. 응답 result.fields[fieldId] = 갱신된 첨부 목록. ★표시·저장 분리(본 PATCH와 독립).
@@ -6928,6 +6984,7 @@ function renderBoxes() {
         recalculateBoxTotals();
         renderOverhead();
         renderInvoicePreview();
+        if (typeof _unconfirmForBoxChange === 'function') _unconfirmForBoxChange();   // [v3.2.145 G5] 박스 치수/중량 변경 → 관세사확정 해제
         // F §12: 박스 CBM 변경 시 해상운임 즉시 갱신 (실시간 동기화)
         if (typeof autoFillSeaFreight === 'function') autoFillSeaFreight();
         // F §11: 박스 배송방식·CBM·KG 변경 시 운임 견적도 자동 재계산
@@ -6943,6 +7000,7 @@ function renderBoxes() {
         const bn2 = shipSel.dataset.box;
         if (!state.boxes[bn2]) state.boxes[bn2] = { num: bn2, products: [] };
         state.boxes[bn2].shipType = shipSel.value;
+        if (typeof _unconfirmForBoxChange === 'function') _unconfirmForBoxChange();   // [v3.2.145 G5] 박스 배송방식 변경 → 관세사확정 해제
         renderOverhead();
         refreshAll();
         // F §11/§12: 배송방식 변경 시 견적/해상운임 동기화
@@ -10245,11 +10303,12 @@ async function saveAll(skipReload) {
       const link = tr?.querySelector('input[data-field="제품링크"]')?.value?.trim() || '';
 
       const fields = {
-        '적용FTA': f['적용FTA'] || '없음',
         '박스번호': f['박스번호'] || '',
         '단가USD': unitUsd,
         '합계USD': usd,
       };
+      // [v3.2.145 G2] 적용FTA는 관세사 영역 — 확정 제품은 도구에서 저장 안 함(잠금). 미확정 제품만 우리(직원) 제안 저장.
+      if (f['관세사확정'] !== true) fields['적용FTA'] = f['적용FTA'] || '없음';
       // [v3.2.144] 수동분할 제품(_s{n})은 단가CNY·수량·합계CNY도 저장 — 직원이 단가를 직접 입력하므로(일반 추출 제품의 1688 매입가는 보호·미저장).
       if (isManualSplit(p)) {
         const _trc = document.querySelector(`tr[data-record-id="${p.id}"]`);
@@ -10337,6 +10396,9 @@ async function saveAll(skipReload) {
         };
         if (f['제품링크']) createFields['제품링크'] = f['제품링크'];
         if (f['이미지URL']) createFields['이미지URL'] = f['이미지URL'];
+        // [v3.2.145 G3] 분할 새 품목에 부모 사진 복제(이미지URL 우선=안정, 없으면 첨부 url). 이후 [📷 사진 교체]로 변경 가능.
+        const _imgUrl = f['이미지URL'] || ((f['상품이미지'] && f['상품이미지'][0]) ? f['상품이미지'][0].url : '');
+        if (_imgUrl) createFields['상품이미지'] = [{ url: _imgUrl }];
         const res = await api('POST', `/${TABLES.Products}`, { records: [{ fields: createFields }], typecast: true });
         const newId = res && res.records && res.records[0] && res.records[0].id;
         if (newId) {

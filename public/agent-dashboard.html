@@ -583,12 +583,14 @@
       const dateLabel = shipDate ? ('선적일 ' + String(shipDate).slice(0, 10)) : '';
       const cust = custLabel(s.fields['회원명'], s.fields['회사명']);   // [고객명] 부킹요약과 동일 소스(회사명(회원명))
       const credit = (s.fields['상태'] === '출고완료') && !s.fields['입금완료일시'];   // [v3.2.142] 외상(미입금) 출고
+      const reConfirm = /재확정필요/.test(String(s.fields['메모'] || '')) && s.fields['상태'] !== '관세사확정완료';   // [v3.2.145 G5] 박스변경 재확정 필요
       return `<div class="item" onclick="location.href='/agent-shipment.html?id=${s.id}'">
         <div>
           <div class="name">${esc(s.fields['사서함'] || '(이름 없음)')}${cust ? ` <span style="font-size:14px; font-weight:600; color:#1B5E9A;">· ${esc(cust)}</span>` : ''}</div>
           <div style="font-size:11px; color:#888; margin-top:2px;">${dateLabel}</div>
         </div>
         <div style="display:flex; gap:6px; align-items:center;">
+          ${reConfirm ? `<span style="background:#fdecef; color:#b3123c; border:1px solid #e88aa0; border-radius:5px; padding:2px 7px; font-size:11px; font-weight:700;" title="직원이 박스/품목/수량을 변경 → 다시 확인·확정 필요">🔓 박스변경 재확정</span>` : ''}
           ${credit ? `<span style="background:#fff3e0; color:#a14a00; border:1px solid #e8a33d; border-radius:5px; padding:2px 7px; font-size:11px; font-weight:700;">⚠ 외상(미입금)</span>` : ''}
           <div class="status ${status}">${esc(s.fields['상태'])}</div>
         </div>
