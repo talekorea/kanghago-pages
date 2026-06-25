@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.142</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.143</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.142</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.143</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -5052,6 +5052,9 @@ function renderProducts() {
         <!-- v3.2.17: 제품 행 박스번호는 평범 크기 (그룹 헤더 박스# input이 작업자 핵심 — 그쪽이 큼).
              제품별 박스 배정 표시·미세 수정용만. -->
         <input type="text" data-field="박스번호" value="${escAttr(boxNo)}" placeholder="?" style="width:80px; font-size:13px; padding:5px 7px; text-align:center; border:1px solid #ccc; border-radius:5px; background:#fff; color:var(--navy); font-family:ui-monospace,monospace;" title="박스번호 (그룹 헤더에서 일괄 변경 권장)" />
+        <!-- [v3.2.143] 박스별 나누기 — 한 제품을 박스별로 분할(현장 가공본 대체). 새 행은 원본 복제 후 속성 개별 편집. -->
+        <button type="button" onclick="splitProductRow('${escAttr(p.id)}')" title="이 제품을 박스별로 분할 (예: 1-4 / 5). 새 행은 품명·HS·단가 개별 편집 가능." style="display:block; margin:3px auto 0; font-size:10px; padding:2px 7px; background:#fff3e0; color:#a14a00; border:1px solid #e8a33d; border-radius:4px; cursor:pointer;">✂ 박스별 나누기</button>
+        ${isManualSplit(p) ? '<div style="font-size:9px; color:#a14a00; font-weight:700; margin-top:2px; text-align:center;" title="수동 분할로 생성된 제품 — CO 대조·재발급 확인 필요">⚠ 수동분할</div>' : ''}
       </td>
       <td class="num">¥${(f['단가CNY']||0).toLocaleString()}</td>
       <td class="num" style="white-space:nowrap;">
@@ -5798,6 +5801,70 @@ function updateGroupQtyHeader(gk) {
     const q = hdr.querySelector('[data-group-qty]'); if (q) q.textContent = qty.toLocaleString();
     const c = hdr.querySelector('[data-group-cnt]'); if (c) c.textContent = cnt;
   }
+}
+// [v3.2.143] 수동분할 플래그 — 필드 없이 상품ID suffix(_s{n})로 파생(스키마 쓰기 불가 대응).
+function isManualSplit(p) { return /_s\d+$/.test(String(((p && p.fields) || {})['상품ID'] || '')); }
+// 박스번호 집합 → parseBoxNumbers 호환 문자열(연속이면 a-b, 아니면 콤마). 표시·저장 공용.
+function _boxNumsToStr(nums) {
+  const a = [...new Set(nums.map(n => parseInt(n, 10)).filter(n => !isNaN(n)))].sort((x, y) => x - y);
+  if (!a.length) return '';
+  const contiguous = a.every((v, i) => i === 0 || v === a[i - 1] + 1);
+  return (contiguous && a.length > 1) ? `${a[0]}-${a[a.length - 1]}` : a.join(',');
+}
+// [v3.2.143] ★박스별 나누기 — 한 제품을 박스 기준으로 2행 분할(현장 엑셀 가공 대체).
+//   원본=남는 박스 / 새 행=분리 박스(_s{n} 상품ID, 관세사확정=false). 수량·합계CNY는 박스 비례 기본값(이후 행에서 개별 편집).
+//   합집합=원본 검증(누락·중복 차단). 새 품목이 CO에 없으면 runCoCompare가 불일치로 잡아 발행 게이트가 차단.
+function splitProductRow(pid) {
+  const p = (state.products || []).find(x => x.id === pid);
+  if (!p) { toastWarn && toastWarn('제품을 찾을 수 없습니다'); return; }
+  const f = p.fields || {};
+  const sid = String(f['상품ID'] || '');
+  const origBoxRaw = String(f['박스번호'] || '').trim();
+  const origNums = parseBoxNumbers(origBoxRaw).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+  if (origNums.length < 2) { toastWarn && toastWarn(`박스가 2개 이상이어야 분할 가능합니다 (현재: ${origBoxRaw || '없음'})`); return; }
+  const newBoxIn = prompt(`[박스별 나누기] ${f['Description'] || sid}\n현재 박스: ${origNums.join(', ')}\n\n새 행으로 분리할 박스번호 (예: 5 또는 4-5). 나머지는 원본에 남습니다.`, '');
+  if (newBoxIn === null) return;
+  const newNums = parseBoxNumbers(newBoxIn).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+  if (!newNums.length) { alert('박스번호 형식 오류 (예: 5 / 4-5 / 4,5)'); return; }
+  const origSet = new Set(origNums), newSet = new Set(newNums);
+  const outside = newNums.filter(n => !origSet.has(n));
+  if (outside.length) { alert(`원본에 없는 박스는 분리할 수 없습니다: ${outside.join(', ')}\n(원본 박스: ${origNums.join(', ')})`); return; }
+  const remainNums = origNums.filter(n => !newSet.has(n));
+  if (!remainNums.length) { alert('전체 박스를 새 행으로 옮기면 분할이 아닙니다. 원본에 최소 1박스는 남겨야 합니다.'); return; }
+  // ★합집합=원본 검증(누락·중복 차단)
+  const union = new Set([...remainNums, ...newNums]);
+  if (union.size !== origSet.size || [...origSet].some(n => !union.has(n))) { alert('박스 합집합이 원본과 일치하지 않습니다 (누락/중복). 다시 확인하세요.'); return; }
+  // 수량 박스 비례 기본값(정수) — 이후 행에서 개별 편집 가능
+  const origQty = parseInt(f['수량'], 10) || 0;
+  const newQty = Math.round(origQty * newNums.length / origNums.length);
+  const remainQty = origQty - newQty;
+  const unitCny = parseFloat(f['단가CNY']) || 0;
+  // 원본 갱신(남는 박스·수량)
+  f['박스번호'] = _boxNumsToStr(remainNums);
+  f['수량'] = remainQty;
+  f['합계CNY'] = Math.round(unitCny * remainQty * 100) / 100;
+  state.modifiedProducts.add(p.id);
+  // 새 상품ID = {원본}_s{n}
+  let n = 1; const taken = new Set((state.products || []).map(x => String((x.fields || {})['상품ID'] || '')));
+  while (taken.has(sid + '_s' + n)) n++;
+  const newSid = sid + '_s' + n;
+  const newFields = Object.assign({}, f, {
+    '상품ID': newSid,
+    '박스번호': _boxNumsToStr(newNums),
+    '수량': newQty,
+    '합계CNY': Math.round(unitCny * newQty * 100) / 100,
+    '관세사확정': false,
+    '관세사메모': `수동분할 (원본 ${sid})`,
+  });
+  const tempId = 'new_' + Math.random().toString(36).slice(2, 9);
+  const idx = state.products.findIndex(x => x.id === pid);
+  state.products.splice(idx + 1, 0, { id: tempId, _isNew: true, fields: newFields });
+  state.modifiedProducts.add(tempId);
+  if (typeof renderProducts === 'function') renderProducts();
+  if (typeof renderBoxes === 'function') renderBoxes();
+  if (typeof refreshAll === 'function') refreshAll();
+  toastSuccess && toastSuccess(`분할 완료 — 원본 박스 ${_boxNumsToStr(remainNums)} / 새 행 박스 ${_boxNumsToStr(newNums)} (${newSid})`,
+    { title: '✂ 박스별 나누기', subtitle: '새 행 품명·HS·수량 편집 후 [저장]. 새 품목이 CO에 없으면 발행 게이트가 막습니다 — CO 재발급 필요.' });
 }
 // [v3.2.114] stale-overwrite 가드용 — 통관/청구 직결 필드 지문. 로드 baseline ↔ 저장 직전 Airtable 비교.
 const _PROD_GUARD_FIELDS = ['수량', '적용FTA', '박스번호', '단가USD', '합계CNY', 'Description', 'Material', 'HS코드'];
@@ -10152,6 +10219,7 @@ async function saveAll(skipReload) {
     _saveStep = '제품(Products)';
     const productUpdates = [];
     state.products.forEach(p => {
+      if (p._isNew) return;   // [v3.2.143] 수동분할 신규 제품은 아래 create 경로에서 POST
       if (!state.modifiedProducts.has(p.id) && !rateCnyUsd) return;
       const f = p.fields;
       const cny = f['합계CNY'] || 0;
@@ -10213,6 +10281,51 @@ async function saveAll(skipReload) {
         await sleep(220);
       }
       log(`✓ Products ${productUpdates.length}건 저장됨`, 'ok');
+    }
+
+    // [v3.2.143] ★수동분할 신규 제품 create (POST) — 상품ID(_s{n})·Order·속성. 행 입력값 우선.
+    const productCreates = state.products.filter(p => p._isNew);
+    if (productCreates.length) {
+      _saveStep = '수동분할 제품 생성';
+      log(`수동분할 신규 제품 ${productCreates.length}건 생성...`, 'dim');
+      for (const p of productCreates) {
+        const f = p.fields || {};
+        const tr = document.querySelector(`tr[data-record-id="${p.id}"]`);
+        const rd = (sel, fb) => String((tr && tr.querySelector(sel) && tr.querySelector(sel).value) ?? fb ?? '').trim();
+        const desc = rd('input[data-field="Description"]', f['Description']);
+        const mat  = rd('input[data-field="Material"]', f['Material']);
+        const hs   = rd('input[data-field="HS코드"]', f['HS코드']);
+        const ftaSel = tr && tr.querySelector('select[data-field="적용FTA"]');
+        const fta  = (ftaSel && ftaSel.value) || f['적용FTA'] || '없음';
+        const boxNo = rd('input[data-field="박스번호"]', f['박스번호']);
+        const qty  = parseInt(rd('input[data-field="수량"]', f['수량']), 10) || 0;
+        const unitCny = parseFloat(f['단가CNY']) || 0;
+        const sumCny = Math.round(unitCny * qty * 100) / 100;
+        const createFields = {
+          '상품ID': f['상품ID'],
+          'Order': Array.isArray(f['Order']) ? f['Order'] : [],
+          'Description': desc, '통관품명_영문': desc,
+          '통관품명_한글': f['통관품명_한글'] || '',
+          'Material': mat, 'HS코드': hs, '적용FTA': fta,
+          '박스번호': boxNo, '수량': qty,
+          '단가CNY': unitCny, '합계CNY': sumCny,
+          '단가USD': rateCnyUsd ? unitCny * rateCnyUsd : 0,
+          '합계USD': rateCnyUsd ? sumCny * rateCnyUsd : 0,
+          '관세사메모': f['관세사메모'] || '수동분할',
+        };
+        if (f['제품링크']) createFields['제품링크'] = f['제품링크'];
+        if (f['이미지URL']) createFields['이미지URL'] = f['이미지URL'];
+        const res = await api('POST', `/${TABLES.Products}`, { records: [{ fields: createFields }], typecast: true });
+        const newId = res && res.records && res.records[0] && res.records[0].id;
+        if (newId) {
+          state.modifiedProducts.delete(p.id);
+          p.id = newId; delete p._isNew;
+          Object.assign(p.fields, createFields);
+          if (state._prodBaseline) state._prodBaseline[newId] = _prodFingerprint(p.fields);
+        }
+        await sleep(220);
+      }
+      log(`✓ 수동분할 제품 ${productCreates.length}건 생성됨`, 'ok');
     }
 
     // 3. HSMapping 학습(영문명+재질→HS코드·세율 누적)은 관세사 페이지(agent.js)가 담당.
