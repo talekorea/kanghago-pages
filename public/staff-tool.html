@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.152</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.153</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.152</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.153</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -4560,9 +4560,12 @@ function buildGroupHeader(gk, ordered) {
     작업비CNY = directCny + ratioCny;
   } catch (e) { /* 초기 렌더 단계에선 무시 */ }
   const 신고총액CNY = 원가CNY + 현지배송비CNY + 작업비CNY;
-  const 신고단가CNY = qty > 0 ? 신고총액CNY / qty : 0;
+  const 신고단가CNY = qty > 0 ? 신고총액CNY / qty : 0;   // (주문 평균 — 참고)
   const rateCnyUsd = parseFloat((document.getElementById('rateCnyUsd')||{}).value) || 0;
   const 신고단가USD = 신고단가CNY * rateCnyUsd;
+  // [v3.2.153] ★부대비용 per-unit(작업비+현지배송비 ÷총수량) — 제품 실단가는 행마다 독립. 헤더는 부대 배분만 표시.
+  const 부대per단가CNY = qty > 0 ? (현지배송비CNY + 작업비CNY) / qty : 0;
+  const 부대per단가USD = 부대per단가CNY * rateCnyUsd;
 
   // 대표 메타 (그룹 내 첫 제품의 값; 일괄 입력 후엔 전체 동일)
   const meta = (items[0] && items[0].fields) || {};
@@ -4645,11 +4648,11 @@ function buildGroupHeader(gk, ordered) {
     +     (현지배송비CNY > 0 ? `<span style="color:#0a7b40;">+ 현지배송 <strong>¥${현지배송비CNY.toFixed(2)}</strong></span>` : '')
     +     (작업비CNY > 0 ? `<span style="color:#b26a00;">+ 작업비 <strong>¥${작업비CNY.toFixed(2)}</strong></span>` : '')
     +     `<span style="font-size:13px;">= 신고 <strong style="color:var(--gold);">¥${신고총액CNY.toFixed(2)}</strong></span>`
-    +     `<span style="background:#fff7e6; padding:4px 10px; border-radius:5px; border:1px solid var(--gold); display:inline-flex; align-items:center; gap:8px;">`
-    +       `<span style="font-size:11px; color:var(--text-dim);">신고단가</span>`
-    +       `<strong style="color:var(--text-dim); font-size:11px;">¥${신고단가CNY.toFixed(2)}/개</strong>`
+    +     `<span style="background:#fff7e6; padding:4px 10px; border-radius:5px; border:1px solid var(--gold); display:inline-flex; align-items:center; gap:8px;" title="[v3.2.153] 제품 신고단가는 행마다 실단가 독립. 헤더는 부대비용(작업비+현지배송비) 균등 배분만 표시.">`
+    +       `<span style="font-size:11px; color:var(--text-dim);">부대/개</span>`
+    +       `<strong style="color:var(--text-dim); font-size:11px;">¥${부대per단가CNY.toFixed(2)}/개</strong>`
     +       `<span style="font-size:9px; color:#aaa;">→</span>`
-    +       `<strong style="color:var(--navy); font-size:18px; padding:2px 10px; background:#fff; border:2px solid var(--navy); border-radius:5px; font-family:ui-monospace,monospace;" title="★ 신고단가 USD — 작업자가 가장 자주 보는 핵심 정보 (v3.1.2 부각)">$${신고단가USD.toFixed(4)}</strong>`
+    +       `<strong style="color:var(--navy); font-size:15px; padding:2px 10px; background:#fff; border:2px solid var(--navy); border-radius:5px; font-family:ui-monospace,monospace;" title="★ 부대비용 USD/개 (작업비+현지배송비 균등). 제품 단가는 각 행 최종 USD 참조.">+$${부대per단가USD.toFixed(4)}</strong>`
     +     `</span>`
     +   `</span>`
     + `</div>`
@@ -9691,15 +9694,16 @@ function renderInvoicePreview() {
     const baseUnitUsd = baseUnitCny * rateCnyUsd;
     const addPerUnit = unitUsd - baseUnitUsd;   // 현지배송비+작업비 per-unit USD
 
-    // 제품 표의 모든 행 '최종 USD' 칸에 주문 단위 라인 USD 동일 표시 (호환 유지).
-    //   같은 주문 = 같은 신고단가니까 각 옵션 행에 "단가USD × 수량(옵션 수량)"으로 채움.
+    // [v3.2.153] ★제품별 실단가 독립 — 각 행 '최종 USD' = (제품 실단가 + 부대per단가) × 환율 × 그 제품 수량.
+    //   (구버전: 주문 균등 신고단가 동일 표시 → 단가 다른 제품이 평균으로 왜곡. 폐기.)
     u.items.forEach(p => {
       const prodTr = document.querySelector(`#productsBody tr[data-record-id="${p.id}"]`);
       if (prodTr) {
         const usdCell = prodTr.querySelector('input.usd');
         if (usdCell) {
           const qty = parseFloat((p.fields||{})['수량']) || 0;
-          usdCell.value = '$' + (unitUsd * qty).toFixed(2);
+          const unitUsdP = productDeclUnitCny(p, u) * rateCnyUsd;
+          usdCell.value = '$' + (unitUsdP * qty).toFixed(2);
         }
       }
     });
@@ -9781,21 +9785,19 @@ function calcTariffForScenario(scenario) {
   (state.products || []).forEach(p => { _globalCNY += parseFloat((p.fields || {})['합계CNY']) || 0; });
 
   units.forEach(u => {
-    // v3.2.45: 제품단위 관세 — 주문 신고총액(KRW)을 제품 합계CNY 비율로 배분 후 제품별 세율 적용.
-    //   ★ 동일 HS/FTA면 Σ(배분×세율)=주문단위 결과와 동일(무변동). 혼합 HS만 라인별 분리.
-    //   배분 키 = 합계CNY(단가×수량) 비율 — buildOrderUnits의 작업비 분배와 동일 규칙(과세표준 = 가치비례).
-    const unitInvoiceUsd = (u.신고단가CNY || 0) * rateCnyUsd * (u.totalQty || 0);
-    const unitInvoiceKrw = unitInvoiceUsd * rateUsdKrw;   // 이 주문의 신고총액(KRW)
-    const items = (u.items && u.items.length) ? u.items : [{ fields: {} }];
-    const sumHap = items.reduce((s, p) => s + (parseFloat((p.fields || {})['합계CNY']) || 0), 0);
+    // [v3.2.153] ★제품별 정확 신고가 — 제품 실단가(독립) + 부대per단가(작업비+현지배송비 ÷총수량).
+    //   균등 왜곡 제거. Σ(productDeclUnitCny×수량)=신고총액(불변) → 동일 HS면 관세 무변동, 혼합 HS면 제품별 세율로 정확 재계산(변동 정상).
+    //   ★input.usd·CI·PL과 동일 식(단일 소스). 해운비(_freightShare)는 Phase 1 현행 유지(합계CNY 비례, §8 별도 예정).
+    const items = (u.items && u.items.length) ? u.items : [];
 
     items.forEach((p, pi) => {
       const pf = p.fields || {};
-      // 제품 신고가 배분 (합계CNY 비율, 합이 0이면 균등). Σ share = 1 → 동일세율 시 주문단위와 동일.
-      const share = sumHap > 0 ? ((parseFloat(pf['합계CNY']) || 0) / sumHap) : (1 / items.length);
-      // [B] 과세가격 = 물품 신고가 + 운임 분배분(전 제품 합계CNY 비례). 운임 $30 정액을 가치비례로 안분.
+      const qtyP = parseInt(pf['수량'], 10) || 0;
+      // 물품 신고가(KRW) = (제품 실단가 + 부대per단가) × 수량 × CNY→USD × USD→KRW
+      const goodsLineKrw = productDeclUnitCny(p, u) * qtyP * rateCnyUsd * rateUsdKrw;
+      // [B] 과세가격 = 물품 신고가 + 운임 분배분(전 제품 합계CNY 비례). 운임 정액을 가치비례로 안분.
       const _freightShare = _globalCNY > 0 ? (_freightKrw * ((parseFloat(pf['합계CNY']) || 0) / _globalCNY)) : 0;
-      const invoiceLineKrw = unitInvoiceKrw * share + _freightShare;
+      const invoiceLineKrw = goodsLineKrw + _freightShare;
 
       // 제품별 HS·세율: Products.fields(관세사 override) → 새 관세표 → hsRatesByCode 폴백. 주문 HS는 최후 폴백.
       const hs = pf['HS코드'] || u.HS코드 || '';
@@ -11607,7 +11609,10 @@ function buildOrderUnits() {
     const 작업비CNY = directCostCny + ratioCostCny;
     // 신고 총액·단가
     const 신고총액CNY = 원가CNY + 현지배송비CNY + 작업비CNY;
-    const 신고단가CNY = totalQty > 0 ? 신고총액CNY / totalQty : 0;
+    const 신고단가CNY = totalQty > 0 ? 신고총액CNY / totalQty : 0;   // ★주문 평균(§8 미리보기·헬퍼·헤더 요약용 — 제품별 신고가는 productDeclUnitCny)
+    // [v3.2.153] ★부대비용 per-unit(작업비+현지배송비 ÷총수량, 수량 균등 배분). 제품 실단가는 독립.
+    //   제품별 신고단가 = 단가CNY(실단가) + 부대per단가CNY → Σ(×수량)=신고총액CNY(불변). 균등 왜곡(430위안→$1,240) 제거.
+    const 부대per단가CNY = totalQty > 0 ? (작업비CNY + 현지배송비CNY) / totalQty : 0;
 
     // 대표 메타(주문 단위 1개) — 같은 주문 = 같은 제품의 옵션이라 동일하다고 가정.
     //   안전을 위해 items[0]의 값을 사용. 직원이 헤더에서 일괄 입력하면 모든 item에 같은 값 들어감.
@@ -11616,7 +11621,7 @@ function buildOrderUnits() {
       orderKey: gk,
       items,
       totalQty,
-      원가CNY, 현지배송비CNY, 작업비CNY, 신고총액CNY, 신고단가CNY,
+      원가CNY, 현지배송비CNY, 작업비CNY, 신고총액CNY, 신고단가CNY, 부대per단가CNY,
       Description: meta['Description'] || '',
       Material: meta['Material'] || '',
       HS코드: meta['HS코드'] || '',
@@ -11635,7 +11640,16 @@ function buildOrderUnits() {
   return units;
 }
 
-// 주문 단위 신고 단가 USD (라인 합계용)
+// [v3.2.153] ★제품별 통관 신고단가 CNY = 제품 실단가(독립) + 부대비용 per-unit(작업비+현지배송비 ÷총수량).
+//   균등 왜곡 제거: 단가 다른 제품이 한 그룹이어도 각자 실단가로 신고. Σ(productDeclUnitCny×수량)=신고총액CNY(불변).
+//   ★해운비는 Phase 1 제외(§8 알리코인 CBM 배분에서 별도). 신고가엔 제품원가+작업비+현지배송비만.
+//   CI/PL은 input.usd(이 식으로 채워짐) → getProductUnitUsd로 추종. 관세도 동일 식 사용(단일 소스).
+function productDeclUnitCny(p, unit) {
+  const baseCny = parseFloat((p && p.fields || {})['단가CNY']) || 0;
+  return baseCny + ((unit && unit.부대per단가CNY) || 0);
+}
+
+// 주문 단위 신고 단가 USD (주문 평균 — §8 미리보기·라인 합계용. ★제품별은 productDeclUnitCny)
 function orderUnitUsd(unit) {
   const rateCnyUsd = parseFloat((document.getElementById('rateCnyUsd')||{}).value) || 0;
   return (unit.신고단가CNY || 0) * rateCnyUsd;
@@ -11708,6 +11722,8 @@ async function downloadInvoiceExcel(opts) {
   //   ★IP 생성 직전 무조건 renderBoxes() 호출 → box.products를 현재 state.products로 강제 재빌드 → CI=PL 보장.
   //   (renderBoxes는 박스 물리속성 cbm/kg/치수/배송방식/recordId을 기존 state.boxes에서 보존 — 데이터 유실 없음.)
   //   게이트(hasBoxes 등)도 이 재빌드 후의 state.boxes를 보도록 가장 먼저 호출한다.
+  // [v3.2.153] ★CI/PL 단가 소스(input.usd)를 제품별 실단가로 강제 최신화 — 단가 편집 후 stale 차단(B-fix와 동일 철학).
+  try { refreshAll(); } catch (e) { console.warn('[IP 생성 전 refreshAll]', e && e.message); }
   try { renderBoxes(); } catch (e) { console.warn('[IP 생성 전 renderBoxes]', e && e.message); }
 
   // v3.2.40 (2026-06-04): 단계별 게이트 재정렬
