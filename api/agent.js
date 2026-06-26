@@ -335,13 +335,30 @@ async function getProductHistoryTableId() {
   return _phTableId;
 }
 
+// [v3.2.155] 고유 상품 detail URL만 학습 매칭키로 허용(도구/추출기 isUniqueProductUrl과 동일 규칙).
+//   공용 이미지/Editor/alicdn URL은 broadcast 오염원 → 쓰기측에서도 제외(읽기측과 대칭).
+function isUniqueProductUrl(u) {
+  u = String(u || '').trim().toLowerCase();
+  if (!u) return false;
+  if (/\.(png|jpe?g|gif|webp|bmp)(\?|#|$)/.test(u)) return false;
+  if (/\/editor\/|edt_|\/upfile\//.test(u)) return false;
+  if (/alicdn\.com|cbu01\.|gw\.alicdn|\/img\./.test(u)) return false;
+  return /(detail\.1688\.com|item\.taobao\.com|detail\.tmall\.com|1688\.com\/offer|\/item\.htm|\/offer\/)/.test(u);
+}
+
 async function learnFromConfirmation(pd) {
+  // [v3.2.155] ★학습 오염 차단 — 분할 자식(_s) 제외(부모 제품링크/영문명 복사라 오염 위험).
+  const sid = String(pd.상품ID || '');
+  const isSplitChild = /_s\d+/.test(sid);
   // 1) ProductHistory upsert (제품링크 키 / 사용횟수+1 / 한국어명 변형은 별칭 누적)
   try {
-    const phId = await getProductHistoryTableId();
+    const link = String(pd.제품링크 || '').trim();
+    // [v3.2.155] ★쓰기 게이트(읽기측 broadcast 차단과 대칭): 분할 자식 OR 비고유 URL → ProductHistory 기록 제외.
+    const skipPh = isSplitChild || (link && !isUniqueProductUrl(link));
+    if (skipPh) { console.warn('[learn] ProductHistory 학습 제외:', isSplitChild ? ('분할자식 ' + sid) : ('비고유URL ' + link)); }
+    const phId = skipPh ? null : await getProductHistoryTableId();
     if (phId) {
       const today = new Date().toISOString().slice(0, 10);
-      const link = String(pd.제품링크 || '').trim();
       let existing = null;
       if (link) {
         const f = `{제품링크}='${link.replace(/'/g, "\\'")}'`;
@@ -379,7 +396,9 @@ async function learnFromConfirmation(pd) {
   try {
     const desc = String(pd.영문명 || '').trim();
     const code = String(pd.HS코드 || '').trim();
-    if (desc && code) {
+    // [v3.2.155] 분할 자식(_s)은 HSMapping 학습도 제외(부모 영문명/재질 복사 → 오염 방지).
+    if (isSplitChild) { console.warn('[learn] 분할 자식 HSMapping 제외:', sid); }
+    else if (desc && code) {
       const fields = {
         '키': makeHsKey(desc, pd.Material),
         'Description': desc,
@@ -988,6 +1007,7 @@ module.exports = async (req, res) => {
         const bf = before.fields || {};
         if (uf['관세사확정'] === true) {
           await learnFromConfirmation({
+            상품ID: bf['상품ID'] || uf['상품ID'],                  // [v3.2.155] 분할 자식(_s) 감지용 — 학습 제외 게이트
             제품링크: bf['제품링크'],                              // 화이트리스트 외 — 기존 Products 값
             한국어명: bf['통관품명_한글'],                          // 화이트리스트 외 — 기존 Products 값
             영문명: uf['Description'] || uf['통관품명_영문'],        // 확정값
