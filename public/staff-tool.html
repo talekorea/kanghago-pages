@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.149</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.150</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.149</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.150</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -8200,13 +8200,22 @@ async function loadProductHistoryCache() {
 }
 
 // 제품 매칭 (Level 1: URL, Level 2: 키워드, Level 3: 없음)
+// [v3.2.150] 고유 상품 detail URL만 매칭 키로 허용 — 공용 이미지/에디터/alicdn URL(Edt_*.png 등)은 비고유 → broadcast 오염 방지.
+function isUniqueProductUrl(u) {
+  u = String(u || '').trim().toLowerCase();
+  if (!u) return false;
+  if (/\.(png|jpe?g|gif|webp|bmp)(\?|#|$)/.test(u)) return false;     // 이미지 파일
+  if (/\/editor\/|edt_|\/upfile\//.test(u)) return false;            // 업로드/에디터 이미지
+  if (/alicdn\.com|cbu01\.|gw\.alicdn|\/img\./.test(u)) return false; // alicdn 이미지 CDN
+  return /(detail\.1688\.com|item\.taobao\.com|detail\.tmall\.com|1688\.com\/offer|\/item\.htm|\/offer\/)/.test(u);
+}
 async function matchProduct(productLink, koreanName) {
   const cache = await loadProductHistoryCache();
   const link = (productLink || '').trim();
   const name = (koreanName || '').trim();
 
-  // Level 1: 정확 URL 매칭
-  if (link) {
+  // Level 1: 정확 URL 매칭 — [v3.2.150] 고유 상품 detail URL만(공용 이미지/에디터/alicdn URL은 비고유 → broadcast 오염 차단)
+  if (link && isUniqueProductUrl(link)) {
     const exact = cache.find(c => c.제품링크 && c.제품링크 === link);
     if (exact) {
       return {
@@ -8405,23 +8414,20 @@ async function autoMatchProductsFromHistory() {
     const match = await matchProduct(productLink, koName);
 
     if (match.confidence === 'exact' && match.primary) {
-      // Level 1: URL 정확 매칭 → 관세사확정 = true 자동
+      // [v3.2.150] ★URL 정확 매칭이라도 빈칸만 채움(onlyEmpty) + 관세사확정 자동설정 금지(사람만).
+      //   덮어쓰기·자동확정 폐지 → 공용URL 충돌 시 다른 제품 영문명 broadcast 오염 근본 차단. 자동매칭은 "추천"까지만.
       const p = match.primary;
-      const engName = p.영문명 || f['통관품명_영문'] || '';
-      const newFields = {
-        '통관품명_영문': engName,
-        'Description': engName,   // v2.9.6: 일반 모드 화면 표시 필드 동기화
-        'HS코드': p.HS코드 || f['HS코드'] || '',
-        'Material': p.Material || f['Material'] || '',
-        '적용FTA': p.적용FTA || f['적용FTA'] || '없음',
-        '관세사확정': true,
-        '관세사확정일시': new Date().toISOString().slice(0, 10),
-        '관세사메모': `자동 매칭 (이전 ${p.사용횟수}회 사용)`
-      };
-      updates.push({ id: product.id, fields: newFields });
-      // 로컬 state도 업데이트
-      Object.assign(product.fields, newFields);
-      exactCount++;
+      const newFields = {};
+      if (!f['통관품명_영문'] && p.영문명) { newFields['통관품명_영문'] = p.영문명; newFields['Description'] = p.영문명; }
+      if (!f['HS코드'] && p.HS코드) newFields['HS코드'] = p.HS코드;
+      if (!f['Material'] && p.Material) newFields['Material'] = p.Material;
+      if (!f['적용FTA'] && p.적용FTA) newFields['적용FTA'] = p.적용FTA;
+      if (Object.keys(newFields).length) {
+        newFields['관세사메모'] = `자동매칭 추천 (이전 ${p.사용횟수}회 · 빈칸만 채움, 관세사 확정 필요)`;
+        updates.push({ id: product.id, fields: newFields });
+        Object.assign(product.fields, newFields);
+        exactCount++;
+      }
     } else if (match.confidence === 'similar' && match.primary) {
       // Level 2: 키워드 매칭 → 자동 채움 (관세사확정은 false)
       const p = match.primary;

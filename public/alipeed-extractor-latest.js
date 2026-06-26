@@ -1,8 +1,12 @@
 /* ============================================================
-   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.3 (콘솔 fetch 전 페이지 순회)
-   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.3.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.4 (콘솔 fetch 전 페이지 순회)
+   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.4.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
      기능 변경 시 세 곳을 반드시 함께 올린다(불일치 금지). 시작 시 버전 알림창 첫 줄에도 버전이 표시되어
      실행자가 신/구버전을 즉시 눈으로 확인한다.
+   v2.9.4 수정 (2026-06-26): ★자동매칭 broadcast 오염 근본 차단.
+   - matchFromHistory URL 정확매칭에 isUniqueProductUrl 게이트: 공용 이미지/에디터/alicdn URL(Edt_*.png 등)은 비고유 → 매칭 키 제외(고유 1688/타오바오 detail URL만).
+   - exact·similar 모두 빈칸만 채움(onlyEmpty) + 관세사확정 자동설정 폐지(사람만). 덮어쓰기·자동확정 제거 → 다른 제품 영문명 broadcast 오염 차단.
+   - 사고: AP1840 규조토 코스터 5건이 공용 Editor 이미지 URL 공유 → history "Chiffon Fabric Poster"(12회)와 URL일치 → 전부 덮임. (v2.9.x autoMatchFromHistory와 동일 경로 — 도구도 v3.2.150에서 동일 차단.)
    v2.9.3 수정 (2026-06-25): ★★선적일 수동 입력(prompt) 완전 제거 — 휴먼에러 근본 차단.
    - [근본] 선적일 = 추출 주문의 실제출고요청일(cells.eq(12))에서 ★자동 도출★. 사람이 날짜를 타이핑하지 않는다.
    - 분기: ①전부 동일 날짜 → 그 날짜 자동 사용("선적일 X · N건 동일 · 진행?" 확인만)
@@ -110,7 +114,7 @@
   }
 
   // ===== 버전 단일 소스 — 기능 변경 시 헤더 버전과 함께 이 값을 올린다 =====
-  var EXTRACTOR_VERSION = 'v2.9.3';   // ★파일명·헤더와 항상 일치시킬 것
+  var EXTRACTOR_VERSION = 'v2.9.4';   // ★파일명·헤더와 항상 일치시킬 것
   // ===== v2.9.3 선적일 = 추출 주문의 실제출고요청일에서 자동 도출 (prompt 수동입력 폐지) =====
   //   키 = {AP번호}-{선적일YYMMDD}. 선적일은 추출 완료 후 deriveShipDate()가 채운다(아래 후처리 .then).
   //   ★사람이 날짜를 타이핑하지 않음 → 날짜 오타 휴먼에러 근본 차단.
@@ -1367,12 +1371,21 @@
           }
 
           // 매칭 시도
+          // [v2.9.4] 고유 상품 detail URL만 매칭 키로 허용. 공용 이미지/에디터/alicdn URL은 비고유 → broadcast 오염 방지.
+          function isUniqueProductUrl(u) {
+            u = String(u || '').trim().toLowerCase();
+            if (!u) return false;
+            if (/\.(png|jpe?g|gif|webp|bmp)(\?|#|$)/.test(u)) return false;     // 이미지 파일
+            if (/\/editor\/|edt_|\/upfile\//.test(u)) return false;            // 업로드/에디터 이미지
+            if (/alicdn\.com|cbu01\.|gw\.alicdn|\/img\./.test(u)) return false; // alicdn 이미지 CDN
+            return /(detail\.1688\.com|item\.taobao\.com|detail\.tmall\.com|1688\.com\/offer|\/item\.htm|\/offer\/)/.test(u);
+          }
           function matchFromHistory(link, koName) {
             var lk = (link || '').trim();
             var nm = (koName || '').trim();
 
-            // Level 1: URL 정확 매칭
-            if (lk) {
+            // Level 1: URL 정확 매칭 — [v2.9.4] 고유 상품 URL만(공용 이미지 URL은 제외 → broadcast 오염 차단)
+            if (lk && isUniqueProductUrl(lk)) {
               for (var i = 0; i < phCache.length; i++) {
                 if (phCache[i].제품링크 === lk) {
                   return { level: 'exact', data: phCache[i] };
@@ -1443,26 +1456,14 @@
               var match = matchFromHistory(p.제품링크, p.통관품명_한글);
               if (match) {
                 var phData = match.data;
-                if (match.level === 'exact') {
-                  // 정확 매칭 → 자동 채움 + 관세사확정=true
-                  fields['통관품명_영문'] = phData.영문명;
-                  fields['HS코드'] = phData.HS코드;
-                  fields['Material'] = phData.Material;
-                  fields['적용FTA'] = phData.적용FTA;
-                  fields['Description'] = phData.영문명;
-                  fields['관세사확정'] = true;
-                  fields['관세사확정일시'] = today;
-                  fields['관세사메모'] = '자동 매칭 (이전 ' + phData.사용횟수 + '회 사용)';
-                  matchExact++;
-                } else {
-                  // 유사 매칭 → 미리 채움 (관세사확정은 false)
-                  if (!fields['통관품명_영문']) fields['통관품명_영문'] = phData.영문명;
-                  if (!fields['HS코드']) fields['HS코드'] = phData.HS코드;
-                  if (!fields['Material']) fields['Material'] = phData.Material;
-                  if (!fields['적용FTA']) fields['적용FTA'] = phData.적용FTA;
-                  fields['관세사메모'] = '유사 매칭 추천 (' + Math.round(match.score * 100) + '% 일치) - 확인 필요';
-                  matchSimilar++;
-                }
+                // [v2.9.4] ★exact·similar 모두 빈칸만 채움(onlyEmpty) + 관세사확정 자동설정 금지(사람만).
+                //   덮어쓰기·자동확정 폐지 → broadcast 오염(다른 제품 영문명 덮임) 근본 차단. 자동매칭은 "추천"까지만.
+                if (!fields['통관품명_영문'] && phData.영문명) { fields['통관품명_영문'] = phData.영문명; fields['Description'] = phData.영문명; }
+                if (!fields['HS코드'] && phData.HS코드) fields['HS코드'] = phData.HS코드;
+                if (!fields['Material'] && phData.Material) fields['Material'] = phData.Material;
+                if (!fields['적용FTA'] && phData.적용FTA) fields['적용FTA'] = phData.적용FTA;
+                if (match.level === 'exact') { fields['관세사메모'] = '자동매칭 추천 (이전 ' + phData.사용횟수 + '회 · 빈칸만 채움, 관세사 확정 필요)'; matchExact++; }
+                else { fields['관세사메모'] = '유사 매칭 추천 (' + Math.round(match.score * 100) + '% 일치) - 확인 필요'; matchSimilar++; }
               }
 
               // 이미지 첨부 (Airtable이 URL fetch)
