@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.150</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.151</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.150</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.151</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -476,6 +476,7 @@
     <!-- 일상용 — 노출 유지 -->
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#e8f7ef; color:#1B2A3B; border:1px solid #2BB673;" onclick="openBookingSummary()" title="선적일 선택 → 그날 사서함 박스 무게·CBM 합계 → 위챗 복사">📦 선적일별 부킹 요약</button>
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#f3ece0; color:#5a4a2a; border:1px solid #c9973a;" onclick="openDispatchMaster()" title="배차 마스터 — 선적일별 전체 배차 운영 현황(읽기전용) + Excel">🚚 배차 마스터</button>
+    <button class="secondary" style="padding:6px 12px; font-size:12px; background:#fdecef; color:#7a0c28; border:1px solid #e88aa0;" onclick="runContaminationCheck()" title="영문명 broadcast 오염 점검 (READ ONLY 조회) — 비고유 URL·broadcast 클러스터·catch-all HS 쏠림. 주1회 권장.">🔬 오염 점검</button>
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#e8f7ef; border:1px solid #2BB673;" onclick="openNotifyModal()" title="채널톡 고객 알림 — 사서함 직접 입력 가능(주문 없어도)">📨 채널톡 알림</button>
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openAgentAdmin()">👥 관세사 관리</button>
     <!-- 관리/설정 6개 → ⚙️ 관리 드롭다운(admin-only) -->
@@ -1676,6 +1677,18 @@
   </div>
   <div id="unipassResult" style="font-size:13px; color:#666;">조회 결과가 여기 표시됩니다.</div>
   <div id="unipassDispatchBox" style="display:none; margin-top:14px;"></div>
+</div>
+
+<!-- [v3.2.151] 오염 점검 모달 (READ ONLY 조회 — 자동수정 X) -->
+<div id="contamCheckModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.7); z-index:9999; padding:20px; overflow-y:auto;">
+  <div style="max-width:880px; margin:24px auto; background:#fff; border-radius:10px; padding:20px; box-shadow:0 10px 40px rgba(0,0,0,0.4);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:10px; border-bottom:2px solid #b3123c;">
+      <h3 style="margin:0; font-size:17px; color:#1B2A3B;">🔬 오염 점검 <span style="font-size:12px; color:#888; font-weight:400;">(영문명 broadcast 오염 · 조회 전용)</span></h3>
+      <button onclick="document.getElementById('contamCheckModal').style.display='none'" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888;">×</button>
+    </div>
+    <div style="font-size:11px; color:#888; margin-bottom:10px;">비고유 URL(공용이미지·http://·토큰) 제품 = broadcast 오염 위험. ★0건이어야 정상. 1건↑이면 구버전 추출기 사용 또는 신규 유입 의심. 자동 수정 안 함 — 교정은 별도.</div>
+    <div id="contamCheckBody" style="font-size:13px; color:#1B2A3B;">조회 중…</div>
+  </div>
 </div>
 
 <!-- v3.2.41 (2026-06-05): 선적일별 부킹 요약 모달 -->
@@ -8209,6 +8222,59 @@ function isUniqueProductUrl(u) {
   if (/alicdn\.com|cbu01\.|gw\.alicdn|\/img\./.test(u)) return false; // alicdn 이미지 CDN
   return /(detail\.1688\.com|item\.taobao\.com|detail\.tmall\.com|1688\.com\/offer|\/item\.htm|\/offer\/)/.test(u);
 }
+// [v3.2.151] 🔬 오염 점검 — 영문명 broadcast 오염 상시 조회(READ ONLY, 자동수정 X). contamination-check.mjs와 동일 3기준.
+async function runContaminationCheck() {
+  const modal = document.getElementById('contamCheckModal');
+  const body = document.getElementById('contamCheckBody');
+  if (modal) modal.style.display = 'block';
+  if (body) body.innerHTML = '⏳ Products·Orders 전수 조회 중…';
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  try {
+    const CATCHALL = ['7326.90', '6307.90'];
+    const prods = await apiPaged(`/${TABLES.Products}?fields[]=${encodeURIComponent('상품ID')}&fields[]=Description&fields[]=${encodeURIComponent('통관품명_영문')}&fields[]=${encodeURIComponent('통관품명_한글')}&fields[]=${encodeURIComponent('제품링크')}&fields[]=${encodeURIComponent('HS코드')}`);
+    const orders = await apiPaged(`/${TABLES.Orders}?fields[]=${encodeURIComponent('주문번호')}&fields[]=Shipment`);
+    const shipByOrder = {};   // 주문번호 → 사서함명(ARRAYJOIN)
+    orders.forEach(o => { const no = (o.fields || {})['주문번호']; const sh = (o.fields || {})['Shipment']; if (no) shipByOrder[no] = Array.isArray(sh) ? sh.join(',') : (sh || ''); });
+    const F = (x, k) => (x.fields || {})[k] || '';
+    const dsc = x => (F(x, 'Description') || F(x, '통관품명_영문') || '').trim();
+    const sasOf = x => shipByOrder[String(F(x, '상품ID')).split('_')[0]] || '(미연결)';
+    // ① 비고유 URL 제품
+    const badUrl = prods.filter(x => { const l = F(x, '제품링크').trim(); return l && !isUniqueProductUrl(l); });
+    // ② broadcast 클러스터 (같은 영문명 ≥3, 한글 distinct≥2 또는 비고유URL 공유)
+    const byEn = {};
+    prods.forEach(x => { const e = dsc(x); if (e) (byEn[e] = byEn[e] || []).push(x); });
+    const clusters = [];
+    Object.entries(byEn).forEach(([en, arr]) => {
+      const koset = [...new Set(arr.map(x => F(x, '통관품명_한글')).filter(k => k && !/영문명 직접입력/.test(k)))];
+      const badShare = arr.filter(x => { const l = F(x, '제품링크').trim(); return l && !isUniqueProductUrl(l); }).length;
+      if (arr.length >= 3 && (koset.length >= 2 || badShare > 0)) clusters.push({ en, n: arr.length, ko: koset.length, bad: badShare });
+    });
+    clusters.sort((a, b) => b.n - a.n);
+    // ③ catch-all HS
+    const ca = prods.filter(x => CATCHALL.some(h => String(F(x, 'HS코드')).startsWith(h)));
+    // 렌더
+    const clean = badUrl.length === 0;
+    const head = clean
+      ? `<div style="padding:12px 14px; background:#e8f5e9; border:1px solid #0a7b40; border-radius:8px; color:#0a7b40; font-weight:700; font-size:15px;">🟢 청정 — 비고유 URL 제품 0건 (자동매칭 broadcast 위험 없음)</div>`
+      : `<div style="padding:12px 14px; background:#fdecef; border:2px solid #b3123c; border-radius:8px; color:#b3123c; font-weight:700; font-size:15px;">🔴 오염 의심 — 비고유 URL 제품 <span style="font-size:20px;">${badUrl.length}</span>건 (★0이어야 정상)</div>`;
+    const clusterRows = clusters.length
+      ? clusters.map(c => `<div style="padding:2px 0;">${c.bad > 0 ? '🔴' : '🟡'} <strong>${c.n}×</strong> "${esc(c.en)}" <span style="color:#888; font-size:11px;">(한글 distinct ${c.ko} · 비고유URL ${c.bad})</span></div>`).join('')
+      : '<div style="color:#0a7b40;">없음</div>';
+    const badRows = badUrl.length
+      ? `<table style="width:100%; border-collapse:collapse; font-size:11px; margin-top:6px;">
+           <thead><tr style="background:#1B2A3B; color:#fff;"><th style="padding:5px 7px; text-align:left;">사서함</th><th style="padding:5px 7px; text-align:left;">상품ID</th><th style="padding:5px 7px; text-align:left;">영문명</th><th style="padding:5px 7px; text-align:left;">한글</th><th style="padding:5px 7px; text-align:left;">HS</th><th style="padding:5px 7px; text-align:left;">링크</th></tr></thead>
+           <tbody>${badUrl.sort((a, b) => F(a, '상품ID').localeCompare(F(b, '상품ID'))).map(x => `<tr style="border-bottom:1px solid #eee;"><td style="padding:4px 7px;">${esc(sasOf(x))}</td><td style="padding:4px 7px; font-family:monospace;">${esc(F(x, '상품ID'))}</td><td style="padding:4px 7px;">${esc(dsc(x))}</td><td style="padding:4px 7px;">${esc(F(x, '통관품명_한글'))}</td><td style="padding:4px 7px;">${esc(F(x, 'HS코드'))}</td><td style="padding:4px 7px; color:#a14a00;">…${esc(F(x, '제품링크').slice(-22))}</td></tr>`).join('')}</tbody></table>`
+      : '';
+    body.innerHTML = head
+      + `<div style="margin-top:14px; font-weight:700;">② broadcast 클러스터 (같은 영문명 ≥3곳 · 🔴=비고유URL 공유)</div>${clusterRows}`
+      + `<div style="margin-top:14px; font-weight:700;">③ catch-all HS(${CATCHALL.join('·')}) 제품: ${ca.length}건</div><div style="font-size:11px; color:#888;">잡화 catch-all — 영문명이 한쪽으로 쏠리면 broadcast 의심. 위 ① 목록과 교차 확인.</div>`
+      + (badUrl.length ? `<div style="margin-top:14px; font-weight:700;">① 비고유 URL 제품 ${badUrl.length}건 (교정 검토용 — 자동수정 안 함)</div>${badRows}` : '')
+      + `<div style="margin-top:14px; font-size:11px; color:#888;">조회 시각 ${new Date().toLocaleString('ko-KR')} · Products ${prods.length}건 · 조회 전용(데이터 변경 0). 주1회 권장 — 비고유 URL 건수가 늘면 구버전 추출기 사용/신규 오염 의심.</div>`;
+  } catch (e) {
+    if (body) body.innerHTML = `<div style="color:#c0392b; padding:14px;">점검 실패: ${esc(e.message || e)}<br/><span style="font-size:11px; color:#888;">PAT 확인 후 다시 시도</span></div>`;
+  }
+}
+
 async function matchProduct(productLink, koreanName) {
   const cache = await loadProductHistoryCache();
   const link = (productLink || '').trim();
