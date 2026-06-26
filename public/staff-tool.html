@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.151</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.152</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.151</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.152</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -11701,6 +11701,14 @@ async function downloadInvoiceExcel(opts) {
     return;
   }
   if (!state.shipment) { toastWarn('사서함을 먼저 불러오세요'); return; }
+
+  // [v3.2.152] ★통관 위반 차단 — CI(인보이스 시트1)=state.products / PL(패킹 시트2)=box.products(가상사본)는
+  //   서로 다른 소스다. box.products는 renderBoxes에서만 state.products로 재빌드되는데, 영문명·HS·수량·분할
+  //   편집은 renderBoxes를 부르지 않아(박스번호 편집만 부름) PL이 stale → 인보이스↔패킹 품목 불일치(통관 위반).
+  //   ★IP 생성 직전 무조건 renderBoxes() 호출 → box.products를 현재 state.products로 강제 재빌드 → CI=PL 보장.
+  //   (renderBoxes는 박스 물리속성 cbm/kg/치수/배송방식/recordId을 기존 state.boxes에서 보존 — 데이터 유실 없음.)
+  //   게이트(hasBoxes 등)도 이 재빌드 후의 state.boxes를 보도록 가장 먼저 호출한다.
+  try { renderBoxes(); } catch (e) { console.warn('[IP 생성 전 renderBoxes]', e && e.message); }
 
   // v3.2.40 (2026-06-04): 단계별 게이트 재정렬
   //   stage='first' (1차, 포워딩 전달용): 제품 + 박스 만 (환율·작업비는 0 처리 허용)
