@@ -1,8 +1,13 @@
 /* ============================================================
-   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.4 (콘솔 fetch 전 페이지 순회)
-   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.4.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.5 (콘솔 fetch 전 페이지 순회)
+   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.5.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
      기능 변경 시 세 곳을 반드시 함께 올린다(불일치 금지). 시작 시 버전 알림창 첫 줄에도 버전이 표시되어
      실행자가 신/구버전을 즉시 눈으로 확인한다.
+   v2.9.5 수정 (2026-06-27): ★대행종류 소스 = 주문구분 → 물류센터 대괄호 (알리피드 시스템 변경 대응).
+   - 알리피드 변경: 수입자 판단 = 주문구분 → 물류센터. 주문번호 셀 raw HTML `<br>웨이하이[배송대행]&nbsp;`의 대괄호.
+   - parseOrderRow: agentType = ordNoHtml의 [구매대행|결제대행|배송대행](대·소괄호 모두) ‖ ordTy(주문구분 폴백). 주문구분 필드=agentType로 저장 → Orders.대행종류.
+   - ★구매대행 오판 차단: 주문구분엔 구매대행 없고 결제/배송만 → 주문구분만 보면 구매대행 주문이 실화주로 오판. 물류센터 [구매대행] 우선으로 차단.
+   - 매핑: [구매대행]→테일코리아 수입자 / [결제대행]·[배송대행]→실화주. 도구는 무변경(Orders.대행종류 단일소스 → 수입자·납세·CO·발행주체 자동 파생).
    v2.9.4 수정 (2026-06-26): ★자동매칭 broadcast 오염 근본 차단.
    - matchFromHistory URL 정확매칭에 isUniqueProductUrl 게이트: 공용 이미지/에디터/alicdn URL(Edt_*.png 등)은 비고유 → 매칭 키 제외(고유 1688/타오바오 detail URL만).
    - exact·similar 모두 빈칸만 채움(onlyEmpty) + 관세사확정 자동설정 폐지(사람만). 덮어쓰기·자동확정 제거 → 다른 제품 영문명 broadcast 오염 차단.
@@ -114,7 +119,7 @@
   }
 
   // ===== 버전 단일 소스 — 기능 변경 시 헤더 버전과 함께 이 값을 올린다 =====
-  var EXTRACTOR_VERSION = 'v2.9.4';   // ★파일명·헤더와 항상 일치시킬 것
+  var EXTRACTOR_VERSION = 'v2.9.5';   // ★파일명·헤더와 항상 일치시킬 것
   // ===== v2.9.3 선적일 = 추출 주문의 실제출고요청일에서 자동 도출 (prompt 수동입력 폐지) =====
   //   키 = {AP번호}-{선적일YYMMDD}. 선적일은 추출 완료 후 deriveShipDate()가 채운다(아래 후처리 .then).
   //   ★사람이 날짜를 타이핑하지 않음 → 날짜 오타 휴먼에러 근본 차단.
@@ -204,6 +209,12 @@
     //   셋 다 없으면 빈값('') → orderRecords에서 대행종류 미포함(기존값 보존).
     var _agentMatch = ordTyText.match(/(구매대행|배송대행|결제대행)/);
     var ordTy = _agentMatch ? _agentMatch[1] : '';
+    // [v2.9.5] ★대행종류 소스 = 물류센터 대괄호(알리피드 변경: 주문구분→물류센터). 대·소괄호 모두 대응(미래 변경 대비).
+    //   raw HTML 예: `<br>웨이하이[배송대행]&nbsp;`. 매핑: [구매대행]→테일코리아 수입자 / [결제대행]·[배송대행]→실화주.
+    //   ★물류센터 우선 → 구매대행 오판 차단(주문구분엔 구매대행 없고 결제/배송만이라, 주문구분만 보면 구매대행이 실화주로 오판).
+    //   물류센터에 대행종류 없으면(옛 데이터) 주문구분(ordTy) 폴백 — 하위호환.
+    var _centerAgentMatch = ordNoHtml.match(/[\[\(]\s*(구매대행|결제대행|배송대행)\s*[\]\)]/);
+    var agentType = _centerAgentMatch ? _centerAgentMatch[1] : ordTy;
     var dlvrType = '';
     var dlvrMatch = ordTyText.match(/(LCL|FCL|항공|특송)\([^)]+\)/);
     if (dlvrMatch) dlvrType = dlvrMatch[0];
@@ -389,7 +400,7 @@
       ord_seq: seq,
       주문번호: ordNo,
       물류센터: center,
-      주문구분: ordTy,
+      주문구분: agentType,   // [v2.9.5] 대행종류 소스 = 물류센터 대괄호 우선(agentType) → Orders.대행종류로 저장(orderRecords). 도구 수입자 분기 자동 파생.
       배송방식: dlvrType,
       통관: customsType,
       사서함: saseom ? 'AP'+saseom.replace(/^AP/,'') : '',
@@ -1371,7 +1382,7 @@
           }
 
           // 매칭 시도
-          // [v2.9.4] 고유 상품 detail URL만 매칭 키로 허용. 공용 이미지/에디터/alicdn URL은 비고유 → broadcast 오염 방지.
+          // [v2.9.5] 고유 상품 detail URL만 매칭 키로 허용. 공용 이미지/에디터/alicdn URL은 비고유 → broadcast 오염 방지.
           function isUniqueProductUrl(u) {
             u = String(u || '').trim().toLowerCase();
             if (!u) return false;
@@ -1384,7 +1395,7 @@
             var lk = (link || '').trim();
             var nm = (koName || '').trim();
 
-            // Level 1: URL 정확 매칭 — [v2.9.4] 고유 상품 URL만(공용 이미지 URL은 제외 → broadcast 오염 차단)
+            // Level 1: URL 정확 매칭 — [v2.9.5] 고유 상품 URL만(공용 이미지 URL은 제외 → broadcast 오염 차단)
             if (lk && isUniqueProductUrl(lk)) {
               for (var i = 0; i < phCache.length; i++) {
                 if (phCache[i].제품링크 === lk) {
@@ -1456,7 +1467,7 @@
               var match = matchFromHistory(p.제품링크, p.통관품명_한글);
               if (match) {
                 var phData = match.data;
-                // [v2.9.4] ★exact·similar 모두 빈칸만 채움(onlyEmpty) + 관세사확정 자동설정 금지(사람만).
+                // [v2.9.5] ★exact·similar 모두 빈칸만 채움(onlyEmpty) + 관세사확정 자동설정 금지(사람만).
                 //   덮어쓰기·자동확정 폐지 → broadcast 오염(다른 제품 영문명 덮임) 근본 차단. 자동매칭은 "추천"까지만.
                 if (!fields['통관품명_영문'] && phData.영문명) { fields['통관품명_영문'] = phData.영문명; fields['Description'] = phData.영문명; }
                 if (!fields['HS코드'] && phData.HS코드) fields['HS코드'] = phData.HS코드;
