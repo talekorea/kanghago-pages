@@ -323,7 +323,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.161</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.162</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -444,7 +444,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.161</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.162</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -5113,8 +5113,7 @@ function renderProducts() {
       <td class="num" style="white-space:nowrap;">
         <input type="text" inputmode="numeric" data-field="수량" value="${f['수량']||0}" placeholder="수량" title="수량 (개수)" style="width:46px; text-align:right;${(f['수량']||0)==0?' background:#fff0f0; border:1px solid #cc3333;':''}" />
         ${(f['수량']||0)==0 ? '<div style="font-size:9px; color:#cc3333; font-weight:700; margin-top:2px; white-space:nowrap;" title="수량 0 — 인보이스(CI)·패킹(PL)은 수량>0만 포함하므로 이 제품은 IP에 안 나옵니다. 수량을 입력하세요.">⚠️ 수량 0 — IP 미반영</div>' : ''}
-        <button type="button" class="del-product-btn" title="0수량 제품 — 인보이스에서 제외 (세션 한정, 새로고침 복귀)" style="display:${(f['수량']||0)==0?'inline':'none'}; margin-left:3px; padding:1px 5px; border:1px solid #cc3333; background:#fff; color:#cc3333; border-radius:3px; cursor:pointer; font-size:11px;">🗑</button>
-        <button type="button" class="perm-del-btn" title="영구 삭제 — Airtable에서 완전 삭제(복구 불가). 발행/확정 제품은 경고." style="margin-left:3px; padding:1px 5px; border:1px solid #b00020; background:#fff0f2; color:#b00020; border-radius:3px; cursor:pointer; font-size:11px;">❌</button>
+        <button type="button" class="perm-del-btn" title="영구 삭제 — 이 선적에서 뺄 제품(수량 0)을 Airtable에서 완전 삭제(복구 불가, 버튼 눌러야 삭제). 발행/확정 제품은 경고." style="display:${(f['수량']||0)==0?'inline':'none'}; margin-left:3px; padding:1px 5px; border:1px solid #b00020; background:#fff0f2; color:#b00020; border-radius:3px; cursor:pointer; font-size:11px;">❌ 삭제</button>
       </td>
       <td class="num" data-cell="합계CNY">¥${(f['합계CNY']||0).toLocaleString()}</td>
       <td class="num"><input type="text" class="usd" readonly value="$0" style="font-weight:600; background:#fcf6e8;" /></td>
@@ -5140,19 +5139,7 @@ function renderProducts() {
     tbody.appendChild(_chipTr);
 
     // P0-B: 0수량 제품 삭제 — 인보이스/패킹/CO에서 제외
-    const delProductBtn = tr.querySelector('.del-product-btn');
-    if (delProductBtn) {
-      delProductBtn.addEventListener('click', () => {
-        if (!confirm('이 제품을 인보이스/패킹/CO에서 제외할까요?\n(이번 세션 기준 — 새로고침 시 복귀)')) return;
-        const idx = state.products.findIndex(x => x.id === p.id);
-        if (idx >= 0) state.products.splice(idx, 1);
-        renderProducts();
-        recalculate();
-        renderInvoicePreview();
-        renderTariffEstimate();
-      });
-    }
-    // [v3.2.156] ❌ 영구 삭제(Airtable DELETE) — 세션 제외와 별개
+    // [v3.2.162] 세션제외 🗑 폐기 — ❌ 영구삭제(Airtable DELETE)만. 수량 0일 때만 노출(아래 수량 토글).
     const permDelBtn = tr.querySelector('.perm-del-btn');
     if (permDelBtn) permDelBtn.addEventListener('click', () => permanentDeleteProduct(p.id));
 
@@ -5207,13 +5194,13 @@ function renderProducts() {
           }
         }
         if (field === '수량') {
-          // P0-B: 수량 편집 → 합계CNY 즉시 재계산 + 0수량이면 🗑 노출
+          // [v3.2.162] 수량 편집 → 합계CNY 즉시 재계산 + 0수량이면 ❌ 영구삭제 버튼 노출(>0이면 숨김). 세션제외 🗑 폐기.
           const q = parseFloat(inp.value) || 0;
           f['수량'] = q;
           f['합계CNY'] = q * (parseFloat(f['단가CNY']) || 0);
           const totalCell = tr.querySelector('[data-cell="합계CNY"]');
           if (totalCell) totalCell.textContent = '¥' + f['합계CNY'].toLocaleString();
-          const dBtn = tr.querySelector('.del-product-btn');
+          const dBtn = tr.querySelector('.perm-del-btn');
           if (dBtn) dBtn.style.display = (q === 0) ? 'inline' : 'none';
           if (typeof updateGroupQtyHeader === 'function') updateGroupQtyHeader(tr.dataset.group);   // [v3.2.114] 그룹 헤더 총수량 라이브
           if (typeof _markBoxDirty === "function") _markBoxDirty();
