@@ -323,7 +323,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.162</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.163</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -444,7 +444,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.162</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.163</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6905,17 +6905,17 @@ async function _snapshotIp(shipmentId, stage, blob, filename) {
   const fieldId = ATTACH_FIELD_IDS[NAME];
   try {
     const file = new File([blob], filename || (NAME + '.xlsx'), { type: blob.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const res = await uploadAirtableAttachment(shipmentId, fieldId, file, filename);   // append(레이스 없는 단일 upload)
-    // append 직후 응답 목록 = 갱신된 전체 첨부. 마지막(방금 올린 것)만 남기고 나머지 제거 → 항상 1장.
-    const atts = (res && res.fields && res.fields[fieldId]) || [];
+    await uploadAirtableAttachment(shipmentId, fieldId, file, filename);   // append(content endpoint)
+    // [v3.2.163] ★무조건 trim — GET 전체 후 최신(마지막 append) 1장만 남김. (구버그: trim PATCH가
+    //   `/v0/{base}/{shipmentId}`로 ★테이블 id(Shipments) 누락 → malformed → trim 실패 → IP 누적(AP2402 5장).
+    //   사진버그 v3.2.154와 동일 원인. api()로 올바른 경로(/{TABLES.Shipments}/{id}) + 응답 의존 제거.)
+    const rec = await api('GET', `/${TABLES.Shipments}/${shipmentId}`);
+    const atts = (rec && rec.fields && rec.fields[NAME]) || [];
     if (atts.length > 1) {
       const latest = atts[atts.length - 1];
-      try {
-        const pat = airtablePat();
-        await fetch(`https://api.airtable.com/v0/${BASE_ID}/${shipmentId}`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${pat}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: { [NAME]: [{ id: latest.id }] }, typecast: true }) });
-      } catch (e) { console.warn('[IP 스냅샷 trim 실패]', stage, shipmentId, e && e.message); }
+      await api('PATCH', `/${TABLES.Shipments}/${shipmentId}`, { fields: { [NAME]: [{ id: latest.id }] }, typecast: true });
     }
-  } catch (e) { console.warn('[IP 스냅샷 저장 실패]', stage, shipmentId, e && e.message); }
+  } catch (e) { console.warn('[IP 스냅샷 저장/trim]', stage, shipmentId, e && e.message); }
 }
 // [v3.2.145 G3] 제품 사진 교체(디스크 업로드) — Products.상품이미지 첨부 1장 replace. 분할 품목·오사진 교체용.
 async function uploadProductPhoto(pid, inputEl) {
@@ -7001,11 +7001,31 @@ async function handleBlCoFileUpload(kind, fileInput) {
     if (kind === 'bl' && files[0]) { try { extractBlNumberFromFile(files[0]); } catch (e) {} }
     if (kind === 'co' && files[0]) { try { autoFillCoFromFile(files[0]); } catch (e) {} }   // [v3.2.118] CO 업로드 시 대조 패널 자동채움(확인요망·확정은 사람)
     if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();
+    // [v3.2.163] ★BL∧CO 둘 다 업로드된 순간 = 확정 IP 자동등록(BL번호·선적항·특혜세율 반영). 다운로드 없이 최종IP파일에 등록.
+    try { await _autoRegisterFinalIp(); } catch (e) { console.warn('[확정 IP 자동등록]', e && e.message); }
   } catch (e) {
     console.error(e);
     if (typeof toastError === 'function') toastError('첨부 업로드 실패: ' + (e.message || e));
   }
   fileInput.value = '';   // 같은 파일 다시 선택 가능하도록 초기화
+}
+
+// [v3.2.163] ★확정 IP 자동등록 — BL∧CO 둘 다 존재 시, 그 시점 확정값으로 최종 IP 생성·등록(Shipments.최종IP파일). 다운로드 없음.
+//   게이트: downloadInvoiceExcel({stage:'final'}) 내장 게이트(영문명·HS·★관세사확정완료·환율)가 미충족이면 {skip} 반환 → 등록 안 함(부정확 IP 차단).
+//   stale 방지: 새 BL/CO 업로드마다 재호출(이 함수) → 최신값 재등록. _snapshotIp가 최신 1장만 trim(v3.2.163 수정).
+//   ★새 Vercel 함수 0 — downloadInvoiceExcel+_snapshotIp는 도구→Airtable 직접.
+async function _autoRegisterFinalIp() {
+  const sf = (state.shipment && state.shipment.fields) || {};
+  const blOk = !!(sf['BL파일'] && sf['BL파일'].length);
+  const coOk = !!(sf['CO파일'] && sf['CO파일'].length);
+  if (!blOk || !coOk) return;   // BL∧CO 둘 다일 때만(BL만/CO만이면 등록 안 함)
+  if (typeof toastInfo === 'function') toastInfo('확정 IP 생성·등록 중…', { title: '📋 확정 IP' });
+  const res = await downloadInvoiceExcel({ stage: 'final', returnBlob: true });   // 내장 게이트 통과 시 _snapshotIp(최종IP파일) — 다운로드 X
+  if (res && res.skip) {
+    toastWarn && toastWarn('확정 IP 자동등록 보류 — ' + res.skip + '\n(관세사확정·영문명·HS·환율 완료 후 BL/CO 재업로드 시 자동 등록)', { title: '⚠ 확정 IP 미등록' });
+  } else if (res && res.blob) {
+    toastSuccess && toastSuccess('확정 IP 자동등록 완료 — 관세사 페이지·ZIP에 반영됩니다.', { title: '✅ 확정 IP' });
+  }
 }
 
 function bindBlCoFileInputs() {
