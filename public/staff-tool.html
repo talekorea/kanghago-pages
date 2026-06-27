@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.159</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.160</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.159</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.160</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -12126,7 +12126,7 @@ async function downloadInvoiceExcel(opts) {
     };
 
     // ── 시트 1: COMMERCIAL INVOICE ──
-    const ws1 = wb.addWorksheet('테일코리아인보이스', { views: [{ zoomScale: 50, zoomScaleNormal: 50 }] });   // [v3.2.131] 열릴 때 줌 50%(뷰만, 데이터·서식 불변)
+    const ws1 = wb.addWorksheet('테일코리아인보이스', { views: [{ zoomScale: 200, zoomScaleNormal: 200 }], pageSetup: { fitToPage: true, fitToWidth: 1, fitToHeight: 0, orientation: 'landscape' } });   // [v3.2.131] 열릴 때 줌 200%(뷰만, 데이터·서식 불변)
     // [C] CI 세율 칸 단계별: 1차=3칸(기본/CO미/CO발) 빈칸 / 최종+CO업로드=CO발행 1칸(한중FTA) / 최종+CO없음=기본 1칸(기본세율).
     //   CO 신호 = f['CO파일'].length (CO 정합 경고가 쓰던 신호와 동일). ※현 최종 게이트는 CO파일 필수 → 최종은 사실상 'co' 모드.
     // [v3.2.108] ★세율·라벨·taxMode 단일소스 = Shipments.적용FTA확정. 한중FTA 하드코딩 제거.
@@ -12258,7 +12258,7 @@ async function downloadInvoiceExcel(opts) {
     // ── 시트 2: PACKING LIST (정돈 — 필요 13열만 + 박스 그룹핑) ──
     // A:No. / B:TAPE / C:C/T NO. / D:Order No. / E:Description / F:PICTURES / G:QTY /
     // H:전체단가(USD) / I:개별단가(USD) / J:N/W / K:G/W / L:CBM / M:Material
-    const ws2 = wb.addWorksheet('테일코리아패킹', { views: [{ zoomScale: 50, zoomScaleNormal: 50 }] });   // [v3.2.131] 열릴 때 줌 50%
+    const ws2 = wb.addWorksheet('테일코리아패킹', { views: [{ zoomScale: 200, zoomScaleNormal: 200 }], pageSetup: { fitToPage: true, fitToWidth: 1, fitToHeight: 0, orientation: 'landscape' } });   // [v3.2.131] 열릴 때 줌 200%
     ws2.columns = [
       { width: 12 }, { width: 10 }, { width: 16 }, { width: 20 }, { width: 28 }, { width: 30 },
       { width: 9 }, { width: 14 }, { width: 14 }, { width: 10 }, { width: 10 }, { width: 12 }, { width: 20 },
@@ -12419,7 +12419,7 @@ async function downloadInvoiceExcel(opts) {
     const ivKg = Number(pTotWt.toFixed(1));
     const ivTotal = calcIvFreightUSD(ivCbm, ivKg);   // raw로 계산 → band·운임 불변
     const ivCbmDisp = Number(fmtCBM(pTotCbm));   // [v3.2.76] IV 시트 표시용 CBM 2자리(계산엔 미사용)
-    const ws3 = wb.addWorksheet('IV', { views: [{ zoomScale: 50, zoomScaleNormal: 50 }] });   // [v3.2.131] 열릴 때 줌 50%
+    const ws3 = wb.addWorksheet('IV', { views: [{ zoomScale: 200, zoomScaleNormal: 200 }], pageSetup: { fitToPage: true, fitToWidth: 1, fitToHeight: 0, orientation: 'landscape' } });   // [v3.2.131] 열릴 때 줌 200%
     // [v3.2.102] FREIGHT 컬럼 확대(표현만, 값 불변) — 헤더 우측블록(C:D) 폭↑로 'No.&date of invoice' 등 긴 줄 wrap 최소화. 데이터 'FREIGHT CHARGE(USD)'도 여유.
     ws3.columns = [{ width: 26 }, { width: 16 }, { width: 22 }, { width: 24 }];
     writeFormHeader(ws3, 'FREIGHT INVOICE', 4, 28);   // 헤더 행높이 28 — 좁은 시트 wrap 2줄 수용(겹침 0)
@@ -12445,6 +12445,15 @@ async function downloadInvoiceExcel(opts) {
     ws3.mergeCells('A' + ivNote.number + ':D' + ivNote.number);
     ivNote.getCell(1).font = { ...FONT, italic: true, size: 9, color: { argb: 'FF999999' } };
     ivNote.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+
+    // [v3.2.160] ★printArea = 실제 used range로 한정(빈 그리드 인쇄 제외). 각 시트 마지막 행·열까지만.
+    //   pageSetup(fitToWidth:1)은 addWorksheet 옵션에서 설정 — 표가 한 페이지 폭에 맞춤. zoom 200%(views)와 별개(인쇄 무관).
+    try {
+      const _pa = (ws, lastColLetter) => { if (ws && ws.rowCount > 0) { ws.pageSetup = ws.pageSetup || {}; ws.pageSetup.printArea = 'A1:' + lastColLetter + ws.rowCount; } };
+      _pa(ws1, ws1.getColumn(ws1Cols).letter);   // CI: A1~{ws1Cols}{lastRow}
+      _pa(ws2, 'M');                              // PL: 13열 고정 → M
+      _pa(ws3, 'D');                              // IV: 4열 고정 → D
+    } catch (e) { console.warn('[printArea]', e && e.message); }
 
     // 다운로드 (또는 배치=blob 반환)
     const buf = await wb.xlsx.writeBuffer();
