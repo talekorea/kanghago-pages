@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.155</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.156</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.155</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.156</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -919,6 +919,8 @@
 <!-- 3. Products -->
 <div class="section hidden" id="productsSection">
   <h2 data-i18n="section.products">3. 상품 정보 입력</h2>
+  <!-- [v3.2.156] 제품 수동 추가 — 주문 귀속·상품ID 자동. _isNew 행 → 입력 → [저장]이 create. -->
+  <button type="button" onclick="addProductRow()" title="제품을 수동으로 추가 — 주문 선택 후 빈 행 생성. 영문명/HS/수량/단가 입력 → [Airtable에 저장] → 사진 교체 가능." style="margin:4px 0 8px; padding:6px 14px; background:linear-gradient(135deg,#0a7b40,#0d8f4c); color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">➕ 제품 추가</button>
   <!-- v3.2.12 #1: 주문별 배송 요청 메모 — 엑셀 '배송 요청 메모' 컬럼 / Orders.배송요청사항 자동 노출 -->
   <div id="orderMemoBox" style="display:none; margin:8px 0 12px; padding:12px 14px; background:#fff8d6; border:1px solid #d4a72c; border-radius:6px; font-size:13px;">
     <div style="font-weight:700; color:#6b5d00; margin-bottom:6px;">📝 배송 요청 메모 (주문별)</div>
@@ -5089,7 +5091,8 @@ function renderProducts() {
         : `¥${(f['단가CNY']||0).toLocaleString()}`}</td>
       <td class="num" style="white-space:nowrap;">
         <input type="text" inputmode="numeric" data-field="수량" value="${f['수량']||0}" style="width:46px; text-align:right;" />
-        <button type="button" class="del-product-btn" title="0수량 제품 — 인보이스에서 제외" style="display:${(f['수량']||0)==0?'inline':'none'}; margin-left:3px; padding:1px 5px; border:1px solid #cc3333; background:#fff; color:#cc3333; border-radius:3px; cursor:pointer; font-size:11px;">🗑</button>
+        <button type="button" class="del-product-btn" title="0수량 제품 — 인보이스에서 제외 (세션 한정, 새로고침 복귀)" style="display:${(f['수량']||0)==0?'inline':'none'}; margin-left:3px; padding:1px 5px; border:1px solid #cc3333; background:#fff; color:#cc3333; border-radius:3px; cursor:pointer; font-size:11px;">🗑</button>
+        <button type="button" class="perm-del-btn" title="영구 삭제 — Airtable에서 완전 삭제(복구 불가). 발행/확정 제품은 경고." style="margin-left:3px; padding:1px 5px; border:1px solid #b00020; background:#fff0f2; color:#b00020; border-radius:3px; cursor:pointer; font-size:11px;">❌</button>
       </td>
       <td class="num" data-cell="합계CNY">¥${(f['합계CNY']||0).toLocaleString()}</td>
       <td class="num"><input type="text" class="usd" readonly value="$0" style="font-weight:600; background:#fcf6e8;" /></td>
@@ -5127,6 +5130,9 @@ function renderProducts() {
         renderTariffEstimate();
       });
     }
+    // [v3.2.156] ❌ 영구 삭제(Airtable DELETE) — 세션 제외와 별개
+    const permDelBtn = tr.querySelector('.perm-del-btn');
+    if (permDelBtn) permDelBtn.addEventListener('click', () => permanentDeleteProduct(p.id));
 
     // Description/Material/HS코드/적용FTA/박스번호 변경 감지
     tr.querySelectorAll('input[data-field], select[data-field]').forEach(inp => {
@@ -5967,6 +5973,118 @@ async function splitProductRow(pid) {
   if (typeof _markBoxDirty === "function") _markBoxDirty();
   toastSuccess && toastSuccess(`분할 완료(저장됨) — 원본 박스 ${_boxNumsToStr(remainNums)} / 새 행 박스 ${_boxNumsToStr(newNums)} (${newSid})`,
     { title: '✂ 박스별 나누기', subtitle: '양쪽 단가·품명·HS는 칸에서 고치면 즉시 저장됩니다. 새 품목이 CO에 없으면 발행 게이트가 막습니다 — CO 재발급 필요.' });
+}
+
+// [v3.2.156] ★제품 영구 삭제(Airtable DELETE — 복구 불가). 기존 🗑(세션 제외)와 별개.
+//   정책(사장 확정): 삭제는 항상 가능(차단 X), 발행/확정 제품엔 경고만. 분할 자식 삭제 시 부모 수량 복원.
+//   연관: 사진=레코드 동반 삭제 / 박스=박스저장 reconcile 위임 / CO비용(Product링크)=링크배열만 줄고 금액불변 / 작업비=주문 마지막 제품이면 경고.
+async function permanentDeleteProduct(pid) {
+  const p = (state.products || []).find(x => x.id === pid);
+  if (!p) { toastWarn && toastWarn('제품을 찾을 수 없습니다'); return; }
+  const f = p.fields || {};
+  const sid = String(f['상품ID'] || pid);
+  // 미저장 신규행(_isNew/new_) — Airtable에 없음 → state에서만 제거
+  if (p._isNew || /^new_/.test(String(pid))) {
+    if (!confirm(`미저장 신규 행(${sid})을 삭제할까요?`)) return;
+    const i = state.products.findIndex(x => x.id === pid); if (i >= 0) state.products.splice(i, 1);
+    if (state._prodBaseline) { delete state._prodBaseline[pid]; }
+    renderProducts(); renderBoxes && renderBoxes(); refreshAll && refreshAll();
+    toastSuccess && toastSuccess(`신규 행 삭제 (${sid})`, { title: '🗑' });
+    return;
+  }
+  // ★재스냅샷 — 현재 Airtable 값 확인(실수 방지)
+  let rec;
+  try { rec = await api('GET', `/${TABLES.Products}/${pid}`); }
+  catch (e) { toastError && toastError('삭제 전 조회 실패: ' + (e.message || e)); return; }
+  const rf = (rec && rec.fields) || {};
+  // 발행/확정 신호
+  const confirmed = rf['관세사확정'] === true;
+  const sh = (state.shipment && state.shipment.fields) || {};
+  const status = sh['상태'] || '';
+  const blNo = String(sh['BL번호'] || '').trim();
+  const published = ['인보이스완료', '통관중', '통관완료', '배송중', '출고완료'].includes(status) || !!blNo;
+  let msg;
+  if (confirmed || published) {
+    const tags = [confirmed ? '관세사확정' : '', published ? '발행' : ''].filter(Boolean).join('·');
+    msg = `⚠️ 이 제품(${sid})은 [${tags}] 상태입니다.\n삭제하면 이미 발행된 인보이스·CO와 불일치할 수 있어 서류 재발행이 필요합니다.\n\n영구 삭제할까요? (Airtable에서 완전 삭제 — 복구 불가)`;
+  } else {
+    msg = `제품 ${sid}을 영구 삭제할까요?\n(Airtable에서 완전 삭제 — 복구 불가)`;
+  }
+  if (!confirm(msg)) return;
+  // ★분할 자식(_s) 삭제 → 부모 수량/박스 복원(합집합=원본 보존)
+  const childM = sid.match(/^(.+)_s\d+$/);
+  if (childM) {
+    const parentSid = childM[1];
+    const parent = state.products.find(x => String((x.fields || {})['상품ID']) === parentSid && !x._isNew);
+    if (parent) {
+      const pf = parent.fields;
+      const addQty = parseInt(f['수량'], 10) || 0;
+      const newQty = (parseInt(pf['수량'], 10) || 0) + addQty;
+      const unitCny = parseFloat(pf['단가CNY']) || 0;
+      const newSum = Math.round(unitCny * newQty * 100) / 100;
+      const pb = new Set(parseBoxNumbers(pf['박스번호'] || '').map(n => parseInt(n, 10)).filter(n => !isNaN(n)));
+      parseBoxNumbers(f['박스번호'] || '').forEach(n => { const i = parseInt(n, 10); if (!isNaN(i)) pb.add(i); });
+      const newBox = _boxNumsToStr([...pb]);
+      const _rate = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
+      const upd = { '수량': newQty, '합계CNY': newSum, '박스번호': newBox };
+      if (_rate) { upd['단가USD'] = unitCny * _rate; upd['합계USD'] = newSum * _rate; }
+      try {
+        await api('PATCH', `/${TABLES.Products}/${parent.id}`, { fields: upd, typecast: true });
+        Object.assign(pf, upd);
+        if (state._prodBaseline) state._prodBaseline[parent.id] = _prodFingerprint(pf);
+        toastInfo && toastInfo(`부모 ${parentSid} 수량 복원 → ${newQty}개 (박스 ${newBox})`, { title: '↩ 복원' });
+      } catch (e) { toastWarn && toastWarn('부모 수량 복원 실패(수동 확인): ' + (e.message || e)); }
+    }
+  }
+  // 작업비: 주문 마지막 제품이면 경고(orderKey 귀속처 소멸)
+  const orderKey = groupKeyOf(sid);
+  const siblings = state.products.filter(x => groupKeyOf((x.fields || {})['상품ID']) === orderKey && x.id !== pid);
+  // ★Airtable DELETE
+  try { await api('DELETE', `/${TABLES.Products}/${pid}`); }
+  catch (e) { toastError && toastError('영구 삭제 실패: ' + (e.message || e)); return; }
+  const i = state.products.findIndex(x => x.id === pid); if (i >= 0) state.products.splice(i, 1);
+  state.modifiedProducts && state.modifiedProducts.delete(pid);
+  if (state._prodBaseline) { delete state._prodBaseline[pid]; delete state._prodBaseline[pid + '_sid']; }
+  renderProducts(); renderBoxes && renderBoxes(); refreshAll && refreshAll();
+  if (typeof _markBoxDirty === 'function') _markBoxDirty();
+  if (!siblings.length) toastWarn && toastWarn(`주문 ${orderKey}의 마지막 제품 삭제 — 이 주문 작업비 귀속처가 사라집니다(§4 작업비 확인).`, { title: '⚠ 작업비' });
+  toastSuccess && toastSuccess(`영구 삭제됨 (${sid})`, { title: '❌ Airtable' });
+}
+
+// [v3.2.156] ★제품 추가 — 주문 귀속·상품ID 자동생성. _isNew 행 삽입 → 직원 입력 → [저장]이 create(POST). 저장 후 사진 교체 가능.
+async function addProductRow() {
+  if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
+  const orders = [...new Set((state.products || []).map(p => groupKeyOf((p.fields || {})['상품ID'])).filter(k => k && k !== '__기타'))].sort();
+  const choice = prompt(`제품 추가 — 어느 주문에 넣을까요?\n기존 주문: ${orders.join(', ') || '(없음)'}\n\n주문번호 입력(기존 선택 또는 새 번호):`, orders[orders.length - 1] || '');
+  if (choice === null) return;
+  const orderKey = String(choice).trim();
+  if (!orderKey) { alert('주문번호가 필요합니다'); return; }
+  // 상품ID = {주문}_{maxN+1}
+  let maxN = 0;
+  const esc = orderKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^' + esc + '_(\\d+)$');
+  (state.products || []).forEach(p => { const m = String((p.fields || {})['상품ID'] || '').match(re); if (m) maxN = Math.max(maxN, parseInt(m[1], 10)); });
+  const newSid = orderKey + '_' + (maxN + 1);
+  // 기존 주문의 Order 링크 상속(있으면 — 같은 주문 레코드에 연결)
+  const sibling = (state.products || []).find(p => groupKeyOf((p.fields || {})['상품ID']) === orderKey);
+  const orderLink = sibling && Array.isArray(sibling.fields['Order']) ? sibling.fields['Order'] : [];
+  const tempId = 'new_' + Date.now() + '_' + (maxN + 1);
+  const newP = { id: tempId, _isNew: true, fields: {
+    '상품ID': newSid, 'Order': orderLink,
+    'Description': '', '통관품명_영문': '', '통관품명_한글': '', 'Material': '', 'HS코드': '', '적용FTA': '없음',
+    '박스번호': '', '수량': 1, '단가CNY': 0, '합계CNY': 0, '단가USD': 0, '합계USD': 0,
+    '관세사메모': '수동 추가',
+  } };
+  // 같은 주문 끝에 삽입(없으면 맨 끝)
+  let idx = -1;
+  for (let i = state.products.length - 1; i >= 0; i--) { if (groupKeyOf((state.products[i].fields || {})['상품ID']) === orderKey) { idx = i; break; } }
+  if (idx >= 0) state.products.splice(idx + 1, 0, newP); else state.products.push(newP);
+  renderProducts(); renderBoxes && renderBoxes(); refreshAll && refreshAll();
+  // 발행 사서함 경고(삭제와 대칭)
+  const sh = state.shipment.fields || {};
+  const published = ['인보이스완료', '통관중', '통관완료', '배송중', '출고완료'].includes(sh['상태'] || '') || String(sh['BL번호'] || '').trim();
+  if (published) toastWarn && toastWarn('발행 완료 사서함에 제품 추가 — 인보이스/CO 재발행이 필요할 수 있습니다.', { title: '⚠ 서류 불일치' });
+  toastSuccess && toastSuccess(`제품 행 추가 (${newSid}) — 영문명·HS·수량·단가 입력 후 [Airtable에 저장]. 저장 후 📷 사진 교체 가능.`, { title: '➕ 제품 추가' });
 }
 // [v3.2.114] stale-overwrite 가드용 — 통관/청구 직결 필드 지문. 로드 baseline ↔ 저장 직전 Airtable 비교.
 const _PROD_GUARD_FIELDS = ['수량', '적용FTA', '박스번호', '단가USD', '합계CNY', 'Description', 'Material', 'HS코드'];
