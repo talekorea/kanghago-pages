@@ -319,7 +319,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.157</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.158</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -440,7 +440,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.157</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.158</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -5948,9 +5948,9 @@ async function splitProductRow(pid) {
     '적용FTA': f['적용FTA'] || '없음', '박스번호': _boxNumsToStr(newNums), '수량': newQty,
     '단가CNY': unitCny, '합계CNY': newCny,
     '단가USD': _rate ? unitCny * _rate : 0, '합계USD': _rate ? newCny * _rate : 0,
-    // [v3.2.155] ★부모 관세사확정 상속 — 분할은 박스/수량만 나눔. 영문명/HS/재질/적용FTA는 같은 제품이라 부모 확정값 잠금 유지(권위 위반·saveAll 우회·학습오염 차단).
-    //   확정=true여도 수량/박스/단가(isSplitEditable)는 편집 가능(분할 목적). 박스/수량 재확정은 _markBoxDirty(별개).
-    '관세사확정': f['관세사확정'] === true,
+    // [v3.2.158] ★자식 = 미확정(관세사확정 미설정=false). 박스2는 다른 내용(부품·여분)일 수 있어 직원이 사진/영문명/재질 수정 → 관세사 HS 결정·확정.
+    //   영문명·재질·HS·제품링크·사진은 위에서 부모값 복사(디폴트) + 미확정이라 편집 가능. 부모(박스1)는 안 건드림 → 확정값 보존(우회 아님, 자식은 별개 record).
+    //   (v3.2.155의 관세사확정 상속=잠금은 2박스 다른내용 시나리오를 막아 폐기. 학습 broadcast는 agent.js learnFromConfirmation ProductHistory 제외로 차단.)
     '관세사메모': `수동분할 (원본 ${sid})`,
   };
   if (f['제품링크']) childFields['제품링크'] = f['제품링크'];

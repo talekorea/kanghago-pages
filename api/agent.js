@@ -396,9 +396,10 @@ async function learnFromConfirmation(pd) {
   try {
     const desc = String(pd.영문명 || '').trim();
     const code = String(pd.HS코드 || '').trim();
-    // [v3.2.155] 분할 자식(_s)은 HSMapping 학습도 제외(부모 영문명/재질 복사 → 오염 방지).
-    if (isSplitChild) { console.warn('[learn] 분할 자식 HSMapping 제외:', sid); }
-    else if (desc && code) {
+    // [v3.2.158] ★분할 자식도 HSMapping 학습 허용 — 관세사가 자식(박스2) HS 확정 시 영문명+재질→HS 학습.
+    //   broadcast 오염은 ProductHistory(제품링크 1→다) 경로에서만 발생 → 그건 위에서 isSplitChild 제외(차단) 유지.
+    //   HSMapping은 (영문명+재질) 이름 키라 broadcast 메커니즘 없음 — 직원이 입력한 정확한 값 학습(정당). (v3.2.155 분할자식 제외 폐기.)
+    if (desc && code) {
       const fields = {
         '키': makeHsKey(desc, pd.Material),
         'Description': desc,
