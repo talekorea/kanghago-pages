@@ -321,8 +321,8 @@
       shipment = data.shipment; products = data.products || []; customer = data.customer || null;
       _loadedProducts = JSON.parse(JSON.stringify(products)); _loadedCargoSig = _cargoSig(products);   // [v3.2.146 ②] 화물 서명 스냅샷
       const orders = data.orders || [];
-      document.getElementById('shipTitle').textContent = `🛃 ${shipment.fields['사서함']} 작업`;
-      document.getElementById('mailbox').textContent = shipment.fields['사서함'];
+      document.getElementById('shipTitle').textContent = `🛃 ${fmtMailbox(shipment.fields['사서함'])} 작업`;
+      document.getElementById('mailbox').textContent = fmtMailbox(shipment.fields['사서함']);
       // v3.2.23: 헤더 가운데 고객 라벨 채움 — 회원명 + 회사명 (data.customer 있으면)
       const cf = (data.customer && data.customer.fields) || {};
       const custName = cf['회원명'] || shipment.fields['수취_수취인'] || '';
@@ -1556,7 +1556,7 @@
       }
     } catch (e) { toast('최신 확인 실패 — 새로고침 후 다시 시도: ' + (e.message || e), 'err'); return; }
     // 3. 통과 — 사서함 확정
-    if (!confirm(shipment.fields['사서함'] + ' 사서함을 관세사확정완료로 전환합니다.\n진행하시겠습니까?')) return;
+    if (!confirm(fmtMailbox(shipment.fields['사서함']) + ' 사서함을 관세사확정완료로 전환합니다.\n진행하시겠습니까?')) return;
     try {
       await api('POST', '', { op: 'confirm_shipment', shipmentId: shipment.id });
       toast('✓ 사서함 관세사 확정 완료');
@@ -1571,6 +1571,8 @@
 
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function escapeAttr(s) { return escapeHtml(s); }
+  // [v3.2.159] 사서함 표시용 — "AP번호-날짜" → "날짜-AP번호"(표시만, ID·매칭·파일명 키 불변).
+  function fmtMailbox(name) { const s = String(name == null ? '' : name); const x = s.match(/^(.+)-(\d{6})$/); return x ? (x[2] + '-' + x[1]) : s; }
 
   // ===== 공용 이미지 라이트박스 (세 화면 통일: 도구·staff-tool·agent-shipment) =====
   // 사진 클릭 = 확대만. 외부 의존 없음(순수 DOM/CSS). 함수명 openImgZoom(url) 통일.

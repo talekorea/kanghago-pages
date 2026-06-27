@@ -119,6 +119,12 @@
     if (c && m) return c + ' (' + m + ')';
     return c || m || '';
   }
+  // [v3.2.159] 사서함 표시용 — "AP번호-날짜" → "날짜-AP번호"(표시만, 데이터·매칭 키 불변).
+  function fmtMailbox(name) {
+    const s = String(name == null ? '' : name);
+    const x = s.match(/^(.+)-(\d{6})$/);
+    return x ? (x[2] + '-' + x[1]) : s;
+  }
 
   async function init() {
     try {
@@ -300,7 +306,7 @@
         kgT += r.kgSum; cbmT += r.cbmSum; ctnT += r.boxCount;
         const warn = r.missingMeasure ? ' style="background:#fff3e0;"' : '';
         return `<tr${warn}><td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.shipDate)}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.mailbox)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(fmtMailbox(r.mailbox))}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(custLabel(r.member, r.company))}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#555;">${esc(atLabel(r.agentTypes))}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#555;">${esc(smLabel(r.shipMethods))}</td>
@@ -354,7 +360,7 @@
       const mark = (arr, label) => arr.length ? `<span style="color:#0a7b40;font-weight:700;">✅${arr.length > 1 ? '×' + arr.length : ''}</span>` : `<span style="color:#c0392b;font-weight:700;">❌${label}</span>`;
       const trs = rows.map(r => `<tr style="background:${r.ready ? '#fff' : '#fff3e0'};">
         <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.shipDate)}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.mailbox)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(fmtMailbox(r.mailbox))}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${mark(r.finalIp, '')}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${mark(r.co, '')}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${mark(r.bl, '')}</td>
@@ -499,7 +505,7 @@
     const el = document.getElementById('licBatchResult');
     if (!el) return;
     const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const opts = sel => '<option value="">— 사서함 선택 —</option>' + agentBookingRows.map(r => `<option value="${esc(r.id)}"${r.id === sel ? ' selected' : ''}>${esc(r.mailbox)}${r.blNo ? ' (BL:' + esc(r.blNo) + ')' : ''}</option>`).join('');
+    const opts = sel => '<option value="">— 사서함 선택 —</option>' + agentBookingRows.map(r => `<option value="${esc(r.id)}"${r.id === sel ? ' selected' : ''}>${esc(fmtMailbox(r.mailbox))}${r.blNo ? ' (BL:' + esc(r.blNo) + ')' : ''}</option>`).join('');
     const cColor = { green: '#0a7b40', red: '#c0392b' };
     const trs = licBatchItems.map((it, i) => `<tr>
       <td style="padding:5px 7px;border-bottom:1px solid #eee;font-size:11px;word-break:break-all;">${esc(it.filename)}</td>
