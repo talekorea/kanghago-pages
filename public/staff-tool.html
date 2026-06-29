@@ -323,7 +323,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.166</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.167</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -444,7 +444,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.166</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.167</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1725,7 +1725,8 @@
 
 <!-- [v3.2.94] 배차 마스터 모달 — 읽기전용 전체 현황 + Excel. 입력은 부킹 모달에서. -->
 <div id="dispatchMasterModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.7); z-index:9999; padding:14px; overflow:auto;">
-  <div style="background:#fff; border-radius:12px; padding:18px 20px; max-width:98vw; margin:0 auto;">
+  <!-- [v3.2.167] 전체화면 — 96vw×94vh flex 컬럼, 표 영역(dispatchMasterBox)이 flex:1로 시원하게 + 내부 스크롤 -->
+  <div style="background:#fff; border-radius:12px; padding:18px 20px; width:96vw; max-width:none; height:94vh; margin:0 auto; display:flex; flex-direction:column;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
       <h3 style="margin:0; font-size:17px; color:#5a4a2a;">🚚 배차 마스터 <span style="font-size:11px; color:#888; font-weight:400;">(읽기전용 · 입력은 📦 부킹 요약에서)</span></h3>
       <button onclick="document.getElementById('dispatchMasterModal').style.display='none'" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888;">×</button>
@@ -1747,7 +1748,7 @@
       <button class="secondary small" onclick="exportDispatchExcel()" style="padding:7px 14px; background:#1b7a44; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700;">⬇ Excel(현재 보기)</button>
       <span id="dmLoading" style="font-size:11px; color:#888;"></span>
     </div>
-    <div id="dispatchMasterBox" style="min-height:80px; overflow-x:auto;"><div style="padding:18px; text-align:center; color:#999;">시작 선적일·범위 선택 후 [조회].</div></div>
+    <div id="dispatchMasterBox" style="flex:1; min-height:80px; overflow:auto;"><div style="padding:18px; text-align:center; color:#999;">시작 선적일·범위 선택 후 [조회].</div></div>
   </div>
 </div>
 
@@ -16820,7 +16821,8 @@ function renderDispatchMaster() {
       }).join('') + '</tr>';
     });
   });
-  box.innerHTML = `<div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:11px; table-layout:fixed;">${colgroup}<thead>${thead}</thead><tbody>${body}</tbody></table></div>`;
+  // [v3.2.167] 래퍼 div 제거 — dispatchMasterBox(flex:1 overflow:auto)가 단일 스크롤 컨테이너 → sticky thead(top:0) 작동.
+  box.innerHTML = `<table style="border-collapse:collapse; font-size:11px; table-layout:fixed;">${colgroup}<thead>${thead}</thead><tbody>${body}</tbody></table>`;
 }
 
 async function exportDispatchExcel() {
