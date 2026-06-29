@@ -65,6 +65,11 @@
   header.v3 a { color:#ffd87a; text-decoration:none; font-size:12px; }
   header.v3 a:hover { text-decoration:underline; }
   td .confirmed { color:#1b5e20; font-size:11px; font-weight:700; }
+  /* [v3.2.168] HS 미입력 주문 헤더 강조+깜박임(주문 단위만) */
+  tr.group-header.hs-need td { box-shadow: inset 4px 0 0 #e8830c; animation: hsNeedBlink 1.3s ease-in-out infinite; }
+  @keyframes hsNeedBlink { 0%,100% { background:var(--ivory); } 50% { background:#ffe08a; } }
+  #hsNeedBanner { display:none; background:#fff3cd; border:1px solid #e8830c; color:#8a5a00; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:13px; font-weight:700; align-items:center; gap:10px; }
+  #hsNeedBanner button { background:#e8830c; color:#fff; border:none; border-radius:6px; padding:6px 14px; font-weight:700; cursor:pointer; font-size:12px; }
   .err { padding:14px 18px; background:#fff5f5; border:1px solid #f5c2c7; color:#c0392b;
     border-radius:8px; margin-bottom:16px; }
   .toast { position:fixed; top:20px; right:20px; padding:12px 16px; border-radius:6px;
@@ -139,6 +144,8 @@
         </div>
       </div>
     </div>
+    <!-- [v3.2.168] HS 입력 필요 주문 배너 + 점프(순회) -->
+    <div id="hsNeedBanner"><span id="hsNeedText"></span> <button type="button" onclick="jumpToNextHsNeed()">📍 미입력 주문으로 이동</button></div>
     <table id="prodTable">
       <thead>
         <tr>
@@ -1024,7 +1031,10 @@
       if (!isNaN(na) && !isNaN(nb)) return na - nb;   // 주문번호 숫자 오름차순(과거 위)
       return String(a).localeCompare(String(b));
     });
-    const out = []; keys.forEach(k => map.get(k).forEach(p => out.push(p))); return out;
+    // [v3.2.168] ★그룹 내 상품ID 사전순(numeric) 정렬 → 부모(_34)-자식(_s1·_s1_s2…) 인접(흩어짐 해결). 구버전=링크순(생성순)이라 분할 자식 흩어짐.
+    const out = []; keys.forEach(k => map.get(k)
+      .sort((a, b) => String((a.fields || {})['상품ID'] || '').localeCompare(String((b.fields || {})['상품ID'] || ''), undefined, { numeric: true }))
+      .forEach(p => out.push(p))); return out;
   }
   function _gsel(gk) { return (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(gk) : gk; }
   function summarizeGroupHs(values) {
@@ -1037,7 +1047,10 @@
     const items = ordered.filter(p => groupKeyOf((p.fields || {})['상품ID']) === gk);
     const label = gk === '__기타' ? '기타/미분류' : gk;
     const hs = summarizeGroupHs(items.map(p => (p.fields || {})['HS코드'] || ''));
-    return `<tr class="group-header" data-group-header="${gk}" style="cursor:pointer; background:var(--ivory);" onclick="toggleGroup('${gk}')">`
+    // [v3.2.168] ★HS 미입력(빈값) 제품이 하나라도 있는 주문 = "수정 필요" → 헤더 강조+깜박임(주문 단위만, 제품 행은 안 깜박).
+    //   분할 자식은 항상 미확정이라 '미확정 전부'는 과다 → ★HS 빈값 기준(품명·HS 정할 것)으로 한정.
+    const needsHs = items.some(p => !String((p.fields || {})['HS코드'] || '').trim());
+    return `<tr class="group-header${needsHs ? ' hs-need' : ''}" data-group-header="${gk}" data-hs-need="${needsHs ? 1 : 0}" style="cursor:pointer; background:var(--ivory);" onclick="toggleGroup('${gk}')">`
       + `<td colspan="13" style="font-weight:700; padding:9px 12px; border-top:2px solid var(--gold);">`
       +   `<span style="float:right; font-weight:400; display:inline-flex; gap:4px; align-items:center;" onclick="event.stopPropagation();">`
       +     `<input class="grp-hs-input" data-grp="${gk}" placeholder="HS 일괄 (0000.00-0000)" style="width:150px; font-size:12px; padding:2px 6px; border:1px solid #ccc; border-radius:4px;" onclick="event.stopPropagation();" onkeydown="if(event.key==='Enter'){event.preventDefault();event.stopPropagation();applyGroupHs('${gk}');}" />`
@@ -1318,6 +1331,24 @@
     });
     setupAgentAutocomplete();  // 작업2·3: 자동완성 위임 등록 (1회)
     // v3.2.29: construction select 폐기 — toggleConstructionVisibility 호출 제거
+    updateHsNeedBanner();   // [v3.2.168] HS 입력 필요 주문 배너 갱신
+  }
+  // [v3.2.168] HS 미입력 주문 수 배너 + 점프(순회). data-hs-need=1 헤더 기준.
+  function updateHsNeedBanner() {
+    const banner = document.getElementById('hsNeedBanner'); if (!banner) return;
+    const need = document.querySelectorAll('#prodBody tr.group-header[data-hs-need="1"]');
+    if (!need.length) { banner.style.display = 'none'; return; }
+    const txt = document.getElementById('hsNeedText'); if (txt) txt.textContent = `⚠ HS 입력 필요 주문 ${need.length}건 — 품명·HS를 확정해 주세요.`;
+    banner.style.display = 'flex';
+    window._hsNeedIdx = 0;
+  }
+  function jumpToNextHsNeed() {
+    const need = document.querySelectorAll('#prodBody tr.group-header[data-hs-need="1"]');
+    if (!need.length) return;
+    window._hsNeedIdx = (window._hsNeedIdx == null ? 0 : window._hsNeedIdx) % need.length;
+    const el = need[window._hsNeedIdx];
+    window._hsNeedIdx = (window._hsNeedIdx + 1) % need.length;   // 다음 누르면 순회
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
   }
 
   // ===== 작업2·3: 품명↔HS 자동완성 (도구 §3 패턴 이식) =====
