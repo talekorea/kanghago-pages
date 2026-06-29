@@ -323,7 +323,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.164</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.165</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -444,7 +444,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.164</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.165</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1730,10 +1730,17 @@
       <h3 style="margin:0; font-size:17px; color:#5a4a2a;">🚚 배차 마스터 <span style="font-size:11px; color:#888; font-weight:400;">(읽기전용 · 입력은 📦 부킹 요약에서)</span></h3>
       <button onclick="document.getElementById('dispatchMasterModal').style.display='none'" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888;">×</button>
     </div>
+    <div style="font-size:11px; color:#777; margin-bottom:6px;">💡 선적일(실제출고요청일) 기준. <strong>월별(이번달/지난달/월선택)</strong>로 그 달 전체 사서함을 봅니다 — <strong>배차 정보 없어도 표시</strong>(기사·차량·배차비 빈칸, 업데이트되면 반영). 📋 전체 보기 = 23칼럼.</div>
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:10px; font-size:12px;">
       <div><label style="display:block; color:#666;">시작 선적일</label><input type="date" id="dmStart" style="padding:6px 8px; border:1px solid #ccc; border-radius:5px;"></div>
       <div><label style="display:block; color:#666;">범위(일)</label><select id="dmDays" style="padding:6px 8px; border:1px solid #ccc; border-radius:5px;"><option value="1">그날만</option><option value="3">3일</option><option value="8" selected>8일</option><option value="15">15일</option></select></div>
       <button class="primary small" onclick="fetchDispatchMaster()" style="padding:7px 16px; background:#5a4a2a; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700;">조회</button>
+      <!-- [v3.2.165] 월별 조회 — 선적일(실제출고요청일) 기준 그 달 전체 -->
+      <div style="border-left:2px solid #c9973a; padding-left:10px;"><label style="display:block; color:#666;">월별(선적일)</label>
+        <input type="month" id="dmMonth" onchange="fetchDispatchMonth(this.value)" style="padding:6px 8px; border:1px solid #ccc; border-radius:5px;">
+        <button class="secondary small" onclick="fetchDispatchMonth('this')" style="padding:6px 10px; margin-left:3px; background:#f3ece0; color:#5a4a2a; border:1px solid #c9973a; border-radius:5px; cursor:pointer;">📅 이번달</button>
+        <button class="secondary small" onclick="fetchDispatchMonth('last')" style="padding:6px 10px; margin-left:3px; background:#f3ece0; color:#5a4a2a; border:1px solid #c9973a; border-radius:5px; cursor:pointer;">지난달</button>
+      </div>
       <div><label style="display:block; color:#666;">배차상태</label><select id="dmStatus" onchange="renderDispatchMaster()" style="padding:6px 8px; border:1px solid #ccc; border-radius:5px;"><option value="">전체</option><option value="대기">대기</option><option value="완료">완료</option></select></div>
       <div><label style="display:block; color:#666;">검색(사서함·고객·BL)</label><input id="dmSearch" oninput="renderDispatchMaster()" placeholder="검색어" style="padding:6px 8px; border:1px solid #ccc; border-radius:5px; width:160px;"></div>
       <button id="dmFullViewBtn" class="secondary small" onclick="toggleDispatchFullView()" style="padding:7px 14px; background:#1B5E9A; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700;" title="전체 보기 = 사장 지정 23칼럼(한 사서함=한 행). 다시 누르면 배차 보기.">📋 전체 보기(23칼럼)</button>
@@ -16683,9 +16690,24 @@ function openDispatchMaster() {
   const s = document.getElementById('dmStart'); if (s && !s.value) s.value = new Date().toISOString().slice(0, 10);
 }
 
-async function fetchDispatchMaster() {
+// [v3.2.165] ★월별 조회 — 선적일(Orders.실제출고요청일) 기준 그 달 전체. 'this'/'last'/'YYYY-MM'.
+//   월1일 + 그달 일수로 dmStart/범위 세팅 → 기존 fetchDispatchMaster(daysOverride) range 로직 재사용(무영향).
+//   ★배차 정보 없어도 그 달 사서함 전부 표시(배차 필터 없음 — 진단 확인). 빈 칼럼 빈칸.
+function fetchDispatchMonth(which) {
+  const now = new Date();
+  let y, m;   // m: 1~12
+  if (which === 'this') { y = now.getFullYear(); m = now.getMonth() + 1; }
+  else if (which === 'last') { const d = new Date(now.getFullYear(), now.getMonth() - 1, 1); y = d.getFullYear(); m = d.getMonth() + 1; }
+  else { const mm = String(which || (document.getElementById('dmMonth') || {}).value || '').match(/^(\d{4})-(\d{2})$/); if (!mm) { (toastWarn || alert)('월을 선택하세요 (YYYY-MM)'); return; } y = +mm[1]; m = +mm[2]; }
+  const daysInMonth = new Date(y, m, 0).getDate();   // 그 달 일수(28~31)
+  const start = `${y}-${String(m).padStart(2, '0')}-01`;
+  const sEl = document.getElementById('dmStart'); if (sEl) sEl.value = start;   // UI 반영
+  const mEl = document.getElementById('dmMonth'); if (mEl) mEl.value = `${y}-${String(m).padStart(2, '0')}`;
+  return fetchDispatchMaster(daysInMonth);   // 그 달 1일~말일 range
+}
+async function fetchDispatchMaster(daysOverride) {
   const start = (document.getElementById('dmStart') || {}).value || new Date().toISOString().slice(0, 10);
-  const days = isoDayList(start, parseInt((document.getElementById('dmDays') || {}).value, 10) || 8);
+  const days = isoDayList(start, daysOverride || parseInt((document.getElementById('dmDays') || {}).value, 10) || 8);
   dispatchState.dateLabel = days.length > 1 ? `${days[0]}~${days[days.length - 1]}` : days[0];
   const loading = document.getElementById('dmLoading');
   const box = document.getElementById('dispatchMasterBox');
