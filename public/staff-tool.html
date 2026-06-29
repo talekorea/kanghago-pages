@@ -323,7 +323,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.165</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.166</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -444,7 +444,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.165</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.166</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -16798,24 +16798,29 @@ function renderDispatchMaster() {
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const badge = s => s === '완료' ? '<span style="background:#e6f4ea; color:#1b7a44; padding:1px 7px; border-radius:8px; font-weight:700;">완료</span>' : '<span style="background:#fdecea; color:#c0392b; padding:1px 7px; border-radius:8px; font-weight:700;">대기</span>';
   // 선적일 그룹
+  // [v3.2.166] ★단일 테이블 + 선적일 구분행 + table-layout:fixed + colgroup 고정 너비 →
+  //   모든 선적일 그룹의 같은 칼럼이 같은 세로 위치(라인 정렬). 긴 텍스트는 너비 내 말줄임(ellipsis)+title 호버.
+  const cols = _dispatchCols();
+  const W = { shipDate:80, cnFwd:60, krFwd:60, bonded:92, taxpayer:120, member:88, blNo:112, tape:52, mark:108, boxCount:48, cbmSum:62, kgSum:62, cbmPer:64, kgPer:64, seaCost:82, seaRev:82, customsWh:74, method:62, phone:104, dest:170, delivCost:78, delivRev:78, driver:150, box:112, etpr:72, customsDay:72, estCost:82, realCost:82, dispStat:52, dispDone:74, carNo:84, driverTel:92, tracking:112, memo:130 };
+  const wOf = k => (W[k] || 82);
+  const colgroup = `<colgroup>${cols.map(c => `<col style="width:${wOf(c.key)}px;">`).join('')}</colgroup>`;
+  const thead = `<tr>${cols.map(c => `<th style="padding:5px 7px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; position:sticky; top:0; background:#5a4a2a; color:#fff; z-index:2;">${c.label}</th>`).join('')}</tr>`;
   const groups = {}; rows.forEach(r => { (groups[r.shipDate || '미상'] = groups[r.shipDate || '미상'] || []).push(r); });
-  let html = '';
-  const thead = `<tr style="background:#5a4a2a; color:#fff; position:sticky; top:0;">${_dispatchCols().map(c => `<th style="padding:5px 7px; text-align:left; white-space:nowrap;">${c.label}</th>`).join('')}</tr>`;
+  let body = '';
   Object.keys(groups).sort().forEach(day => {
     const g = groups[day];
     const cbm = g.reduce((s, r) => s + (r.cbmSum || 0), 0), bx = g.reduce((s, r) => s + (r.boxCount || 0), 0);
-    html += `<div style="margin:10px 0 4px; font-size:13px; font-weight:700; color:#5a4a2a;">📅 ${esc(day)} · ${g.length}건 · CBM ${cbm.toFixed(3)} · 박스 ${bx}</div>`;
-    html += `<table style="width:100%; border-collapse:collapse; font-size:11px; white-space:nowrap;"><thead>${thead}</thead><tbody>`;
+    body += `<tr><td colspan="${cols.length}" style="background:#f3ece0; font-weight:700; color:#5a4a2a; padding:6px 8px; border-top:2px solid #c9973a;">📅 ${esc(day)} · ${g.length}건 · CBM ${cbm.toFixed(3)} · 박스 ${bx}</td></tr>`;
     g.forEach(r => {
-      html += '<tr style="border-bottom:1px solid #eee;">' + _dispatchCols().map(c => {
+      body += '<tr style="border-bottom:1px solid #eee;">' + cols.map(c => {
         const v = c.get(r);
-        if (c.key === 'dispStat') return `<td style="padding:4px 7px; text-align:center;">${badge(v)}</td>`;
-        return `<td style="padding:4px 7px;${c.key === 'box' || c.key === 'blNo' ? " font-family:ui-monospace,monospace;" : ''}">${esc(v)}</td>`;
+        if (c.key === 'dispStat') return `<td style="padding:4px 7px; text-align:center; overflow:hidden;">${badge(v)}</td>`;
+        const mono = (c.key === 'box' || c.key === 'blNo') ? ' font-family:ui-monospace,monospace;' : '';
+        return `<td title="${esc(v)}" style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;${mono}">${esc(v)}</td>`;
       }).join('') + '</tr>';
     });
-    html += '</tbody></table>';
   });
-  box.innerHTML = html;
+  box.innerHTML = `<div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:11px; table-layout:fixed;">${colgroup}<thead>${thead}</thead><tbody>${body}</tbody></table></div>`;
 }
 
 async function exportDispatchExcel() {
