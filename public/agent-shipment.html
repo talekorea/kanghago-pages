@@ -1047,9 +1047,10 @@
     const items = ordered.filter(p => groupKeyOf((p.fields || {})['상품ID']) === gk);
     const label = gk === '__기타' ? '기타/미분류' : gk;
     const hs = summarizeGroupHs(items.map(p => (p.fields || {})['HS코드'] || ''));
-    // [v3.2.168] ★HS 미입력(빈값) 제품이 하나라도 있는 주문 = "수정 필요" → 헤더 강조+깜박임(주문 단위만, 제품 행은 안 깜박).
-    //   분할 자식은 항상 미확정이라 '미확정 전부'는 과다 → ★HS 빈값 기준(품명·HS 정할 것)으로 한정.
-    const needsHs = items.some(p => !String((p.fields || {})['HS코드'] || '').trim());
+    // [v3.2.170] ★확인 필요 = HS 빈값 OR 미확정(관세사확정≠true) 제품이 하나라도 있는 주문 → 헤더 강조+깜박임(주문 단위만).
+    //   v3.2.168은 HS 빈값만 기준 → 분할 자식(_s)이 부모복사로 HS 보유 시 미확정인데 안 깜박여 관세사가 본체/파츠를 놓침.
+    //   기준을 미확정까지 확대 → 분할 자식 있는 주문도 깜박임. 단 HS 다 입력+전부 확정된 주문은 조용(과다 방지).
+    const needsHs = items.some(p => { const ff = p.fields || {}; return !String(ff['HS코드'] || '').trim() || ff['관세사확정'] !== true; });
     return `<tr class="group-header${needsHs ? ' hs-need' : ''}" data-group-header="${gk}" data-hs-need="${needsHs ? 1 : 0}" style="cursor:pointer; background:var(--ivory);" onclick="toggleGroup('${gk}')">`
       + `<td colspan="13" style="font-weight:700; padding:9px 12px; border-top:2px solid var(--gold);">`
       +   `<span style="float:right; font-weight:400; display:inline-flex; gap:4px; align-items:center;" onclick="event.stopPropagation();">`
@@ -1338,7 +1339,7 @@
     const banner = document.getElementById('hsNeedBanner'); if (!banner) return;
     const need = document.querySelectorAll('#prodBody tr.group-header[data-hs-need="1"]');
     if (!need.length) { banner.style.display = 'none'; return; }
-    const txt = document.getElementById('hsNeedText'); if (txt) txt.textContent = `⚠ HS 입력 필요 주문 ${need.length}건 — 품명·HS를 확정해 주세요.`;
+    const txt = document.getElementById('hsNeedText'); if (txt) txt.textContent = `⚠ 확인 필요 주문 ${need.length}건 — HS 미입력·미확정 제품이 있는 주문입니다. 품명·HS 확인 후 확정해 주세요.`;
     banner.style.display = 'flex';
     window._hsNeedIdx = 0;
   }
