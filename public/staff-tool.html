@@ -323,7 +323,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.169</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.171</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -444,7 +444,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.169</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.171</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -5287,6 +5287,33 @@ function renderProducts() {
           } catch (e) {
             inp.style.borderColor = '#c0392b'; inp.title = '저장 실패';
             if (typeof toastError === 'function') toastError(`단가 저장 실패 (${f['상품ID'] || p.id}): ${e.message || e} — [Airtable에 저장]으로 재시도`);
+          }
+        });
+      }
+      // [v3.2.171] ★영문명·재질 자동저장 — change(blur/enter) 시 Products PATCH. (직원이 [Airtable에 저장] 안 눌러 미저장 → 관세사 미반영 사고 처방.)
+      //   영문명 = 통관품명_영문 + Description 둘 다 저장(saveAll 규약 동일 — 관세사 페이지는 Description 읽음). 재질 = Material.
+      //   ★확정 제품 skip(readonly 우회 2중 안전) + 신규/분할 신규행(_isNew, temp id) skip → saveAll create 경로. change=blur/enter(글자마다 아님, rate limit 회피).
+      if (inp.dataset.field === 'Description' || inp.dataset.field === 'Material') {
+        inp.addEventListener('change', async () => {
+          if (p._isNew) return;                  // 미저장 분할행 temp id → saveAll create에서 저장
+          if (f['관세사확정'] === true) return;   // ★확정값 보호(readonly 우회 2중 안전)
+          const isMat = inp.dataset.field === 'Material';
+          const val = (inp.value || '').trim();
+          const _pf = {};
+          if (isMat) { f['Material'] = val; _pf['Material'] = val; }
+          else { f['Description'] = val; f['통관품명_영문'] = val; _pf['Description'] = val; _pf['통관품명_영문'] = val; }  // 관세사 페이지는 Description 읽음 → 동기
+          const _onTitle = inp.title;
+          inp.style.borderColor = '#e8a04c'; inp.title = '저장 중...';
+          try {
+            await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields: _pf, typecast: true });
+            if (state._prodBaseline) state._prodBaseline[p.id] = _prodFingerprint(f);   // 본인 저장이 stale 가드 트립 방지
+            inp.style.borderColor = '#1b5e20'; inp.title = '저장됨 ✓';
+            setTimeout(() => { inp.style.borderColor = ''; inp.title = _onTitle || ''; }, 1500);
+            if (typeof toastSuccess === 'function') toastSuccess(`${isMat ? '재질' : '영문명'} 저장: ${(f['상품ID'] || '')} = ${val || '(빈값)'}`);
+          } catch (e) {
+            inp.style.borderColor = '#c0392b'; inp.title = '저장 실패';
+            state.modifiedProducts && state.modifiedProducts.add(p.id);   // 재시도 — [Airtable에 저장]로 일괄 재시도 가능
+            if (typeof toastError === 'function') toastError(`${isMat ? '재질' : '영문명'} 저장 실패 (${f['상품ID'] || p.id}): ${e.message || e} — [Airtable에 저장]으로 재시도`);
           }
         });
       }
