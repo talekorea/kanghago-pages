@@ -323,7 +323,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.168</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.169</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -444,7 +444,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.168</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.169</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -5919,10 +5919,16 @@ function _boxNumsToStr(nums) {
   const contiguous = a.every((v, i) => i === 0 || v === a[i - 1] + 1);
   return (contiguous && a.length > 1) ? `${a[0]}-${a[a.length - 1]}` : a.join(',');
 }
-// [v3.2.143] ★박스별 나누기 — 한 제품을 박스 기준으로 2행 분할(현장 엑셀 가공 대체).
-//   원본=남는 박스 / 새 행=분리 박스(_s{n} 상품ID, 관세사확정=false). 수량·합계CNY는 박스 비례 기본값(이후 행에서 개별 편집).
+// [v3.2.169] ★박스별 나누기 — 한 제품을 박스 기준으로 분할(현장 가공 대체).
+//   ★범위(33-39 또는 33~39) → ★박스마다 자식 1개(N개 박스 = N개 자식). 단일(33)이면 1개.
+//   모(부모) = 첫 박스(입력 범위 외) 유지. 자식 _s{n} 상품ID, 관세사확정=false(미확정).
+//   ★수량 자동 배분 폐지 — 부모 수량 유지(안 깎음)·자식 수량 0(직원이 본체/파츠 수량 직접 입력).
 //   합집합=원본 검증(누락·중복 차단). 새 품목이 CO에 없으면 runCoCompare가 불일치로 잡아 발행 게이트가 차단.
 async function splitProductRow(pid) {
+  // [v3.2.169] ★스크롤 좌표 — 함수 진입 시(prompt 전) 저장 → 끝에서 복원. prompt 닫힘·async 렌더가 맨 위로 리셋하는 것 방지(renderProducts 자체 복원은 prompt 후 0을 읽어 무효).
+  const _swrap0 = document.getElementById('productsTableWrap');
+  const _sTop0 = _swrap0 ? _swrap0.scrollTop : 0;
+  const _winY0 = window.scrollY || window.pageYOffset || 0;
   const p = (state.products || []).find(x => x.id === pid);
   if (!p) { toastWarn && toastWarn('제품을 찾을 수 없습니다'); return; }
   const f = p.fields || {};
@@ -5930,10 +5936,10 @@ async function splitProductRow(pid) {
   const origBoxRaw = String(f['박스번호'] || '').trim();
   const origNums = parseBoxNumbers(origBoxRaw).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
   if (origNums.length < 2) { toastWarn && toastWarn(`박스가 2개 이상이어야 분할 가능합니다 (현재: ${origBoxRaw || '없음'})`); return; }
-  const newBoxIn = prompt(`[박스별 나누기] ${f['Description'] || sid}\n현재 박스: ${origNums.join(', ')}\n\n새 행으로 분리할 박스번호 (예: 5 또는 4-5). 나머지는 원본에 남습니다.`, '');
+  const newBoxIn = prompt(`[박스별 나누기] ${f['Description'] || sid}\n현재 박스: ${origNums.join(', ')}\n\n새 행으로 분리할 박스번호 — 범위면 박스마다 1개 행 생성.\n예: 33-39 또는 33~39 → 7개 행(33·34·…·39 각 1개), 33 → 1개. 나머지는 원본에 남습니다.`, '');
   if (newBoxIn === null) return;
-  const newNums = parseBoxNumbers(newBoxIn).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
-  if (!newNums.length) { alert('박스번호 형식 오류 (예: 5 / 4-5 / 4,5)'); return; }
+  const newNums = parseBoxNumbers(String(newBoxIn).replace(/~/g, '-')).map(n => parseInt(n, 10)).filter(n => !isNaN(n)); // [v3.2.169] ~ → - (사장 표기 지원)
+  if (!newNums.length) { alert('박스번호 형식 오류 (예: 33 / 33-39 / 33~39 / 33,34)'); return; }
   const origSet = new Set(origNums), newSet = new Set(newNums);
   const outside = newNums.filter(n => !origSet.has(n));
   if (outside.length) { alert(`원본에 없는 박스는 분리할 수 없습니다: ${outside.join(', ')}\n(원본 박스: ${origNums.join(', ')})`); return; }
@@ -5942,61 +5948,69 @@ async function splitProductRow(pid) {
   // ★합집합=원본 검증(누락·중복 차단)
   const union = new Set([...remainNums, ...newNums]);
   if (union.size !== origSet.size || [...origSet].some(n => !union.has(n))) { alert('박스 합집합이 원본과 일치하지 않습니다 (누락/중복). 다시 확인하세요.'); return; }
-  // 수량 박스 비례 기본값(정수) — 이후 행에서 개별 편집 가능
-  const origQty = parseInt(f['수량'], 10) || 0;
-  const newQty = Math.round(origQty * newNums.length / origNums.length);
-  const remainQty = origQty - newQty;
   const unitCny = parseFloat(f['단가CNY']) || 0;
   const _rate = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
-  // 새 상품ID = {원본}_s{n}
-  let n = 1; const taken = new Set((state.products || []).map(x => String((x.fields || {})['상품ID'] || '')));
-  while (taken.has(sid + '_s' + n)) n++;
-  const newSid = sid + '_s' + n;
-  // [v3.2.148] ★분할 새 행 = 즉시 create(Airtable 레코드 생성) — 원본과 동일하게 이후 단가 blur 즉시저장 가능(불일치 제거).
-  const newCny = Math.round(unitCny * newQty * 100) / 100;
-  const childFields = {
-    '상품ID': newSid, 'Order': Array.isArray(f['Order']) ? f['Order'] : [],
-    'Description': f['Description'] || '', '통관품명_영문': f['통관품명_영문'] || f['Description'] || '',
-    '통관품명_한글': f['통관품명_한글'] || '', 'Material': f['Material'] || '', 'HS코드': f['HS코드'] || '',
-    '적용FTA': f['적용FTA'] || '없음', '박스번호': _boxNumsToStr(newNums), '수량': newQty,
-    '단가CNY': unitCny, '합계CNY': newCny,
-    '단가USD': _rate ? unitCny * _rate : 0, '합계USD': _rate ? newCny * _rate : 0,
-    // [v3.2.158] ★자식 = 미확정(관세사확정 미설정=false). 박스2는 다른 내용(부품·여분)일 수 있어 직원이 사진/영문명/재질 수정 → 관세사 HS 결정·확정.
-    //   영문명·재질·HS·제품링크·사진은 위에서 부모값 복사(디폴트) + 미확정이라 편집 가능. 부모(박스1)는 안 건드림 → 확정값 보존(우회 아님, 자식은 별개 record).
-    //   (v3.2.155의 관세사확정 상속=잠금은 2박스 다른내용 시나리오를 막아 폐기. 학습 broadcast는 agent.js learnFromConfirmation ProductHistory 제외로 차단.)
-    '관세사메모': `수동분할 (원본 ${sid})`,
-  };
-  if (f['제품링크']) childFields['제품링크'] = f['제품링크'];
-  if (f['이미지URL']) childFields['이미지URL'] = f['이미지URL'];
+  // [v3.2.169] ★박스마다 자식 1개 — newNums(예: 33,34,…,39) 순회. 상품ID = {원본}_s{n} (충돌 회피 증가).
+  //   ★수량 자동 배분 폐지: 자식 수량 0(직원이 본체/파츠 수량 직접 입력). 부모 수량은 아래에서 안 건드림(유지).
+  const taken = new Set((state.products || []).map(x => String((x.fields || {})['상품ID'] || '')));
+  let n = 1;
   const _imgUrl = f['이미지URL'] || ((f['상품이미지'] && f['상품이미지'][0]) ? f['상품이미지'][0].url : '');
-  if (_imgUrl) childFields['상품이미지'] = [{ url: _imgUrl }];
-  let realId;
+  const childPlans = newNums.slice().sort((a, b) => a - b).map(bx => {
+    while (taken.has(sid + '_s' + n)) n++;
+    const childSid = sid + '_s' + n; taken.add(childSid); n++;
+    // [v3.2.158] ★자식 = 미확정(관세사확정 미설정=false). 본체/파츠 등 다른 내용일 수 있어 직원이 품명·HS·수량·사진 수정 → 관세사 확정.
+    //   영문명·재질·HS·링크·사진은 부모값 복사(디폴트) + 미확정이라 편집 가능. 부모는 안 건드림 → 확정값 보존(자식은 별개 record).
+    const cf = {
+      '상품ID': childSid, 'Order': Array.isArray(f['Order']) ? f['Order'] : [],
+      'Description': f['Description'] || '', '통관품명_영문': f['통관품명_영문'] || f['Description'] || '',
+      '통관품명_한글': f['통관품명_한글'] || '', 'Material': f['Material'] || '', 'HS코드': f['HS코드'] || '',
+      '적용FTA': f['적용FTA'] || '없음', '박스번호': String(bx), '수량': 0,   // ★단일 박스 + 수량 0(직원 입력)
+      '단가CNY': unitCny, '합계CNY': 0,
+      '단가USD': _rate ? unitCny * _rate : 0, '합계USD': 0,
+      '관세사메모': `수동분할 (원본 ${sid}, 박스 ${bx})`,
+    };
+    if (f['제품링크']) cf['제품링크'] = f['제품링크'];
+    if (f['이미지URL']) cf['이미지URL'] = f['이미지URL'];
+    if (_imgUrl) cf['상품이미지'] = [{ url: _imgUrl }];
+    return cf;
+  });
+  // [v3.2.148] ★분할 새 행 = 즉시 create(Airtable). 다건 → 10개씩 청크(Airtable POST 한도).
+  const created = [];
   try {
-    const res = await api('POST', `/${TABLES.Products}`, { records: [{ fields: childFields }], typecast: true });
-    realId = res && res.records && res.records[0] && res.records[0].id;
-    if (!realId) throw new Error('레코드 id 없음');
-  } catch (e) { toastError && toastError('분할 새 행 생성 실패 — 분할 취소: ' + (e.message || e)); return; }
-  // child 생성 성공 → 원본 갱신(남는 박스·수량) + 즉시 PATCH
-  const remainCny = Math.round(unitCny * remainQty * 100) / 100;
-  f['박스번호'] = _boxNumsToStr(remainNums); f['수량'] = remainQty; f['합계CNY'] = remainCny;
-  if (_rate) { f['단가USD'] = unitCny * _rate; f['합계USD'] = remainCny * _rate; }
+    for (let i = 0; i < childPlans.length; i += 10) {
+      const chunk = childPlans.slice(i, i + 10);
+      const res = await api('POST', `/${TABLES.Products}`, { records: chunk.map(cf => ({ fields: cf })), typecast: true });
+      const recs = (res && res.records) || [];
+      if (recs.length !== chunk.length) throw new Error(`생성 수 불일치 (요청 ${chunk.length} / 응답 ${recs.length})`);
+      recs.forEach((r, j) => created.push({ id: r.id, fields: Object.assign({}, chunk[j]) }));
+    }
+  } catch (e) {
+    toastError && toastError('분할 새 행 생성 실패 — 분할 취소: ' + (e.message || e));
+    // 부분 생성분 롤백(이미 만들어진 자식 삭제) — 부모는 아직 미변경이라 정합.
+    for (const c of created) { try { await api('DELETE', `/${TABLES.Products}/${c.id}`); } catch (_) {} }
+    return;
+  }
+  // child 생성 성공 → 원본 갱신(남는 박스만, ★수량 유지) + 즉시 PATCH
+  f['박스번호'] = _boxNumsToStr(remainNums);
   try {
-    const _of = { '박스번호': f['박스번호'], '수량': remainQty, '합계CNY': remainCny };
-    if (_rate) { _of['단가USD'] = f['단가USD']; _of['합계USD'] = f['합계USD']; }
-    await api('PATCH', `/${TABLES.Products}/${pid}`, { fields: _of, typecast: true });
+    await api('PATCH', `/${TABLES.Products}/${pid}`, { fields: { '박스번호': f['박스번호'] }, typecast: true });
     if (state._prodBaseline) state._prodBaseline[pid] = _prodFingerprint(f);
   } catch (e) { state.modifiedProducts.add(pid); toastWarn && toastWarn('원본 행 저장 실패 — [Airtable에 저장]으로 재시도: ' + (e.message || e)); }
-  // state에 child 추가(실 id) + baseline
-  const newP = { id: realId, fields: Object.assign({}, childFields) };
+  // state에 child 추가(실 id, 부모 바로 뒤 순서대로) + baseline
   const idx = state.products.findIndex(x => x.id === pid);
-  state.products.splice(idx + 1, 0, newP);
-  if (state._prodBaseline) state._prodBaseline[realId] = _prodFingerprint(newP.fields);
+  created.forEach((c, k) => {
+    state.products.splice(idx + 1 + k, 0, c);
+    if (state._prodBaseline) state._prodBaseline[c.id] = _prodFingerprint(c.fields);
+  });
   if (typeof renderProducts === 'function') renderProducts();
   if (typeof renderBoxes === 'function') renderBoxes();
   if (typeof refreshAll === 'function') refreshAll();
   if (typeof _markBoxDirty === "function") _markBoxDirty();
-  toastSuccess && toastSuccess(`분할 완료(저장됨) — 원본 박스 ${_boxNumsToStr(remainNums)} / 새 행 박스 ${_boxNumsToStr(newNums)} (${newSid})`,
-    { title: '✂ 박스별 나누기', subtitle: '양쪽 단가·품명·HS는 칸에서 고치면 즉시 저장됩니다. 새 품목이 CO에 없으면 발행 게이트가 막습니다 — CO 재발급 필요.' });
+  // [v3.2.169] ★스크롤 복원 — 진입 시점 좌표로(prompt·async 렌더 후 맨 위 방지). rAF로 렌더 완료 후.
+  requestAnimationFrame(() => { try { if (_swrap0) _swrap0.scrollTop = _sTop0; window.scrollTo(0, _winY0); } catch (e) {} });
+  const childBoxes = newNums.slice().sort((a, b) => a - b).join(', ');
+  toastSuccess && toastSuccess(`분할 완료(저장됨) — 원본 박스 ${_boxNumsToStr(remainNums)} / 새 행 ${created.length}개(박스 ${childBoxes})`,
+    { title: '✂ 박스별 나누기', subtitle: '자식 수량은 0으로 생성됩니다 — 본체/파츠 수량·품명·HS를 칸에서 입력하면 즉시 저장. 새 품목이 CO에 없으면 발행 게이트가 막습니다.' });
 }
 
 // [v3.2.156] ★제품 영구 삭제(Airtable DELETE — 복구 불가). 기존 🗑(세션 제외)와 별개.
@@ -6035,29 +6049,26 @@ async function permanentDeleteProduct(pid) {
     msg = `제품 ${sid}을 영구 삭제할까요?\n(Airtable에서 완전 삭제 — 복구 불가)`;
   }
   if (!confirm(msg)) return;
-  // ★분할 자식(_s) 삭제 → 부모 수량/박스 복원(합집합=원본 보존)
+  // [v3.2.169] ★분할 자식(_s) 삭제 → 부모에 박스만 복원(고아 박스 방지). ★수량 가산 폐지.
+  //   신모델: 부모·자식 수량은 독립(직원 직접 입력, 자동 배분 X) → 자식 삭제 시 수량을 부모에 더하면 이중계상이라 제거.
+  //   (구모델 v3.2.143은 자식이 부모 수량의 분할분이라 복원이 맞았으나, 신모델에선 틀림.)
   const childM = sid.match(/^(.+)_s\d+$/);
   if (childM) {
     const parentSid = childM[1];
     const parent = state.products.find(x => String((x.fields || {})['상품ID']) === parentSid && !x._isNew);
     if (parent) {
       const pf = parent.fields;
-      const addQty = parseInt(f['수량'], 10) || 0;
-      const newQty = (parseInt(pf['수량'], 10) || 0) + addQty;
-      const unitCny = parseFloat(pf['단가CNY']) || 0;
-      const newSum = Math.round(unitCny * newQty * 100) / 100;
       const pb = new Set(parseBoxNumbers(pf['박스번호'] || '').map(n => parseInt(n, 10)).filter(n => !isNaN(n)));
       parseBoxNumbers(f['박스번호'] || '').forEach(n => { const i = parseInt(n, 10); if (!isNaN(i)) pb.add(i); });
       const newBox = _boxNumsToStr([...pb]);
-      const _rate = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
-      const upd = { '수량': newQty, '합계CNY': newSum, '박스번호': newBox };
-      if (_rate) { upd['단가USD'] = unitCny * _rate; upd['합계USD'] = newSum * _rate; }
-      try {
-        await api('PATCH', `/${TABLES.Products}/${parent.id}`, { fields: upd, typecast: true });
-        Object.assign(pf, upd);
-        if (state._prodBaseline) state._prodBaseline[parent.id] = _prodFingerprint(pf);
-        toastInfo && toastInfo(`부모 ${parentSid} 수량 복원 → ${newQty}개 (박스 ${newBox})`, { title: '↩ 복원' });
-      } catch (e) { toastWarn && toastWarn('부모 수량 복원 실패(수동 확인): ' + (e.message || e)); }
+      if (newBox !== String(pf['박스번호'] || '')) {
+        try {
+          await api('PATCH', `/${TABLES.Products}/${parent.id}`, { fields: { '박스번호': newBox }, typecast: true });
+          pf['박스번호'] = newBox;
+          if (state._prodBaseline) state._prodBaseline[parent.id] = _prodFingerprint(pf);
+          toastInfo && toastInfo(`부모 ${parentSid} 박스 복원 → ${newBox} (수량은 그대로)`, { title: '↩ 박스 복원' });
+        } catch (e) { toastWarn && toastWarn('부모 박스 복원 실패(수동 확인): ' + (e.message || e)); }
+      }
     }
   }
   // 작업비: 주문 마지막 제품이면 경고(orderKey 귀속처 소멸)
