@@ -622,6 +622,245 @@ async function adminCreateStaffWithPassword(email, name, password) {
   return await upsertStaffUser(userId, email, name);
 }
 
+// ===== 운송사·택배사 포털 (carrier_*) — 2026-06-30 =====
+//   관세사(customs_agents)/직원(staff_users) 패턴 미러. carriers 테이블(type: 화물=운송사 / 택배=택배사).
+//   ★보안(최우선): 응답은 ★allowlist로 '구성'한다 — ship.fields(전체)를 통째로 응답에 넣지 않는다.
+//     fetch도 WL 필드만(이중 차단). 통관금액·청구액·배차견적액(매출)·해운비매출·신고가·HS·단가는 fetch도 응답도 안 함.
+//   ★배송방식 = 사서함 단위 단일(Shipments.배송방식 권위, 사장 확정). 운송사→화물 사서함만 / 택배사→택배 사서함만.
+//   ★운송비원가 = 기존 Shipments.실제배차비 재사용(새 필드 X). 운송사='운송비'/택배사='택배요금' 라벨, 같은 필드.
+//   ★신규 Airtable 필드(사장 생성): 기사성함(text), 통관완료일(date).
+
+// carriers 조회 + active 확인 — loadStaff 미러(type 추가 반환). last_login_at 갱신.
+async function loadCarrier(userId, email) {
+  const hdr = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/carriers?id=eq.${userId}&select=id,email,name,type,active`, { headers: hdr });
+  if (!r.ok) { const err = new Error('운송사 조회 실패'); err.status = 500; throw err; }
+  let rows = await r.json();
+  let matchedByEmail = false;
+  if (!rows.length && email) {
+    const r2 = await fetch(`${SUPABASE_URL}/rest/v1/carriers?email=eq.${encodeURIComponent(email)}&select=id,email,name,type,active`, { headers: hdr });
+    if (r2.ok) { rows = await r2.json(); matchedByEmail = rows.length > 0; }
+  }
+  if (!rows.length) { const err = new Error('등록되지 않은 운송사입니다 (강하고 관리자에게 계정 발급 요청)'); err.status = 403; throw err; }
+  const carrier = rows[0];
+  if (!carrier.active) { const err = new Error('비활성 운송사 계정입니다'); err.status = 403; throw err; }
+  const filter = matchedByEmail ? `email=eq.${encodeURIComponent(email)}` : `id=eq.${userId}`;
+  fetch(`${SUPABASE_URL}/rest/v1/carriers?${filter}`, { method: 'PATCH', headers: { ...hdr, 'Content-Type': 'application/json' }, body: JSON.stringify({ last_login_at: new Date().toISOString() }) }).catch(() => {});
+  return carrier;
+}
+
+// fetch·응답 양쪽에서 쓰는 Shipments 필드 화이트리스트(통관/청구/매출/HS 필드 부재 — 구조적 차단).
+const CARRIER_SHIP_FIELDS = ['사서함', '고객사서함', '상태', '배송방식', '통관완료일', '보세창고', 'BL번호', '테이프색상', '수취_수취인', '수취_회사', '수취_전화', '수취_주소', '특이사항', '기사성함', '기사전화번호', '차량번호', '실제배차비', '송장번호'];
+const CARRIER_SHIP_FIELDS_QS = CARRIER_SHIP_FIELDS.map(f => `fields%5B%5D=${encodeURIComponent(f)}`).join('&');
+// 타입별 쓰기 허용 필드(PATCH WL). 운송비/택배요금→실제배차비 동일 필드. 그 외 거부.
+const CARRIER_PATCH_WL = {
+  '화물': new Set(['실제배차비', '차량번호', '기사전화번호', '기사성함']),
+  '택배': new Set(['실제배차비', '송장번호']),
+};
+// 프론트 라벨 → 실제 Airtable 필드 별칭(이중 안전 — 프론트가 실제 필드명으로 보내도, 라벨로 보내도 정규화).
+const CARRIER_FIELD_ALIAS = { '운송비': '실제배차비', '택배요금': '실제배차비', '기사전화': '기사전화번호', '택배번호': '송장번호' };
+
+// 마킹번호 = 고객사서함 base + 박스순번 범위 (예: AP2233-1~5,8). 도구 _transportMarkRange 축약.
+function carrierMarkRange(base, seqs) {
+  const nums = [...new Set((seqs || []).map(n => parseInt(n, 10)).filter(n => n > 0))].sort((a, b) => a - b);
+  if (!base) return '';
+  if (!nums.length) return String(base);
+  const parts = []; let s = nums[0], p = nums[0];
+  for (let i = 1; i < nums.length; i++) { if (nums[i] === p + 1) { p = nums[i]; continue; } parts.push(s === p ? `${s}` : `${s}~${p}`); s = p = nums[i]; }
+  parts.push(s === p ? `${s}` : `${s}~${p}`);
+  return `${base}-${parts.join(',')}`;
+}
+
+// 배송방식 해석 — Shipments.배송방식 우선(사서함 단위 단일·사장 확정), 빈값이면 Boxes.배송방식 단일집합 폴백.
+function resolveShipMethod(sf, boxes) {
+  const direct = String((sf || {})['배송방식'] || '').trim();
+  if (direct === '화물' || direct === '택배') return direct;
+  const set = [...new Set((boxes || []).map(b => String((b.fields || {})['배송방식'] || '').trim()).filter(v => v === '화물' || v === '택배'))];
+  if (set.length === 1) return set[0];
+  return direct || '';   // 미선택/밀크런/혼재 → carrier.type와 불일치로 목록서 제외
+}
+
+// ★응답 화이트리스트 — 16표시칼럼 + 입력필드 현재값만 '구성'해 반환. ship.fields 통째 전달 금지(매출/통관/HS 누설 차단).
+function buildCarrierRow(ship, shipDate, boxes, cust, ord, method) {
+  const sf = ship.fields || {};
+  const mailbox = sf['사서함'] || '';
+  const base = sf['고객사서함'] || String(mailbox).replace(/-\d{6}$/, '').split(' ')[0] || mailbox;
+  let kg = 0, cbm = 0; const seqs = [];
+  (boxes || []).forEach(b => { const bf = b.fields || {}; kg += parseFloat(bf['무게KG']) || 0; cbm += parseFloat(bf['부피CBM']) || 0; if (bf['박스순번'] != null) seqs.push(bf['박스순번']); });
+  const n = boxes ? boxes.length : 0;
+  const cost = (sf['실제배차비'] != null && sf['실제배차비'] !== '') ? sf['실제배차비'] : '';
+  return {
+    id: ship.id, mailbox,
+    선적일: shipDate || '',
+    통관완료일: sf['통관완료일'] || '',
+    보세창고: sf['보세창고'] || '',
+    BL: sf['BL번호'] || '',
+    마킹번호: carrierMarkRange(base, seqs),
+    마킹: sf['테이프색상'] || '',
+    박스수: n,
+    CBM합: Math.round(cbm * 1000) / 1000,
+    박스당CBM: n ? Math.round((cbm / n) * 1000) / 1000 : 0,
+    박스당KG: n ? Math.round((kg / n) * 100) / 100 : 0,
+    회사명: (cust && cust.company) || sf['수취_회사'] || '',
+    고객명: (cust && cust.member) || '',
+    수취인: sf['수취_수취인'] || (ord && ord['수취인이름']) || '',
+    전화번호: sf['수취_전화'] || (ord && ord['연락처']) || '',
+    배송지: sf['수취_주소'] || (ord && ord['수취인주소']) || '',
+    요청사항: (ord && ord['배송요청사항']) || sf['특이사항'] || '',
+    배송방식: method || '',
+    // 입력 현재값(타입에 맞는 칸만 프론트가 표시) — 운송비/택배요금은 동일 실제배차비.
+    기사성함: sf['기사성함'] || '',
+    기사전화: sf['기사전화번호'] || '',
+    차량번호: sf['차량번호'] || '',
+    운송비: cost,
+    택배번호: sf['송장번호'] || '',
+    택배요금: cost,
+    상태: sf['상태'] || '',
+  };
+}
+
+// 사서함의 박스 조회(공용) — 박스순번/무게/CBM/배송방식만.
+async function carrierFetchBoxes(mailbox) {
+  if (!mailbox) return [];
+  try { return await atListAll(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields%5B%5D=${encodeURIComponent('박스순번')}&fields%5B%5D=${encodeURIComponent('무게KG')}&fields%5B%5D=${encodeURIComponent('부피CBM')}&fields%5B%5D=${encodeURIComponent('배송방식')}`); }
+  catch (e) { return []; }
+}
+async function carrierCustMap() {
+  const custMap = {};
+  try {
+    const custs = await atListAll(`/${TABLES.Customers}?fields%5B%5D=${encodeURIComponent('사서함번호')}&fields%5B%5D=${encodeURIComponent('회원명')}&fields%5B%5D=${encodeURIComponent('회사명')}`);
+    custs.forEach(c => { const k = (c.fields || {})['사서함번호']; if (k) custMap[k] = { member: c.fields['회원명'] || '', company: c.fields['회사명'] || '' }; });
+  } catch (e) { /* Customers 없으면 이름 생략 */ }
+  return custMap;
+}
+
+// carrier_list — 선적일(Orders.실제출고요청일)별 → carrier.type(배송방식) 사서함만. booking_summary 미러.
+async function handleCarrierList(req, res, carrier) {
+  const daysParam = (req.query.days || '').trim();
+  const days = daysParam ? daysParam.split(',').map(s => s.trim()).filter(Boolean) : [];
+  if (!days.length) return res.status(400).json({ error: 'days 누락' });
+  const orderFormula = `OR(${days.map(d => `IS_SAME({실제출고요청일},'${d}','day')`).join(',')})`;
+  const orders = await atListAll(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(orderFormula)}&fields%5B%5D=Shipment&fields%5B%5D=${encodeURIComponent('실제출고요청일')}&fields%5B%5D=${encodeURIComponent('수취인이름')}&fields%5B%5D=${encodeURIComponent('수취인주소')}&fields%5B%5D=${encodeURIComponent('연락처')}&fields%5B%5D=${encodeURIComponent('배송요청사항')}`);
+  if (!orders.length) return res.json({ rows: [], days, type: carrier.type });
+  const shipDateMap = {}, orderByShip = {};
+  orders.forEach(o => { const ships = (o.fields || {}).Shipment || []; const d = (o.fields || {})['실제출고요청일']; ships.forEach(sid => { if (d && (!shipDateMap[sid] || d < shipDateMap[sid])) shipDateMap[sid] = d; if (!orderByShip[sid]) orderByShip[sid] = o.fields; }); });
+  const shipIds = Object.keys(shipDateMap);
+  if (!shipIds.length) return res.json({ rows: [], days, type: carrier.type });
+  const chunk = (a, n) => { const o = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
+  let ships = [];
+  for (const c of chunk(shipIds, 50)) {
+    const f = `OR(${c.map(id => `RECORD_ID()='${id}'`).join(',')})`;
+    ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&${CARRIER_SHIP_FIELDS_QS}`));
+  }
+  const custMap = await carrierCustMap();
+  const rows = [];
+  for (const s of ships) {
+    const sf = s.fields || {}; const mailbox = sf['사서함'] || '';
+    const boxes = await carrierFetchBoxes(mailbox);
+    const method = resolveShipMethod(sf, boxes);
+    if (method !== carrier.type) continue;   // ★배송방식 격리 — 운송사는 자기 유형 사서함만
+    const cust = custMap[String(mailbox).replace(/-\d{6}$/, '')] || custMap[mailbox] || { member: '', company: '' };
+    rows.push(buildCarrierRow(s, shipDateMap[s.id] || '', boxes, cust, orderByShip[s.id] || {}, method));
+  }
+  rows.sort((a, b) => (a.선적일 || '').localeCompare(b.선적일 || '') || a.mailbox.localeCompare(b.mailbox));
+  return res.json({ rows, days, type: carrier.type });
+}
+
+// carrier_detail — 단일 사서함 16칼럼 + 입력 현재값. 배송방식≠type이면 403.
+async function handleCarrierDetail(req, res, carrier) {
+  const shipId = req.query.id;
+  if (!shipId || !shipId.startsWith('rec')) return res.status(400).json({ error: 'Invalid shipment id' });
+  const full = await atRequest('GET', `/${TABLES.Shipments}/${shipId}`);   // 내부 조회(full) — 응답엔 buildCarrierRow로 큐레이트.
+  const sf = full.fields || {};
+  const mailbox = sf['사서함'] || '';
+  let ord = {}, shipDate = '';
+  try {
+    const ords = await atListAll(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields%5B%5D=${encodeURIComponent('실제출고요청일')}&fields%5B%5D=${encodeURIComponent('수취인이름')}&fields%5B%5D=${encodeURIComponent('수취인주소')}&fields%5B%5D=${encodeURIComponent('연락처')}&fields%5B%5D=${encodeURIComponent('배송요청사항')}`);
+    ords.forEach(o => { const of = o.fields || {}; if (!Object.keys(ord).length) ord = of; const d = of['실제출고요청일']; if (d && (!shipDate || d < shipDate)) shipDate = d; });
+  } catch (e) { /* 주문 없으면 폴백 빈값 */ }
+  const boxes = await carrierFetchBoxes(mailbox);
+  const method = resolveShipMethod(sf, boxes);
+  if (method !== carrier.type) return res.status(403).json({ error: `다른 배송방식 사서함입니다 (${carrier.type} 운송사 — 이 사서함은 ${method || '미선택'})` });
+  const custMap = await carrierCustMap();
+  const cust = custMap[String(mailbox).replace(/-\d{6}$/, '')] || custMap[mailbox] || { member: '', company: '' };
+  const row = buildCarrierRow({ id: shipId, fields: sf }, shipDate, boxes, cust, ord, method);
+  return res.json({ row });
+}
+
+// carrier_save — 입력 PATCH(타입별 쓰기 WL). 배송방식≠type 사서함 쓰기 거부. 응답도 큐레이트.
+async function handleCarrierSave(req, res, body, carrier) {
+  const shipmentId = body.shipmentId;
+  const fields = body.fields || {};
+  if (!shipmentId || !String(shipmentId).startsWith('rec')) return res.status(400).json({ error: 'shipmentId 누락' });
+  // 별칭 정규화(운송비/택배요금→실제배차비, 기사전화→기사전화번호, 택배번호→송장번호)
+  const norm = {};
+  for (const k of Object.keys(fields)) { const rk = CARRIER_FIELD_ALIAS[k] || k; norm[rk] = fields[k]; }
+  // 대상 사서함 배송방식 = carrier.type 검증(교차 쓰기 차단)
+  const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipmentId}`);
+  const boxes = await carrierFetchBoxes((ship.fields || {})['사서함'] || '');
+  const method = resolveShipMethod(ship.fields || {}, boxes);
+  if (method !== carrier.type) return res.status(403).json({ error: `배송방식 불일치 — ${carrier.type} 운송사는 ${method || '미선택'} 사서함을 수정할 수 없습니다` });
+  // 타입별 쓰기 WL
+  const wl = CARRIER_PATCH_WL[carrier.type] || new Set();
+  const safe = {}, rejected = [];
+  for (const k of Object.keys(norm)) { if (wl.has(k)) safe[k] = norm[k]; else rejected.push(k); }
+  if (safe['실제배차비'] !== undefined) { const v = String(safe['실제배차비']).replace(/[,\s]/g, ''); safe['실제배차비'] = (v === '' || v == null) ? null : (parseFloat(v) || 0); }
+  if (Object.keys(safe).length === 0) return res.status(400).json({ error: '허용 필드 없음', rejected });
+  const before = {}; Object.keys(safe).forEach(k => { before[k] = (ship.fields || {})[k]; });
+  const updated = await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, { fields: safe, typecast: true });
+  await logAction({ id: null, email: 'carrier:' + (carrier.email || '') }, shipmentId, null, before, safe);   // agent_id=null → customs_actions FK 무위반
+  const echo = {}; Object.keys(safe).forEach(k => { echo[k] = (updated.fields || {})[k]; });
+  return res.json({ ok: true, saved: echo, rejected });
+}
+
+// ── carrier 관리(admin) — staff_admin_* 미러. type(화물/택배) 지정. ──
+async function upsertCarrier(userId, email, name, type) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/carriers?on_conflict=id`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation,resolution=merge-duplicates' },
+    body: JSON.stringify({ id: userId, email, name: name || null, type: (type === '택배' ? '택배' : '화물'), active: true }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error('carriers upsert 실패: ' + JSON.stringify(data));
+  return Array.isArray(data) ? data[0] : data;
+}
+async function adminListCarriers() {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/carriers?select=id,email,name,type,active,created_at,last_login_at&order=created_at.desc`, { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
+  if (!r.ok) throw new Error('운송사 목록 조회 실패 HTTP ' + r.status);
+  return await r.json();
+}
+async function adminToggleCarrier(carrierId, active) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/carriers?id=eq.${carrierId}`, {
+    method: 'PATCH',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+    body: JSON.stringify({ active: !!active }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error('운송사 활성 토글 실패: ' + JSON.stringify(data));
+  return Array.isArray(data) ? data[0] : data;
+}
+async function adminCreateCarrierWithPassword(email, name, type, password) {
+  const r1 = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { name } }),
+  });
+  const auth = await r1.json();
+  if (!r1.ok) {
+    const exists = r1.status === 422 || /already|exist|registered/i.test(auth.msg || auth.error_description || auth.error || '');
+    if (exists) {
+      const existing = await findAuthUserByEmail(email);
+      if (!existing) throw new Error('생성 실패 + 기존 사용자 조회 실패: ' + JSON.stringify(auth));
+      await adminSetUserPassword(existing.id, password);
+      return await upsertCarrier(existing.id, email, name, type);
+    }
+    throw new Error('Supabase 사용자 생성 실패: ' + (auth.msg || auth.error_description || auth.error || r1.status));
+  }
+  const userId = auth.id || (auth.user && auth.user.id);
+  if (!userId) throw new Error('생성 응답에 user.id 없음');
+  return await upsertCarrier(userId, email, name, type);
+}
+
 module.exports = async (req, res) => {
   if (handleCors(req, res)) return;
   try {
@@ -637,6 +876,11 @@ module.exports = async (req, res) => {
       if (req.method === 'GET' && req.query.op === 'staff_admin_list') {
         const staff = await adminListStaff();
         return res.json({ staff });
+      }
+      // 운송사·택배사 관리 목록 (2026-06-30) — staff_admin_list 미러
+      if (req.method === 'GET' && req.query.op === 'carrier_admin_list') {
+        const carriers = await adminListCarriers();
+        return res.json({ carriers });
       }
       // [통관 진행상황 v1] 도구(Admin 토큰)에서 통관 진행 조회 — 공용 핸들러 호출.
       if (req.method === 'GET' && req.query.op === 'customs_progress') {
@@ -672,6 +916,33 @@ module.exports = async (req, res) => {
           }
           await adminSetUserPassword(userId, String(password));
           return res.json({ ok: true, userId, email: staffEmail });
+        }
+        // 운송사·택배사 관리 op (2026-06-30) — staff_admin_* 미러. type='화물'(운송사)/'택배'(택배사).
+        if (body.op === 'carrier_admin_create') {
+          const { email, name, type, password } = body;
+          if (!email) return res.status(400).json({ error: 'email 필수' });
+          if (!password || String(password).length < 6) return res.status(400).json({ error: 'password 6자 이상 필수' });
+          const carrier = await adminCreateCarrierWithPassword(String(email).trim().toLowerCase(), name || null, type === '택배' ? '택배' : '화물', String(password));
+          return res.json({ ok: true, carrier });
+        }
+        if (body.op === 'carrier_admin_toggle') {
+          const { carrierId, active } = body;
+          if (!carrierId) return res.status(400).json({ error: 'carrierId 필수' });
+          const carrier = await adminToggleCarrier(carrierId, !!active);
+          return res.json({ ok: true, carrier });
+        }
+        if (body.op === 'carrier_admin_set_password') {
+          const { email, carrierId, password } = body;
+          if (!password || String(password).length < 6) return res.status(400).json({ error: 'password 6자 이상 필수' });
+          let userId = carrierId, cEmail = email;
+          if (!userId) {
+            if (!email) return res.status(400).json({ error: 'email 또는 carrierId 필요' });
+            const u = await findAuthUserByEmail(String(email).trim().toLowerCase());
+            if (!u) return res.status(404).json({ error: '해당 이메일의 사용자 없음' });
+            userId = u.id; cEmail = u.email;
+          }
+          await adminSetUserPassword(userId, String(password));
+          return res.json({ ok: true, userId, email: cEmail });
         }
         // ↓ 기존 관세사 admin op 분기
         if (body.op === 'admin_invite') {
@@ -738,6 +1009,21 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
       _postBody = await readBody(req);
       if (_postBody.op === 'notify_customer') return await handleNotifyCustomer(req, res, _postBody, { id: user.id, email: user.email });
+    }
+
+    // ===== 운송사·택배사 op (carrier_*) — loadAgent(관세사) 이전 분기. carriers 테이블 인증(관세사 아님). =====
+    if (req.method === 'GET' && String(req.query.op || '').startsWith('carrier_')) {
+      const carrier = await loadCarrier(user.id, user.email);
+      const cop = req.query.op;
+      if (cop === 'carrier_me') return res.json({ carrier: { email: carrier.email, name: carrier.name, type: carrier.type, active: carrier.active } });
+      if (cop === 'carrier_list') return await handleCarrierList(req, res, carrier);
+      if (cop === 'carrier_detail') return await handleCarrierDetail(req, res, carrier);
+      return res.status(400).json({ error: 'Unknown carrier op' });
+    }
+    if (req.method === 'POST' && _postBody && String(_postBody.op || '').startsWith('carrier_')) {
+      const carrier = await loadCarrier(user.id, user.email);
+      if (_postBody.op === 'carrier_save') return await handleCarrierSave(req, res, _postBody, carrier);
+      return res.status(400).json({ error: 'Unknown carrier op' });
     }
 
     // ===== 관세사 op (Authorization: Bearer <Supabase JWT>) =====

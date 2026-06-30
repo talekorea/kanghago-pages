@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>강하고 운송 입력</title>
+<style>
+  :root { --gold:#C9973A; --navy:#1B2A3B; --bg:#F4EFE6; --ivory:#FAF6EE; }
+  * { box-sizing: border-box; }
+  body { font-family:'Pretendard',-apple-system,system-ui,'Apple SD Gothic Neo',sans-serif;
+    margin:0; background:var(--bg); color:#1d1d1f; }
+  header { background:var(--navy); color:#fff; padding:14px 24px; display:flex;
+    justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  header h1 { margin:0; font-size:17px; font-weight:700; }
+  header a, header button { background:transparent; color:#fff; border:1px solid #8a94a3;
+    padding:6px 11px; border-radius:5px; cursor:pointer; font-size:12px; text-decoration:none; }
+  main { max-width:760px; margin:22px auto; padding:0 16px; }
+  .card { background:#fff; border-radius:12px; padding:20px 22px; box-shadow:0 2px 8px rgba(0,0,0,0.05); margin-bottom:18px; }
+  .mailbox { font-family:'SF Mono',Consolas,monospace; font-size:20px; font-weight:800; color:var(--navy); }
+  .typebadge { display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:10px; margin-left:8px; }
+  .typebadge.화물 { background:#e8f0fb; color:#1B5E9A; }
+  .typebadge.택배 { background:#fdf0e6; color:#a85a16; }
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px 18px; margin-top:14px; }
+  .field { font-size:13px; }
+  .field .k { color:#888; font-size:11px; margin-bottom:2px; }
+  .field .v { font-weight:600; color:#222; word-break:break-all; }
+  .field.full { grid-column:1 / -1; }
+  h3 { margin:0 0 4px; font-size:15px; color:var(--navy); }
+  .sub { font-size:11px; color:#888; margin-bottom:14px; }
+  label { display:block; font-size:13px; font-weight:600; color:#333; margin:12px 0 5px; }
+  input.inp { width:100%; padding:11px 13px; border:1px solid #d4c5a8; border-radius:7px;
+    font-size:15px; font-family:inherit; background:var(--ivory); }
+  input.inp:focus { outline:none; border-color:var(--gold); }
+  .saveBtn { margin-top:18px; padding:12px 22px; background:var(--navy); color:#fff; border:none;
+    border-radius:7px; font-size:15px; font-weight:700; cursor:pointer; }
+  .saveBtn:disabled { background:#aaa; cursor:not-allowed; }
+  .ind { margin-left:12px; font-size:13px; font-weight:600; }
+  .ind.saving { color:#a85a16; }
+  .ind.saved { color:#0a7b40; }
+  .ind.err { color:#c0392b; }
+  .err { padding:18px; background:#fff5f5; border:1px solid #f5c2c7; color:#c0392b; border-radius:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🚚 강하고 운송 입력</h1>
+  <a href="/carrier-dashboard.html">← 목록</a>
+</header>
+
+<main>
+  <div id="error" class="err" style="display:none;"></div>
+  <div id="content" style="display:none;">
+    <div class="card">
+      <div><span class="mailbox" id="mailbox"></span><span class="typebadge" id="typeBadge"></span></div>
+      <div class="grid" id="info"></div>
+    </div>
+    <div class="card">
+      <h3 id="formTitle"></h3>
+      <div class="sub" id="formSub"></div>
+      <div id="formFields"></div>
+      <div style="margin-top:6px;">
+        <button class="saveBtn" id="saveBtn" onclick="save()">💾 저장</button>
+        <span class="ind" id="ind"></span>
+      </div>
+    </div>
+  </div>
+  <div id="loading" style="text-align:center; color:#888; padding:40px;">로딩 중...</div>
+</main>
+
+<script type="module">
+  let supabase = null, session = null, carrier = null, row = null, type = '화물';
+  const shipId = new URLSearchParams(location.search).get('id') || '';
+  const esc = x => String(x == null ? '' : x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function fmtMailbox(name) { const s = String(name == null ? '' : name); const x = s.match(/^(.+)-(\d{6})$/); return x ? (x[2] + '-' + x[1]) : s; }
+
+  async function init() {
+    try {
+      if (!shipId.startsWith('rec')) throw new Error('사서함 id 누락 — 목록에서 다시 선택하세요');
+      const cfgRes = await fetch('/api/agent-config');
+      if (!cfgRes.ok) throw new Error('config 로드 실패 — 관리자 문의');
+      const cfg = await cfgRes.json();
+      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm');
+      supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true,
+          storage: window.localStorage, storageKey: 'sb-kanghago-carrier', flowType: 'implicit' },
+      });
+      await new Promise(r => setTimeout(r, 120));
+      let { data: { session: s } } = await supabase.auth.getSession();
+      if (!s) { const refreshed = await supabase.auth.refreshSession().catch(() => null); s = refreshed && refreshed.data && refreshed.data.session; }
+      if (!s) { location.replace('/carrier-login.html'); return; }
+      session = s;
+      supabase.auth.startAutoRefresh();
+      supabase.auth.onAuthStateChange((_e, ns) => { if (ns) session = ns; });
+
+      const me = await api('GET', '?op=carrier_me'); carrier = me.carrier; type = carrier.type || '화물';
+      const det = await api('GET', '?op=carrier_detail&id=' + encodeURIComponent(shipId));
+      row = det.row;
+      render();
+    } catch (e) { showError(e.message || String(e)); }
+  }
+
+  // 표시 16칼럼(읽기) + 배송방식별 입력란.
+  const INFO = [
+    ['선적일', r => String(r.선적일 || '').slice(0, 10)], ['통관완료일', r => String(r.통관완료일 || '').slice(0, 10)],
+    ['보세창고', r => r.보세창고], ['BL', r => r.BL],
+    ['마킹번호', r => r.마킹번호], ['마킹', r => r.마킹],
+    ['박스수', r => r.박스수], ['CBM합', r => r.CBM합],
+    ['박스당CBM', r => r.박스당CBM], ['박스당KG', r => r.박스당KG],
+    ['회사명', r => r.회사명], ['고객명', r => r.고객명],
+    ['수취인', r => r.수취인], ['전화번호', r => r.전화번호],
+    ['배송지', r => r.배송지, true], ['요청사항', r => r.요청사항, true],
+  ];
+  function render() {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = '';
+    document.getElementById('mailbox').textContent = fmtMailbox(row.mailbox);
+    const tb = document.getElementById('typeBadge'); tb.className = 'typebadge ' + type; tb.textContent = type === '택배' ? '택배사' : '운송사(화물)';
+    document.getElementById('info').innerHTML = INFO.map(([k, fn, full]) => {
+      const v = fn(row); return `<div class="field${full ? ' full' : ''}"><div class="k">${esc(k)}</div><div class="v">${esc(v === '' || v == null ? '—' : v)}</div></div>`;
+    }).join('');
+    // 입력란: 화물=기사성함/기사전화/차량번호/운송비, 택배=택배번호/택배요금
+    const fields = type === '택배'
+      ? [['택배번호', '송장번호', 'text', row.택배번호], ['택배요금', '실제배차비', 'number', row.택배요금]]
+      : [['기사성함', '기사성함', 'text', row.기사성함], ['기사전화', '기사전화번호', 'tel', row.기사전화], ['차량번호', '차량번호', 'text', row.차량번호], ['운송비', '실제배차비', 'number', row.운송비]];
+    document.getElementById('formTitle').textContent = type === '택배' ? '택배 운송 입력' : '배차·운송 입력';
+    document.getElementById('formSub').textContent = type === '택배' ? '운송장은 사서함당 1개 (박스가 많아도 1개).' : '기사·차량·운송비를 입력하고 저장하세요.';
+    document.getElementById('formFields').innerHTML = fields.map(([label, field, t, val]) =>
+      `<label>${esc(label)}</label><input class="inp" data-field="${esc(field)}" type="${t}" value="${esc(val === '' || val == null ? '' : val)}" ${t === 'number' ? 'inputmode="numeric" min="0"' : ''} />`
+    ).join('');
+  }
+
+  window.save = async () => {
+    const btn = document.getElementById('saveBtn'); const ind = document.getElementById('ind');
+    const fields = {};
+    document.querySelectorAll('#formFields input.inp').forEach(i => { fields[i.dataset.field] = i.value.trim(); });
+    btn.disabled = true; ind.className = 'ind saving'; ind.textContent = '저장 중...';
+    try {
+      const out = await api('POST', '', { op: 'carrier_save', shipmentId: shipId, fields });
+      // 거짓성공 방지: 저장 응답 echo로 실제 반영값 확인 후 재조회로 검증.
+      const det = await api('GET', '?op=carrier_detail&id=' + encodeURIComponent(shipId));
+      row = det.row; render();
+      ind.className = 'ind saved'; ind.textContent = '✓ 저장됨 (' + new Date().toLocaleTimeString('ko-KR') + ')';
+    } catch (e) {
+      ind.className = 'ind err'; ind.textContent = '✗ 저장 실패: ' + (e.message || e);
+    } finally { btn.disabled = false; }
+  };
+
+  async function api(method, qs, body) {
+    const r = await fetch('/api/agent' + (qs || ''), {
+      method, headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await r.json();
+    if (!r.ok) { const err = new Error(data.error || ('HTTP ' + r.status)); err.status = r.status; throw err; }
+    return data;
+  }
+  function showError(text) { document.getElementById('loading').style.display = 'none'; const e = document.getElementById('error'); e.style.display = ''; e.textContent = '⚠ ' + text; }
+
+  init();
+</script>
+</body>
+</html>

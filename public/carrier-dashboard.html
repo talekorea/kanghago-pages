@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>강하고 운송사·택배사 대시보드</title>
+<style>
+  :root { --gold:#C9973A; --navy:#1B2A3B; --bg:#F4EFE6; --ivory:#FAF6EE; }
+  * { box-sizing: border-box; }
+  body { font-family:'Pretendard',-apple-system,system-ui,'Apple SD Gothic Neo',sans-serif;
+    margin:0; background:var(--bg); color:#1d1d1f; }
+  header { background:var(--navy); color:#fff; padding:14px 24px; display:flex;
+    justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  header h1 { margin:0; font-size:18px; font-weight:700; }
+  header .me { font-size:12px; color:#cfc7b6; }
+  header button { background:transparent; color:#fff; border:1px solid #8a94a3;
+    padding:6px 11px; border-radius:5px; cursor:pointer; font-size:12px; }
+  .typebadge { display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:10px; margin-left:6px; }
+  .typebadge.화물 { background:#e8f0fb; color:#1B5E9A; }
+  .typebadge.택배 { background:#fdf0e6; color:#a85a16; }
+  main { max-width:1280px; margin:20px auto; padding:0 16px; }
+  .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  .bar input[type=date] { padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:14px; }
+  .bar button { padding:9px 14px; font-size:13px; border:none; border-radius:6px; cursor:pointer; font-weight:600; }
+  .btn-primary { background:#1B5E9A; color:#fff; }
+  .btn-ghost { background:#eef5ff; color:#1B2A3B; border:1px solid #1B5E9A !important; }
+  .loading { font-size:12px; color:#888; }
+  .tablewrap { background:#fff; border-radius:10px; overflow:auto; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; white-space:nowrap; }
+  thead th { background:var(--navy); color:#fff; padding:9px 10px; text-align:left; position:sticky; top:0; font-weight:600; }
+  tbody td { padding:8px 10px; border-bottom:1px solid #f0ebe1; }
+  tbody tr { cursor:pointer; }
+  tbody tr:hover { background:var(--ivory); }
+  .mailbox { font-family:'SF Mono',Consolas,monospace; font-weight:700; color:var(--navy); }
+  .num { text-align:right; }
+  .done { color:#0a7b40; font-weight:700; }
+  .todo { color:#c0392b; font-weight:700; }
+  .empty { padding:40px; text-align:center; color:#888; }
+  .err { padding:20px; background:#fff5f5; border:1px solid #f5c2c7; color:#c0392b; border-radius:8px; margin-bottom:16px; }
+  .hint { font-size:11px; color:#888; margin:0 0 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🚚 강하고 운송 대시보드 <span id="typeBadge"></span></h1>
+  <div>
+    <span class="me" id="meLabel">로딩 중...</span>
+    <button onclick="logout()">로그아웃</button>
+  </div>
+</header>
+
+<main>
+  <div id="error" class="err" style="display:none;"></div>
+  <div class="bar">
+    <input type="date" id="qDate" />
+    <button class="btn-primary" onclick="fetchList('single')">📅 그날만 조회</button>
+    <button class="btn-ghost" onclick="fetchList('range7')">📆 오늘~+7일</button>
+    <span class="loading" id="loading"></span>
+  </div>
+  <p class="hint" id="typeHint"></p>
+  <div class="tablewrap"><table>
+    <thead><tr id="theadRow"></tr></thead>
+    <tbody id="tbody"><tr><td class="empty">날짜 선택 후 조회하세요.</td></tr></tbody>
+  </table></div>
+</main>
+
+<script type="module">
+  let supabase = null, session = null, carrier = null, type = '화물';
+
+  const esc = x => String(x == null ? '' : x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // 사서함 표시 "AP-YYMMDD" → "YYMMDD-AP" (표시만, 데이터 불변) — 도구 fmtMailbox와 동일.
+  function fmtMailbox(name) { const s = String(name == null ? '' : name); const x = s.match(/^(.+)-(\d{6})$/); return x ? (x[2] + '-' + x[1]) : s; }
+  function custLabel(member, company) { const c = String(company || '').trim(), m = String(member || '').trim(); if (c && m) return c + ' (' + m + ')'; return c || m || ''; }
+
+  async function init() {
+    try {
+      const cfgRes = await fetch('/api/agent-config');
+      if (!cfgRes.ok) throw new Error('config 로드 실패 — 관리자 문의');
+      const cfg = await cfgRes.json();
+      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm');
+      supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true,
+          storage: window.localStorage, storageKey: 'sb-kanghago-carrier', flowType: 'implicit' },
+      });
+      await new Promise(r => setTimeout(r, 120));
+      let { data: { session: s } } = await supabase.auth.getSession();
+      if (!s) { const refreshed = await supabase.auth.refreshSession().catch(() => null); s = refreshed && refreshed.data && refreshed.data.session; }
+      if (!s) { location.replace('/carrier-login.html'); return; }
+      session = s;
+      supabase.auth.startAutoRefresh();
+      supabase.auth.onAuthStateChange((_e, ns) => { if (ns) session = ns; });
+
+      const me = await api('GET', '?op=carrier_me');
+      carrier = me.carrier; type = carrier.type || '화물';
+      document.getElementById('meLabel').textContent = carrier.name ? `${carrier.name} · ${carrier.email}` : carrier.email;
+      const tb = document.getElementById('typeBadge'); tb.className = 'typebadge ' + type; tb.textContent = type === '택배' ? '택배사' : '운송사(화물)';
+      document.getElementById('typeHint').textContent = type === '택배'
+        ? 'ℹ️ 택배 사서함만 표시됩니다. 행을 클릭해 운송장·택배요금을 입력하세요. (운송장은 사서함당 1개)'
+        : 'ℹ️ 화물 사서함만 표시됩니다. 행을 클릭해 기사·차량·운송비를 입력하세요.';
+      buildHead();
+      // 기본 날짜 = 오늘
+      const d = new Date(); document.getElementById('qDate').value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    } catch (e) { showError(e.message || String(e)); }
+  }
+
+  // 표시 16칼럼 + 입력상태. (원가/매출/청구 단어 미노출 — '운송비'/'택배요금'만.)
+  function buildHead() {
+    const inputCols = type === '택배' ? ['택배번호', '택배요금'] : ['기사성함', '기사전화', '차량번호', '운송비'];
+    // 16표시칼럼(회사명/고객명 합쳐 표기) + 입력칼럼 + 입력상태
+    const head = ['선적일', '사서함', '회사명/고객명', '마킹번호', '보세창고', '통관완료일', 'BL', '박스수', 'CBM합', '박스당CBM', '박스당KG', '마킹', '수취인', '전화번호', '배송지', '요청사항', ...inputCols, '입력'];
+    document.getElementById('theadRow').innerHTML = head.map(h => `<th${(['박스수', 'CBM합', '박스당CBM', '박스당KG', '택배요금', '운송비'].includes(h)) ? ' class="num"' : ''}>${esc(h)}</th>`).join('');
+    window._inputCols = inputCols;
+  }
+
+  function isoDayList(base, n) { const out = []; const d = new Date(base + 'T00:00:00'); for (let i = 0; i < n; i++) { const x = new Date(d); x.setDate(d.getDate() + i); out.push(x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')); } return out; }
+
+  window.fetchList = async (mode) => {
+    const base = document.getElementById('qDate').value || new Date().toISOString().slice(0, 10);
+    const days = (mode === 'range7') ? isoDayList(base, 8) : [base];
+    const loading = document.getElementById('loading');
+    const tb = document.getElementById('tbody');
+    loading.textContent = '⏳ 조회 중...'; tb.innerHTML = '';
+    try {
+      const data = await api('GET', '?op=carrier_list&days=' + encodeURIComponent(days.join(',')));
+      const rows = data.rows || [];
+      loading.textContent = `${rows.length}건`;
+      if (!rows.length) { tb.innerHTML = `<tr><td class="empty" colspan="30">📭 해당 기간 ${type} 사서함 0건</td></tr>`; return; }
+      const ic = window._inputCols;
+      tb.innerHTML = rows.map(r => {
+        const filled = type === '택배' ? !!(r.택배번호 && String(r.운송비) !== '') : !!(r.차량번호 && String(r.운송비) !== '');
+        const inputTds = ic.map(c => {
+          const v = c === '기사전화' ? r.기사전화 : c === '운송비' ? r.운송비 : c === '택배요금' ? r.택배요금 : c === '택배번호' ? r.택배번호 : c === '차량번호' ? r.차량번호 : c === '기사성함' ? r.기사성함 : '';
+          const numClass = (c === '운송비' || c === '택배요금') ? ' class="num"' : '';
+          return `<td${numClass}>${esc(v === '' || v == null ? '—' : v)}</td>`;
+        }).join('');
+        return `<tr onclick="location.href='/carrier-input.html?id=${esc(r.id)}'">
+          <td>${esc(String(r.선적일).slice(0, 10))}</td>
+          <td class="mailbox">${esc(fmtMailbox(r.mailbox))}</td>
+          <td>${esc(custLabel(r.고객명, r.회사명))}</td>
+          <td>${esc(r.마킹번호)}</td>
+          <td>${esc(r.보세창고)}</td>
+          <td>${esc(String(r.통관완료일 || '').slice(0, 10))}</td>
+          <td>${esc(r.BL)}</td>
+          <td class="num">${esc(r.박스수)}</td>
+          <td class="num">${esc(r.CBM합)}</td>
+          <td class="num">${esc(r.박스당CBM)}</td>
+          <td class="num">${esc(r.박스당KG)}</td>
+          <td>${esc(r.마킹)}</td>
+          <td>${esc(r.수취인)}</td>
+          <td>${esc(r.전화번호)}</td>
+          <td>${esc(r.배송지)}</td>
+          <td>${esc(r.요청사항)}</td>
+          ${inputTds}
+          <td class="${filled ? 'done' : 'todo'}">${filled ? '✓ 입력' : '미입력'}</td>
+        </tr>`;
+      }).join('');
+    } catch (e) { loading.textContent = ''; tb.innerHTML = `<tr><td class="empty" colspan="30" style="color:#c0392b;">조회 실패: ${esc(e.message || e)}</td></tr>`; }
+  };
+
+  async function api(method, qs, body) {
+    const r = await fetch('/api/agent' + (qs || ''), {
+      method, headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await r.json();
+    if (!r.ok) { const err = new Error(data.error || ('HTTP ' + r.status)); err.status = r.status; throw err; }
+    return data;
+  }
+  function showError(text) { const e = document.getElementById('error'); e.style.display = ''; e.textContent = '⚠ ' + text; }
+  window.logout = async () => { if (supabase) await supabase.auth.signOut(); location.replace('/carrier-login.html'); };
+
+  init();
+</script>
+</body>
+</html>

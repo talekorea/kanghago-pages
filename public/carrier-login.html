@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>강하고 운송사·택배사 포털 — 로그인</title>
+<style>
+  :root { --gold:#C9973A; --navy:#1B2A3B; --bg:#F4EFE6; --ivory:#FAF6EE; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Pretendard', -apple-system, system-ui, 'Apple SD Gothic Neo', sans-serif;
+    margin:0; background:var(--bg); color:#1d1d1f; min-height:100vh;
+    display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card { background:#fff; border-radius:14px; padding:36px 32px; max-width:420px; width:100%;
+    box-shadow:0 6px 20px rgba(27,42,59,0.10); }
+  h1 { margin:0 0 6px 0; font-size:22px; color:var(--navy); }
+  .sub { color:#666; font-size:13px; margin-bottom:20px; }
+  label { display:block; font-size:13px; font-weight:600; color:#333; margin:12px 0 6px; }
+  input { width:100%; padding:11px 13px; border:1px solid #d4c5a8; border-radius:7px;
+    font-size:15px; font-family:inherit; background:var(--ivory); }
+  input:focus { outline:none; border-color:var(--gold); }
+  button { width:100%; margin-top:18px; padding:12px; background:var(--navy); color:#fff;
+    border:none; border-radius:7px; font-size:15px; font-weight:700; cursor:pointer;
+    transition:background 0.15s; }
+  button:hover:not(:disabled) { background:#0f1d2c; }
+  button:disabled { background:#aaa; cursor:not-allowed; }
+  .msg { margin-top:14px; padding:11px 13px; border-radius:6px; font-size:13px; line-height:1.5; }
+  .msg.err { background:#fff5f5; border:1px solid #f5c2c7; color:#c0392b; }
+  .footer { text-align:center; color:#888; font-size:11px; margin-top:24px; line-height:1.5; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🚚 강하고 운송사·택배사 포털</h1>
+  <div class="sub">등록된 이메일과 비밀번호로 로그인하세요.</div>
+  <form id="loginForm">
+    <label for="email">이메일</label>
+    <input id="email" type="email" placeholder="carrier@example.com" required autocomplete="email" />
+    <label for="password">비밀번호</label>
+    <input id="password" type="password" required autocomplete="current-password" />
+    <button type="submit" id="submitBtn">로그인</button>
+  </form>
+  <div id="msg"></div>
+  <div class="footer">
+    비밀번호는 <strong>강하고 관리자</strong>가 발급합니다.<br />
+    문의: master@talekorea.com · 1661-5776
+  </div>
+</div>
+
+<script type="module">
+  const msg = document.getElementById('msg');
+  const btn = document.getElementById('submitBtn');
+  const showMsg = (text, kind) => { msg.className = 'msg ' + (kind || ''); msg.textContent = text; };
+
+  let supabase = null;
+  async function loadSupabase() {
+    const cfgRes = await fetch('/api/agent-config');
+    if (!cfgRes.ok) { showMsg('서버 설정 미준비 — 관리자에게 문의', 'err'); throw new Error('config'); }
+    const cfg = await cfgRes.json();
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm');
+    // ★storageKey를 관세사(sb-kanghago-agent)와 분리 — 세션 충돌 방지.
+    supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+      auth: {
+        persistSession: true, autoRefreshToken: true, detectSessionInUrl: true,
+        storage: window.localStorage, storageKey: 'sb-kanghago-carrier', flowType: 'implicit',
+      },
+    });
+  }
+
+  // 로그인 후/기존 세션: carriers active를 op=carrier_me로 검증.
+  async function verifyActiveAndEnter(accessToken, { silent } = {}) {
+    const r = await fetch('/api/agent?op=carrier_me', { headers: { 'Authorization': 'Bearer ' + accessToken } });
+    const out = await r.json().catch(() => ({}));
+    if (r.ok) { location.replace('/carrier-dashboard.html'); return true; }
+    await supabase.auth.signOut().catch(() => {});   // 비활성/미등록 → 토큰 폐기
+    if (!silent) showMsg('❌ ' + (out.error || ('로그인 거부 (HTTP ' + r.status + ')')), 'err');
+    return false;
+  }
+
+  async function checkExisting() {
+    try {
+      if (!supabase) await loadSupabase();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) await verifyActiveAndEnter(session.access_token, { silent: true });
+    } catch (_) {}
+  }
+
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    btn.disabled = true; btn.textContent = '로그인 중...';
+    showMsg('', '');
+    try {
+      if (!supabase) await loadSupabase();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      const ok = await verifyActiveAndEnter(data.session.access_token);
+      if (!ok) { btn.disabled = false; btn.textContent = '로그인'; }
+    } catch (err) {
+      console.error(err);
+      showMsg('❌ ' + (err.message || '로그인 실패'), 'err');
+      btn.disabled = false; btn.textContent = '로그인';
+    }
+  });
+
+  checkExisting();
+</script>
+</body>
+</html>
