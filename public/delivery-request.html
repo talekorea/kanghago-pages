@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>강하고 — 배송 정보 등록</title>
+<style>
+  :root { --gold:#C9973A; --navy:#1B2A3B; --bg:#F4EFE6; --ivory:#FAF6EE; }
+  * { box-sizing: border-box; }
+  body { font-family:'Pretendard',-apple-system,system-ui,'Apple SD Gothic Neo',sans-serif;
+    margin:0; background:var(--bg); color:#1d1d1f; line-height:1.55; }
+  .wrap { max-width:480px; margin:0 auto; padding:20px 16px 48px; }
+  /* 로고 — 강하고 브랜드 워드마크(이미지 에셋 없어 텍스트). base64 로고 확보 시 교체. */
+  .brand { text-align:center; margin:8px 0 18px; }
+  .brand .ko { font-size:24px; font-weight:800; color:var(--navy); letter-spacing:1px; }
+  .brand .ko b { color:var(--gold); }
+  .brand .en { font-size:11px; color:#9a8e76; letter-spacing:3px; margin-top:2px; }
+  .card { background:#fff; border-radius:14px; padding:22px 20px; box-shadow:0 4px 16px rgba(27,42,59,0.08); margin-bottom:16px; }
+  h1 { font-size:20px; color:var(--navy); margin:0 0 10px; }
+  .sub { font-size:13.5px; color:#555; margin-bottom:16px; }
+  .notice { background:#f4f8ff; border:1px solid #c4d5ea; border-radius:10px; padding:13px 15px; font-size:13px; color:#1B2A3B; margin-bottom:18px; }
+  .notice.parcel { background:#fdf6ef; border-color:#e8cfa9; }
+  .mailbox { display:inline-block; font-family:'SF Mono',Consolas,monospace; font-size:12px; font-weight:700; color:var(--gold); background:#fbf6ec; border:1px solid #e8d8b8; border-radius:6px; padding:2px 9px; margin-bottom:10px; }
+  label { display:block; font-size:13px; font-weight:700; color:#333; margin:16px 0 6px; }
+  input, textarea, select { width:100%; padding:12px 13px; border:1px solid #d4c5a8; border-radius:8px;
+    font-size:15px; font-family:inherit; background:var(--ivory); }
+  input:focus, textarea:focus, select:focus { outline:none; border-color:var(--gold); }
+  textarea { min-height:64px; resize:vertical; }
+  .seg { display:flex; gap:8px; flex-wrap:wrap; }
+  .seg label.opt { flex:1; min-width:30%; margin:0; padding:11px 8px; text-align:center; border:1px solid #d4c5a8;
+    border-radius:8px; background:var(--ivory); font-weight:600; font-size:13.5px; cursor:pointer; }
+  .seg input[type=radio] { display:none; }
+  .seg input[type=radio]:checked + span { color:var(--gold); }
+  .seg label.opt:has(input:checked) { border-color:var(--gold); background:#fbf6ec; box-shadow:0 0 0 2px rgba(201,151,58,0.15) inset; }
+  .locked { opacity:0.55; }
+  .locked input { background:#eee; cursor:not-allowed; color:#999; }
+  .lockhint { font-size:11px; color:#a14a00; margin-top:4px; }
+  .saveBtn { width:100%; margin-top:24px; padding:15px; background:var(--navy); color:#fff; border:none;
+    border-radius:10px; font-size:16px; font-weight:800; cursor:pointer; }
+  .saveBtn:disabled { background:#aaa; cursor:not-allowed; }
+  .ind { margin-top:12px; text-align:center; font-size:14px; font-weight:700; min-height:20px; }
+  .ind.ok { color:#0a7b40; } .ind.err { color:#c0392b; } .ind.saving { color:#a85a16; }
+  .fullmsg { text-align:center; padding:60px 20px; color:#666; }
+  .fullmsg .big { font-size:40px; margin-bottom:12px; }
+  .foot { text-align:center; font-size:11px; color:#999; margin-top:20px; line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><div class="ko">강<b>하</b>고</div><div class="en">K A N G H A G O</div></div>
+  <div id="content" style="display:none;"></div>
+  <div id="loading" class="fullmsg">불러오는 중…</div>
+  <div class="foot">중국무역 전문 서비스 <b>강하고</b> · 주식회사 테일코리아<br/>문의 010-3622-7995 · admin@talekorea.com</div>
+</div>
+
+<script>
+  var qs = new URLSearchParams(location.search);
+  var SHIP = qs.get('ship') || '';
+  var TOKEN = qs.get('t') || '';
+  var esc = function (x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); };
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { mode: '화물', fields: {}, mailbox: '' };
+
+  function showError(msg) {
+    $('loading').style.display = 'none';
+    var c = $('content'); c.style.display = '';
+    c.innerHTML = '<div class="card fullmsg"><div class="big">🔒</div><div>' + esc(msg) + '</div></div>';
+  }
+
+  async function load() {
+    if (!SHIP || SHIP.indexOf('rec') !== 0 || !TOKEN) { showError('잘못된 접근입니다. 강하고에서 받은 링크로 다시 들어와 주세요.'); return; }
+    try {
+      var r = await fetch('/api/customer?op=customer_delivery_get&ship=' + encodeURIComponent(SHIP) + '&t=' + encodeURIComponent(TOKEN));
+      var d = await r.json();
+      if (!r.ok) { showError(d.error || ('접근할 수 없습니다 (HTTP ' + r.status + ')')); return; }
+      state.mode = d.mode || '화물'; state.fields = d.fields || {}; state.mailbox = d.mailbox || '';
+      render();
+    } catch (e) { showError('네트워크 오류입니다. 잠시 후 다시 시도해 주세요.'); }
+  }
+
+  function render() {
+    $('loading').style.display = 'none';
+    var c = $('content'); c.style.display = '';
+    var f = state.fields;
+    var isParcel = state.mode === '택배';
+    var sub = isParcel
+      ? '안녕하세요. 중국무역 전문 서비스 강하고입니다. 협력 관세사가 빠른 수입통관을 위해 사전 수입신고를 준비하고 있습니다. 통관 완료 후 보세창고에서 고객님의 수입화물을 화물택배로 발송할 예정입니다.'
+      : '안녕하세요. 중국무역 전문 서비스 강하고입니다. 협력 관세사가 빠른 수입통관을 위해 사전 수입신고를 준비하고 있습니다. 통관 완료 후 보세창고 반입 시 3~5시간 내로 반출이 가능해집니다. 그만큼 빠르게 배차해 드리기 위해, 화물 도착 전 미리 배송 정보를 등록해 주세요.';
+    var noticeTxt = isParcel
+      ? '📦 수입신고 수리 완료 후 최대한 빠르게 픽업하여 택배 발송 가능하도록 하겠습니다. 택배 발송 이후 송장번호는 다시 별도로 안내드릴 예정입니다.'
+      : '📦 수입신고 수리 완료 시 다시 안내드립니다. 통관이 완료되면 자동으로 알림을 보내드립니다. 그때 배송 희망 일시를 선택하고 배차를 요청해 주시면 됩니다.';
+
+    // 차량배송(화물) 전용 — 배송유형·하차지원
+    var freightExtra = isParcel ? '' :
+      '<label>배송 유형</label>'
+      + '<div class="seg" id="segType">'
+      + radio('배송유형', '독차', f['배송유형']) + radio('배송유형', '합배송', f['배송유형'])
+      + '</div>'
+      + '<label>하차 지원</label>'
+      + '<div class="seg" id="segUnload">'
+      + radio('하차지원', '불필요', f['하차지원']) + radio('하차지원', '하차 도움', f['하차지원']) + radio('하차지원', '실내 운반', f['하차지원'])
+      + '</div>'
+      + '<label>배송 희망 일시</label>'
+      + '<div class="locked"><input type="text" value="통관 완료 후 선택 가능" disabled /></div>'
+      + '<div class="lockhint">🔒 통관(수입신고 수리) 완료 후 별도 안내 시 선택하실 수 있습니다.</div>';
+
+    c.innerHTML =
+      '<div class="card">'
+      + (state.mailbox ? '<div class="mailbox">' + esc(fmtMb(state.mailbox)) + '</div>' : '')
+      + '<h1>배송 정보를 미리 등록해 주세요</h1>'
+      + '<div class="sub">' + esc(sub) + '</div>'
+      + '<div class="notice' + (isParcel ? ' parcel' : '') + '">' + esc(noticeTxt) + '</div>'
+      + '<label>수령인 성함</label><input id="iName" type="text" value="' + esc(f['수취_수취인'] || '') + '" placeholder="받으실 분 성함" />'
+      + '<label>연락처</label><input id="iPhone" type="tel" inputmode="numeric" value="' + esc(f['수취_전화'] || '') + '" placeholder="010-0000-0000" />'
+      + '<label>배송 주소</label><textarea id="iAddr" placeholder="받으실 주소(상세주소 포함)">' + esc(f['수취_주소'] || '') + '</textarea>'
+      + freightExtra
+      + '<label>기타 요청사항' + (isParcel ? ' <span style="font-weight:400;color:#888;">(부재 시 안내 등)</span>' : '') + '</label>'
+      + '<textarea id="iNote" placeholder="' + (isParcel ? '예) 부재 시 경비실에 맡겨주세요' : '예) 지게차 필요, 진입 어려움 등') + '">' + esc(f['특이사항'] || '') + '</textarea>'
+      + '<button class="saveBtn" id="saveBtn" onclick="save()">배송 정보 저장</button>'
+      + '<div class="ind" id="ind"></div>'
+      + '</div>';
+  }
+
+  function radio(name, val, cur) {
+    var checked = String(cur || '') === val ? ' checked' : '';
+    return '<label class="opt"><input type="radio" name="' + name + '" value="' + esc(val) + '"' + checked + '/><span>' + esc(val) + '</span></label>';
+  }
+  function fmtMb(name) { var s = String(name == null ? '' : name); var x = s.match(/^(.+)-(\d{6})$/); return x ? (x[2] + '-' + x[1]) : s; }
+  function radioVal(name) { var el = document.querySelector('input[name="' + name + '"]:checked'); return el ? el.value : ''; }
+
+  window.save = async function () {
+    var btn = $('saveBtn'), ind = $('ind');
+    var fields = {
+      '수취_수취인': $('iName').value.trim(),
+      '수취_전화': $('iPhone').value.trim(),
+      '수취_주소': $('iAddr').value.trim(),
+      '특이사항': $('iNote').value.trim()
+    };
+    if (state.mode !== '택배') {
+      var t = radioVal('배송유형'), u = radioVal('하차지원');
+      if (t) fields['배송유형'] = t;
+      if (u) fields['하차지원'] = u;
+    }
+    if (!fields['수취_수취인'] || !fields['수취_전화'] || !fields['수취_주소']) {
+      ind.className = 'ind err'; ind.textContent = '수령인·연락처·주소는 꼭 입력해 주세요.'; return;
+    }
+    btn.disabled = true; ind.className = 'ind saving'; ind.textContent = '저장 중…';
+    try {
+      var r = await fetch('/api/customer', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op: 'customer_delivery_save', shipmentId: SHIP, token: TOKEN, fields: fields })
+      });
+      var d = await r.json();
+      if (!r.ok || !d.ok) { throw new Error(d.error || ('저장 실패 (HTTP ' + r.status + ')')); }
+      // 거짓성공 방지: 저장 응답 + 재조회로 실제 반영 확인.
+      var g = await fetch('/api/customer?op=customer_delivery_get&ship=' + encodeURIComponent(SHIP) + '&t=' + encodeURIComponent(TOKEN));
+      var gd = await g.json();
+      if (g.ok && gd.fields) state.fields = gd.fields;
+      ind.className = 'ind ok'; ind.textContent = '✅ 저장됐습니다. 감사합니다! 통관 완료 시 다시 안내드릴게요.';
+    } catch (e) {
+      ind.className = 'ind err'; ind.textContent = '❌ ' + (e.message || '저장 실패');
+    } finally { btn.disabled = false; }
+  };
+
+  load();
+</script>
+</body>
+</html>

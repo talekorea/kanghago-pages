@@ -9,9 +9,13 @@ module.exports = async (req, res) => {
 
   try {
     if (req.method === 'GET') {
+      // [배송정보 1차 — 2026-06-30] 고객 셀프 배송정보 등록(읽기). 기존 고객페이지 GET와 분리.
+      if (req.query.op === 'customer_delivery_get') return await handleDeliveryGet(req, res);
       return await handleGet(req, res);
     }
     if (req.method === 'POST') {
+      const _b = await readBody(req);
+      if (_b.op === 'customer_delivery_save') return await handleDeliverySave(req, res, _b);
       return await handlePost(req, res);
     }
     res.status(405).json({ error: 'Method not allowed' });
@@ -185,4 +189,60 @@ async function handlePost(req, res) {
     success: true,
     message: '응답이 정상적으로 저장되었습니다. 강하고 무역이 곧 진행 안내드리겠습니다.'
   });
+}
+
+// ===== [배송정보 1단계 — 고객 셀프 등록] 2026-06-30 =====
+//   보안: 기존 고객페이지와 동일 토큰 모델(고객토큰 일치 + 고객토큰만료일 만료 + 토큰 ≥16자). invoice-view raw mailbox 패턴 미사용.
+//   모드: Shipments.배송방식(택배/화물/밀크런) 단일. 쓰기 WL은 모드별 — 통관·금액·발행 필드 PATCH 불가(WL 밖 reject).
+
+// 토큰 검증 단일 함수 — 통과 시 {ship}, 실패 시 {err:[status,msg]}.
+async function validateDeliveryToken(shipId, token) {
+  if (!shipId || !String(shipId).startsWith('rec')) return { err: [400, 'Invalid shipment id'] };
+  if (!token || String(token).length < 16) return { err: [401, '유효하지 않은 접근 토큰입니다.'] };
+  const ship = await atRequest('GET', `/${TABLES.Shipments}/${shipId}`);
+  const savedToken = ship.fields['고객토큰'];
+  const expDate = ship.fields['고객토큰만료일'];
+  if (!savedToken || savedToken !== token) return { err: [401, '유효하지 않은 토큰입니다.'] };
+  if (expDate) {
+    const exp = new Date(expDate); exp.setHours(23, 59, 59);   // 만료일 그날 끝까지 유효
+    if (exp < new Date()) return { err: [403, '링크가 만료되었습니다 (만료일: ' + expDate + '). 강하고 무역에 재발송 요청해 주세요.'] };
+  }
+  return { ship };
+}
+
+// 모드 판별 — 택배면 '택배', 그 외(화물·밀크런·미선택)는 차량배송(화물 폼).
+function deliveryMode(f) {
+  return String((f || {})['배송방식'] || '').trim() === '택배' ? '택배' : '화물';
+}
+
+// 쓰기 WL — 모드별. 화물만 배송유형·하차지원 허용. 그 외 키는 전부 reject(통관·금액·발행 차단).
+const DELIVERY_PATCH_WL = {
+  '화물': new Set(['수취_수취인', '수취_회사', '수취_전화', '수취_주소', '수취_우편번호', '배송유형', '하차지원', '특이사항']),
+  '택배': new Set(['수취_수취인', '수취_회사', '수취_전화', '수취_주소', '수취_우편번호', '특이사항']),
+};
+
+// op=customer_delivery_get — 토큰 검증 → 모드 + 기존 저장값(읽기 WL)만 반환.
+async function handleDeliveryGet(req, res) {
+  const v = await validateDeliveryToken(req.query.ship, req.query.t);
+  if (v.err) return res.status(v.err[0]).json({ error: v.err[1] });
+  const f = v.ship.fields || {};
+  const READ_WL = ['배송방식', '수취_수취인', '수취_회사', '수취_전화', '수취_주소', '수취_우편번호', '특이사항', '배송유형', '하차지원', '상태'];
+  const out = {}; for (const k of READ_WL) { if (f[k] !== undefined) out[k] = f[k]; }
+  return res.json({ mode: deliveryMode(f), mailbox: f['사서함'] || '', fields: out });
+}
+
+// op=customer_delivery_save — 토큰 재검증 → 모드별 쓰기 WL만 PATCH. 응답도 saved/rejected로 큐레이트.
+async function handleDeliverySave(req, res, body) {
+  const { shipmentId, token } = body;
+  const fields = body.fields || {};
+  const v = await validateDeliveryToken(shipmentId, token);
+  if (v.err) return res.status(v.err[0]).json({ error: v.err[1] });
+  const mode = deliveryMode(v.ship.fields);
+  const wl = DELIVERY_PATCH_WL[mode] || new Set();
+  const safe = {}, rejected = [];
+  for (const k of Object.keys(fields)) { if (wl.has(k)) safe[k] = fields[k]; else rejected.push(k); }
+  if (Object.keys(safe).length === 0) return res.status(400).json({ error: '허용 필드 없음', rejected });
+  const updated = await atRequest('PATCH', `/${TABLES.Shipments}/${shipmentId}`, { fields: safe, typecast: true });
+  const echo = {}; Object.keys(safe).forEach(k => { echo[k] = (updated.fields || {})[k]; });
+  return res.json({ ok: true, mode, saved: echo, rejected });
 }
