@@ -32,6 +32,10 @@
   .seg input[type=radio] { display:none; }
   .seg input[type=radio]:checked + span { color:var(--gold); }
   .seg label.opt:has(input:checked) { border-color:var(--gold); background:#fbf6ec; box-shadow:0 0 0 2px rgba(201,151,58,0.15) inset; }
+  .seg label.opt .ov { display:block; font-weight:700; font-size:14px; }
+  .seg label.opt .od { display:block; font-weight:400; font-size:10.5px; color:#8a8a8a; margin-top:3px; line-height:1.35; }
+  .seg label.opt:has(input:checked) .ov { color:var(--gold); }
+  .hint2 { font-size:12px; color:#777; margin:-2px 0 8px; line-height:1.4; }
   .locked { opacity:0.55; }
   .locked input { background:#eee; cursor:not-allowed; color:#999; }
   .lockhint { font-size:11px; color:#a14a00; margin-top:4px; }
@@ -93,12 +97,16 @@
     // 차량배송(화물) 전용 — 배송유형·하차지원
     var freightExtra = isParcel ? '' :
       '<label>배송 유형</label>'
+      + '<div class="hint2">서울·수도권 외 지역은 합배송을 선택하시면 운송비가 절감됩니다.</div>'
       + '<div class="seg" id="segType">'
-      + radio('배송유형', '독차', f['배송유형']) + radio('배송유형', '합배송', f['배송유형'])
+      + radio('배송유형', '독차', f['배송유형'], '차량 단독 배차')
+      + radio('배송유형', '합배송', f['배송유형'], '다른 화물과 함께, 지방 비용 절감')
       + '</div>'
       + '<label>하차 지원</label>'
       + '<div class="seg" id="segUnload">'
-      + radio('하차지원', '불필요', f['하차지원']) + radio('하차지원', '하차 도움', f['하차지원']) + radio('하차지원', '실내 운반', f['하차지원'])
+      + radio('하차지원', '불필요', f['하차지원'], '기사님이 하차만, 직접 수령')
+      + radio('하차지원', '하차 도움', f['하차지원'], '내릴 때 거들어 드림')
+      + radio('하차지원', '실내 운반', f['하차지원'], '건물·사무실 안까지 운반')
       + '</div>'
       + '<label>배송 희망 일시</label>'
       + '<div class="locked"><input type="text" value="통관 완료 후 선택 가능" disabled /></div>'
@@ -121,9 +129,13 @@
       + '</div>';
   }
 
-  function radio(name, val, cur) {
+  function radio(name, val, cur, desc) {
     var checked = String(cur || '') === val ? ' checked' : '';
-    return '<label class="opt"><input type="radio" name="' + name + '" value="' + esc(val) + '"' + checked + '/><span>' + esc(val) + '</span></label>';
+    // ★value는 저장 라벨 그대로(독차/합배송/불필요…). desc는 화면 표시용일 뿐 저장 안 됨.
+    return '<label class="opt"><input type="radio" name="' + name + '" value="' + esc(val) + '"' + checked + '/>'
+      + '<span class="ov">' + esc(val) + '</span>'
+      + (desc ? '<span class="od">' + esc(desc) + '</span>' : '')
+      + '</label>';
   }
   function fmtMb(name) { var s = String(name == null ? '' : name); var x = s.match(/^(.+)-(\d{6})$/); return x ? (x[2] + '-' + x[1]) : s; }
   function radioVal(name) { var el = document.querySelector('input[name="' + name + '"]:checked'); return el ? el.value : ''; }
