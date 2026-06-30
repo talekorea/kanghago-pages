@@ -323,7 +323,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.171</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.173</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -444,7 +444,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.171</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.173</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -4464,6 +4464,22 @@ async function loadShipment(forceId) {
     log('━━━━━━━━━━━━━━━━━━━━━━━━━━', 'dim');
     log('✓ 로드 완료. HS코드를 입력하세요.', 'ok');
 
+    // [v3.2.172] ★확정 후 최종IP 자동저장(놓침 방지·두더지잡기 근본처방) — 관세사확정완료 ∧ 최종IP없음 ∧ BL∧CO면 단건 저장경로로 1회 자동 등록.
+    //   관세사 페이지 확정(서버엔 IP 생성코드 없음)도, 사장이 이 사서함을 도구로 열면 여기서 커버됨. _batchMode=false라 _snapshotIp PATCH 실제 저장.
+    //   게이트(전제품 확정·환율·BL번호/BL파일·포워딩사·특혜세율이면 CO대조)는 _autoRegisterFinalIp→downloadInvoiceExcel 내장 게이트가 재확인 → 미충족이면 보류(잘못된 IP 안 만듦).
+    //   ★단건 1PATCH(루프 아님)라 rate limit 무관. 기존 최종IP 있으면(이미 채워짐) 스킵 → 중복 저장·매 로드 재생성 방지.
+    try {
+      const _sf = (state.shipment && state.shipment.fields) || {};
+      const _confirmed = (_sf['상태'] || '') === '관세사확정완료';
+      const _hasFinalIp = !!(_sf['최종IP파일'] && _sf['최종IP파일'].length);
+      const _blOk = !!(_sf['BL파일'] && _sf['BL파일'].length);
+      const _coOk = !!(_sf['CO파일'] && _sf['CO파일'].length);
+      if (!state._batchMode && _confirmed && !_hasFinalIp && _blOk && _coOk) {
+        log('확정완료·최종IP 없음 감지 — 자동 등록 시도(게이트 충족 시 Airtable 저장)…', 'dim');
+        await _autoRegisterFinalIp({ auto: true });   // 단건(_batchMode=false): 게이트 통과 시 _snapshotIp가 최종IP파일 실제 저장 / 미충족이면 보류 토스트(거짓성공 X)
+      }
+    } catch (e) { console.warn('[최종IP 자동저장]', e && e.message); }
+
   } catch (e) {
     log('오류: ' + e.message, 'err');
     console.error(e);
@@ -6952,23 +6968,31 @@ const ATTACH_FIELD_IDS = {
 // [v3.2.132] ★누적(append) 버그 fix — 기존 "clear 후 append"는 REST PATCH(api.airtable.com) clear와
 //   content endpoint(content.airtable.com) append가 별도 서비스라 정합성 레이스 → clear 누락 시 2~4장 누적.
 //   해법: 먼저 append → 응답의 전체 첨부 목록에서 ★최신(마지막) 1장 id만 남기고 PATCH로 trim(레이스 없음).
+// [v3.2.173] ★반환값 {ok,error,count} — 거짓성공 근절. 호출부가 PATCH 성공·GET 재확인 후에만 ✅ 표시.
 async function _snapshotIp(shipmentId, stage, blob, filename) {
   const NAME = stage === 'first' ? '1차IP파일' : (stage === 'final' ? '최종IP파일' : '');
-  if (!NAME || !shipmentId || !blob) return;
+  if (!NAME || !shipmentId || !blob) return { ok: false, error: '인자 누락' };
   const fieldId = ATTACH_FIELD_IDS[NAME];
   try {
     const file = new File([blob], filename || (NAME + '.xlsx'), { type: blob.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    await uploadAirtableAttachment(shipmentId, fieldId, file, filename);   // append(content endpoint)
+    await uploadAirtableAttachment(shipmentId, fieldId, file, filename);   // append(content endpoint) — 5MB 초과면 throw
     // [v3.2.163] ★무조건 trim — GET 전체 후 최신(마지막 append) 1장만 남김. (구버그: trim PATCH가
     //   `/v0/{base}/{shipmentId}`로 ★테이블 id(Shipments) 누락 → malformed → trim 실패 → IP 누적(AP2402 5장).
     //   사진버그 v3.2.154와 동일 원인. api()로 올바른 경로(/{TABLES.Shipments}/{id}) + 응답 의존 제거.)
-    const rec = await api('GET', `/${TABLES.Shipments}/${shipmentId}`);
+    const rec = await api('GET', `/${TABLES.Shipments}/${shipmentId}`);   // ★GET 재확인 — 실제 저장됐나
     const atts = (rec && rec.fields && rec.fields[NAME]) || [];
     if (atts.length > 1) {
       const latest = atts[atts.length - 1];
       await api('PATCH', `/${TABLES.Shipments}/${shipmentId}`, { fields: { [NAME]: [{ id: latest.id }] }, typecast: true });
     }
-  } catch (e) { console.warn('[IP 스냅샷 저장/trim]', stage, shipmentId, e && e.message); }
+    if (atts.length < 1) return { ok: false, error: '업로드 후 GET에 첨부 0장 (저장 실패)' };
+    // 낙관적 in-memory 반영(자동저장 훅 재발화 방지)
+    try { if (state.shipment && state.shipment.id === shipmentId) state.shipment.fields[NAME] = atts.slice(-1); } catch (e) {}
+    return { ok: true, count: atts.length };
+  } catch (e) {
+    console.warn('[IP 스냅샷 저장/trim]', stage, shipmentId, e && e.message);
+    return { ok: false, error: String((e && e.message) || e) };
+  }
 }
 // [v3.2.145 G3] 제품 사진 교체(디스크 업로드) — Products.상품이미지 첨부 1장 replace. 분할 품목·오사진 교체용.
 async function uploadProductPhoto(pid, inputEl) {
@@ -7067,17 +7091,26 @@ async function handleBlCoFileUpload(kind, fileInput) {
 //   게이트: downloadInvoiceExcel({stage:'final'}) 내장 게이트(영문명·HS·★관세사확정완료·환율)가 미충족이면 {skip} 반환 → 등록 안 함(부정확 IP 차단).
 //   stale 방지: 새 BL/CO 업로드마다 재호출(이 함수) → 최신값 재등록. _snapshotIp가 최신 1장만 trim(v3.2.163 수정).
 //   ★새 Vercel 함수 0 — downloadInvoiceExcel+_snapshotIp는 도구→Airtable 직접.
-async function _autoRegisterFinalIp() {
+async function _autoRegisterFinalIp(opts) {
+  // [v3.2.172] opts.auto=true → loadShipment 진입 자동저장 경로(중간 '생성 중' 토스트만 억제, 성공/보류 결과 토스트는 유지=거짓성공 방지).
+  const _auto = !!(opts && opts.auto);
   const sf = (state.shipment && state.shipment.fields) || {};
   const blOk = !!(sf['BL파일'] && sf['BL파일'].length);
   const coOk = !!(sf['CO파일'] && sf['CO파일'].length);
   if (!blOk || !coOk) return;   // BL∧CO 둘 다일 때만(BL만/CO만이면 등록 안 함)
-  if (typeof toastInfo === 'function') toastInfo('확정 IP 생성·등록 중…', { title: '📋 확정 IP' });
+  if (!_auto && typeof toastInfo === 'function') toastInfo('확정 IP 생성·등록 중…', { title: '📋 확정 IP' });
   const res = await downloadInvoiceExcel({ stage: 'final', returnBlob: true });   // 내장 게이트 통과 시 _snapshotIp(최종IP파일) — 다운로드 X
+  // [v3.2.173] ★투명화·거짓성공 근절 — '시도'만 뜨고 끝나는 일 없게 4갈래 모두 명확 토스트.
   if (res && res.skip) {
-    toastWarn && toastWarn('확정 IP 자동등록 보류 — ' + res.skip + '\n(관세사확정·영문명·HS·환율 완료 후 BL/CO 재업로드 시 자동 등록)', { title: '⚠ 확정 IP 미등록' });
+    toastWarn && toastWarn('⚠ 최종IP 미저장(보류) — ' + res.skip + '\n(해당 조건 완료 후 BL/CO 재업로드 또는 사서함 재진입 시 자동 등록)', { title: '⚠ 최종IP 미저장' });
+  } else if (res && res.blob && res.snapshot && res.snapshot.ok) {
+    toastSuccess && toastSuccess('✅ 최종IP 저장됨 — 관세사 페이지·ZIP에 반영됩니다.', { title: '✅ 최종IP 저장' });
   } else if (res && res.blob) {
-    toastSuccess && toastSuccess('확정 IP 자동등록 완료 — 관세사 페이지·ZIP에 반영됩니다.', { title: '✅ 확정 IP' });
+    // blob은 만들었으나 Airtable 저장 실패(5MB 초과 등) — ★거짓 '완료' 금지
+    toastError && toastError('❌ 최종IP 미저장 — ' + ((res.snapshot && res.snapshot.error) || '저장 실패') + '\n(사진 압축 후에도 5MB 초과면 사진 수·해상도 축소 필요)', { title: '❌ 최종IP 저장 실패' });
+  } else {
+    // res 없음(예외로 중단) — 콘솔에 [최종IP 자동저장] 원인
+    toastError && toastError('❌ 최종IP 처리 중 오류 — 콘솔 [최종IP 자동저장] 메시지 확인', { title: '❌ 최종IP 오류' });
   }
 }
 
@@ -11620,14 +11653,48 @@ function getInvoiceRemarks() {
   ];
 }
 
-// H3: 이미지 URL → base64 dataURI (패킹 사진 임베드용, 실패 시 null — CORS/404 등)
-async function fetchImageBase64(url) {
+// [v3.2.173] blob → canvas 다운스케일 → JPEG dataURL. blob을 object URL(같은 출처)로 그려 toDataURL → CORS taint 없음(fetch가 CORS 통과한 전제). 실패 시 null.
+function _compressImageBlob(blob, maxSide, quality) {
+  return new Promise((resolve) => {
+    try {
+      const objUrl = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+          if (!w || !h) { URL.revokeObjectURL(objUrl); return resolve(null); }
+          const scale = Math.min(1, maxSide / Math.max(w, h));
+          const cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = cw; canvas.height = ch;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cw, ch);   // 투명 PNG → 흰 배경(JPEG는 알파 없음)
+          ctx.drawImage(img, 0, 0, cw, ch);
+          const out = canvas.toDataURL('image/jpeg', quality);   // taint면 SecurityError → catch
+          URL.revokeObjectURL(objUrl);
+          resolve(out && out.length > 64 ? out : null);
+        } catch (e) { URL.revokeObjectURL(objUrl); resolve(null); }
+      };
+      img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(null); };
+      img.src = objUrl;
+    } catch (e) { resolve(null); }
+  });
+}
+// H3: 이미지 URL → ★압축 base64 dataURI (패킹 사진 임베드용, 실패 시 null — CORS/404 등)
+//   [v3.2.173] ★사진 무압축 임베드(원본 풀해상도)로 IP xlsx 5MB 초과 → Airtable uploadAttachment(공식 5MB 한도) 거부 → 최종IP 미저장 사고 처방.
+//   canvas 다운스케일(maxSide)+JPEG 재인코딩(quality)로 사진당 ~70KB. opt 기본=600px·q0.65(세관 박스내용 식별 충분). 압축 실패만 원본 폴백(5MB 가드가 잡음).
+async function fetchImageBase64(url, opt) {
   if (!url) return null;
+  const maxSide = (opt && opt.maxSide) || 600;
+  const quality = (opt && (opt.quality != null ? opt.quality : opt.q)) || 0.65;
   try {
     const r = await fetch(url, { mode: 'cors' });
     if (!r.ok) return null;
     const blob = await r.blob();
-    if (blob.size > 3 * 1024 * 1024) return null;  // 3MB 초과 스킵 (성능)
+    const compressed = await _compressImageBlob(blob, maxSide, quality);   // ★다운스케일+JPEG (무압축 풀해상도 폐지)
+    if (compressed) return compressed;
+    // 폴백: 압축 실패(디코드/taint) 시 원본 dataURL — 단 8MB 초과 원본은 스킵(폴백조차 과대면 IP 전체를 5MB로 못 맞춤)
+    if (blob.size > 8 * 1024 * 1024) return null;
     return await new Promise((resolve) => {
       const fr = new FileReader();
       fr.onload = () => resolve(fr.result);
@@ -12461,7 +12528,18 @@ async function downloadInvoiceExcel(opts) {
     // H3: 패킹 PICTURES(F열) 제품 사진 임베드 — 전체 fetch 후 일괄 배치 (실패분은 건너뜀)
     if (packImgJobs.length) {
       toastInfo && toastInfo(`제품 사진 ${packImgJobs.length}장 불러오는 중...`, { title: '📷 패킹 사진' });
-      const fetched = await Promise.all(packImgJobs.map(async j => ({ ...j, b64: await fetchImageBase64(j.url) })));
+      // [v3.2.173] ★압축 설정 — 사진 수에 따라 적응형(합계 5MB 미만 보장). 세관 박스내용 식별 가능 해상도 유지.
+      const _N = packImgJobs.length;
+      let _imgOpt = _N <= 40 ? { maxSide: 600, q: 0.65 } : _N <= 70 ? { maxSide: 480, q: 0.60 } : _N <= 120 ? { maxSide: 400, q: 0.52 } : { maxSide: 360, q: 0.45 };
+      let fetched = await Promise.all(packImgJobs.map(async j => ({ ...j, b64: await fetchImageBase64(j.url, _imgOpt) })));
+      // ★적응형 안전판: 임베드 합계(추정 바이트≈base64길이×0.75)가 4.5MB 초과면 한 단계 더 낮춰 재압축 → 항상 5MB 미만.
+      const _embedBytes = (arr) => arr.reduce((s, j) => s + (j.b64 ? j.b64.length * 0.75 : 0), 0);
+      if (_embedBytes(fetched) > 4.5 * 1024 * 1024) {
+        const _tight = { maxSide: Math.max(320, Math.round(_imgOpt.maxSide * 0.8)), q: Math.max(0.4, _imgOpt.q - 0.1) };
+        console.log('[H3] 패킹 사진 합계 4.5MB 초과 → 재압축', _tight);
+        fetched = await Promise.all(packImgJobs.map(async j => ({ ...j, b64: await fetchImageBase64(j.url, _tight) })));
+      }
+      console.log(`[H3] 패킹 사진 임베드 추정 합계 ${(_embedBytes(fetched) / 1024 / 1024).toFixed(2)}MB (opt ${_imgOpt.maxSide}px q${_imgOpt.q})`);
       let embedded = 0;
       fetched.forEach(j => {
         if (!j.b64) return;
@@ -12524,14 +12602,17 @@ async function downloadInvoiceExcel(opts) {
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const fname = getInvoiceFilename(stage === 'first' ? 'IP' : 'IP+BL(CO용)');   // [B v3.2.65] 1차=IP / 최종(CO 전달)=IP+BL(CO용)
     // [v3.2.116] ★IP 스냅샷 저장 — 개별·배치 공용. 생성된 그 blob을 1차IP파일/최종IP파일에 1장 replace(관세사 다운로드용). wb 빌드·청구식 미변경.
-    try { await _snapshotIp((state.shipment && state.shipment.id), stage, blob, fname); } catch (e) { console.warn('[IP 스냅샷]', e && e.message); }
-    if (_rb) return { blob, filename: fname };   // [v3.2.98] 배치=저장 안 하고 반환(무손상 — 생성 로직 동일, 출력만 분기)
+    let _snap = null;
+    try { _snap = await _snapshotIp((state.shipment && state.shipment.id), stage, blob, fname); } catch (e) { _snap = { ok: false, error: String((e && e.message) || e) }; console.warn('[IP 스냅샷]', e && e.message); }
+    if (_rb) return { blob, filename: fname, snapshot: _snap };   // [v3.2.173] ★저장결과 동봉 — auto 호출부가 _snap.ok 확인 후에만 ✅(거짓성공 근절)
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = fname;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toastSuccess('인보이스/패킹 엑셀 다운로드 완료', { title: '📊 발행', subtitle: a.download });
+    // [v3.2.173] ★거짓성공 근절 — 다운로드는 됐어도 관세사 대시보드 저장(_snapshotIp)이 실패면 명확히 경고.
+    if (_snap && !_snap.ok) toastWarn && toastWarn('⚠ 단, 관세사 대시보드 저장 실패 — ' + (_snap.error || '저장 오류') + '\n(사진 많은 사서함은 5MB 초과 — 압축 후에도 초과면 사진 축소 필요)', { title: '⚠ 대시보드 미저장', duration: 9000 });
   } catch (e) {
     console.error('[C6 downloadInvoiceExcel]', e);
     if (_rb) return { skip: '생성 오류: ' + (e.message || e) };   // [배치] 오류는 스킵 사유로
@@ -16650,16 +16731,19 @@ async function downloadBatchIp(stage) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(zblob); a.download = fname;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   const skipMsg = skipped.length ? ` · ⚠누락 ${skipped.length}건(목록.txt 동봉)` : '';
-  toastSuccess && toastSuccess(`${label} IP ${done.length}건 ZIP${skipMsg} · 쓰기차단 ${blocked}`, { title: '📦 배치 IP', duration: 7000 });
+  // [v3.2.172] ★거짓 성공 제거 — 초록 성공 토스트 폐기. 배치=ZIP전용·Airtable 미저장을 경고색으로 명시.
+  toastWarn && toastWarn(`${label} IP ${done.length}건 ZIP 다운로드${skipMsg}\n⚠ Airtable 미저장 — 관세사 대시보드 반영 X. 사서함별 '확정 후 자동저장'(열기) 또는 §7 'CO 전달' 필요.`, { title: '📦 배치=ZIP전용', duration: 9000 });
   _renderBatchIpResult(label, done, skipped, blocked);
 }
 function _renderBatchIpResult(label, done, skipped, blocked) {
   const box = document.getElementById('batchIpResult');
   if (!box) return;
-  box.innerHTML = `<div style="margin-top:8px; padding:10px 12px; background:#f5f5f5; border-radius:6px; font-size:12px;">
-    <div style="font-weight:700; color:#1B2A3B;">📦 ${label} IP 배치: 생성 ${done.length} · 스킵 ${skipped.length} <span style="color:#0a7b40; font-weight:400;">(Airtable 쓰기 ${blocked}건 차단=무쓰기)</span></div>
-    ${done.length ? `<div style="color:#0a7b40; margin-top:3px;">✅ ${done.join(', ')}</div>` : ''}
-    ${skipped.length ? `<div style="color:#c0392b; margin-top:3px;">⚠ 스킵: ${skipped.map(s => `${s.mb}(${s.reason})`).join(' · ')}</div>` : ''}
+  // [v3.2.172] ★거짓 성공 UX 제거 — 이 배치는 ZIP 다운로드 전용(무쓰기). "생성"이 아니라 "ZIP 담음"이며 Airtable·대시보드 미저장임을 빨강 경고로 명시.
+  box.innerHTML = `<div style="margin-top:8px; padding:10px 12px; background:#fff7ed; border:1px solid #e8a33d; border-radius:6px; font-size:12px;">
+    <div style="font-weight:700; color:#1B2A3B;">📦 ${label} IP 배치: ZIP 담음 ${done.length} · 스킵 ${skipped.length}</div>
+    <div style="margin-top:5px; padding:6px 8px; background:#fdecef; border:1px solid #e88aa0; border-radius:5px; color:#b3123c; font-weight:700; font-size:11.5px; line-height:1.5;">⚠ 이 배치는 <u>ZIP 다운로드 전용</u> — Airtable·관세사 대시보드에는 <u>저장되지 않습니다</u> (쓰기 ${blocked}건 무쓰기). 대시보드(❌→✅) 반영은 사서함을 <b>열어서('확정 후 자동저장')</b> 또는 §7 서류 <b>'CO 전달'</b>로만 됩니다.</div>
+    ${done.length ? `<div style="color:#1B2A3B; margin-top:4px;">📄 ZIP 포함(${done.length}): ${done.join(', ')}</div>` : ''}
+    ${skipped.length ? `<div style="color:#c0392b; margin-top:3px;">⚠ 스킵(미생성): ${skipped.map(s => `${s.mb}(${s.reason})`).join(' · ')}</div>` : ''}
   </div>`;
 }
 
