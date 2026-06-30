@@ -861,6 +861,93 @@ async function adminCreateCarrierWithPassword(email, name, type, password) {
   return await upsertCarrier(userId, email, name, type);
 }
 
+// ===== 배차요청 자동 발송 (수입신고수리 트리거) — 2026-07-01 =====
+//   selectCore6 실데이터 검증 12/12 + 검사케이스 3/3(AP48 검사/검역 끼어도 정확) 근거.
+//   트리거 = 수입신고수리 감지. 발송 = 채널톡(배차요청 링크). 화물만. dedup = 통관알림이력('배차요청') 1회.
+//   ★dryRun 기본 권장(첫 운영 관찰) — dryRun이면 토큰·발송·이력 안 건드리고 후보만 보고.
+const _crypto = require('crypto');
+function genCustomerToken(n) { return _crypto.randomBytes(n * 2).toString('base64').replace(/[^A-Za-z0-9]/g, '').slice(0, n); }
+
+// 서버판 selectCore6 — 도구 9001과 동일 규칙(수입신고수리/반입/반출). stages는 parseCargoProgress가 처리일시 정렬.
+function jsSelectCore6(stages) {
+  const L = s => (s.진행상태 || '');
+  const Bb = s => (s.진행상태 || '') + ' ' + (s.반출입내용 || '');
+  const first = pred => { for (const s of stages) if (pred(s)) return s; return null; };
+  const last = pred => { for (let i = stages.length - 1; i >= 0; i--) if (pred(stages[i])) return stages[i]; return null; };
+  return {
+    수입신고수리: first(s => /수입신고\s*수리|수입신고수리/.test(L(s))),
+    반입: first(s => /보세운송\s*반입/.test(Bb(s))),
+    반출: last(s => /반출/.test(L(s))),
+  };
+}
+
+// 채널톡 발송(사서함 base → 채널톡userId → user-chat → 메시지). handleNotifyCustomer 발송부와 동일.
+async function sendChannelByMailbox(base, text) {
+  const cs = await atListAll(`/${TABLES.Customers}?filterByFormula=${encodeURIComponent(`{사서함번호}='${base}'`)}&maxRecords=1`);
+  const userId = cs.length ? String((cs[0].fields || {})['채널톡userId'] || '').trim() : '';
+  if (!userId) return { ok: false, error: '채널톡 미연결(채널톡userId 없음)' };
+  const KEY = process.env.CHANNELTALK_ACCESS_KEY, SECRET = process.env.CHANNELTALK_ACCESS_SECRET;
+  if (!KEY || !SECRET) return { ok: false, error: '채널톡 키 미설정' };
+  try {
+    const list = await callChannel('GET', `/open/v5/users/${userId}/user-chats`, null, KEY, SECRET);
+    const chats = (list && (list.userChats || list)) || [];
+    let chatId = Array.isArray(chats) ? ((chats.find(c => c.state === 'opened') || chats[0] || {}).id) : null;
+    if (!chatId) { const created = await callChannel('POST', `/open/v5/users/${userId}/user-chats`, {}, KEY, SECRET); chatId = created && (created.userChat ? created.userChat.id : created.id); }
+    if (!chatId) return { ok: false, error: 'user-chat 생성/조회 실패' };
+    const sent = await callChannel('POST', `/open/v5/user-chats/${chatId}/messages?botName=${encodeURIComponent('강하고')}`, { plainText: text }, KEY, SECRET);
+    return { ok: true, messageId: sent && (sent.message ? sent.message.id : sent.id) };
+  } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 120) }; }
+}
+
+const AUTO_DISPATCH_BASE = 'https://kanghago-pages.vercel.app/delivery-request.html';
+const AUTO_DISPATCH_MSG = (link) => `[강하고] 통관이 완료되어 반출 가능합니다. 배송 희망 일시를 선택하고 배차를 요청해 주세요 → ${link}`;
+const AUTO_DISPATCH_MAX = 15;   // 1회 스캔 처리 상한(Vercel 타임아웃·중계 부하 가드). 통지분이 빠져 다음 스캔서 소진.
+
+// 중계 cron이 호출(Admin 토큰). 화물·BL·미통지·활성상태 후보 → customs_progress → 수입신고수리면 발송.
+async function handleAutoDispatchScan(req, res) {
+  const dryRun = String((req.query && req.query.dryRun) || (req.body && req.body.dryRun) || '') === '1' || (req.body && req.body.dryRun === true);
+  const RELAY_URL = process.env.RELAY_URL, RELAY_SECRET = process.env.RELAY_SECRET;
+  if (!RELAY_URL || !RELAY_SECRET) return res.status(503).json({ ok: false, error: '중계 미설정(RELAY_URL/RELAY_SECRET)' });
+  // 후보 필터 — 화물 ∧ BL ∧ 배차요청 미통지 ∧ 활성 통관 상태(너무 이르거나 종결 제외)
+  const f = `AND({배송방식}='화물',{BL번호}!='',NOT(FIND('배차요청',{통관알림이력}&'')),OR({상태}='관세사확정완료',{상태}='인보이스완료',{상태}='통관중',{상태}='통관완료',{상태}='배송중'))`;
+  let ships = [];
+  try { ships = await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=고객사서함&fields[]=상태&fields[]=배송방식&fields[]=BL번호&fields[]=통관알림이력&fields[]=고객토큰&fields[]=고객토큰만료일`); }
+  catch (e) { return res.status(502).json({ ok: false, error: 'Shipments 후보 조회 실패: ' + e.message }); }
+  const todo = ships.slice(0, AUTO_DISPATCH_MAX);
+  const results = [];
+  for (const s of todo) {
+    const sf = s.fields || {};
+    const mailbox = sf['사서함'] || '';
+    const bl = String(sf['BL번호'] || '').trim();
+    let rr;
+    try { rr = await callCustomsRelay(RELAY_URL, RELAY_SECRET, JSON.stringify({ blNo: bl })); }
+    catch (e) { results.push({ mailbox, bl, status: 'relay_fail', detail: String(e.message || e).slice(0, 80) }); continue; }
+    if (!rr || !rr.ok) { results.push({ mailbox, bl, status: 'no_data' }); continue; }
+    const parsed = parseCargoProgress(rr.xml || '');
+    const core = jsSelectCore6(parsed.stages || []);
+    if (!core.수입신고수리) { results.push({ mailbox, bl, status: 'not_yet', stages: (parsed.stages || []).length }); continue; }   // 수리 전 = 미발송(구조적 안전)
+    if (histHas(sf['통관알림이력'], '배차요청')) { results.push({ mailbox, bl, status: 'already_sent(dedup)' }); continue; }
+    if (dryRun) { results.push({ mailbox, bl, status: 'WOULD_SEND', 수리처리일시: core.수입신고수리.처리일시, 반입: core.반입 ? '보세운송반입' : '-' }); continue; }
+    // 토큰 생성/재사용(만료 지났으면 갱신)
+    let token = sf['고객토큰'], exp = sf['고객토큰만료일'];
+    const needNew = !token || (exp && new Date(exp + 'T23:59:59') < new Date());
+    if (needNew) {
+      token = genCustomerToken(32);
+      exp = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      try { await atRequest('PATCH', `/${TABLES.Shipments}/${s.id}`, { fields: { '고객토큰': token, '고객토큰만료일': exp }, typecast: true }); }
+      catch (e) { results.push({ mailbox, bl, status: 'token_fail', detail: e.message.slice(0, 80) }); continue; }
+    }
+    const link = `${AUTO_DISPATCH_BASE}?ship=${s.id}&t=${token}`;
+    const base = String(mailbox).replace(/-\d{6}$/, '');
+    const sent = await sendChannelByMailbox(base, AUTO_DISPATCH_MSG(link));
+    if (!sent.ok) { results.push({ mailbox, bl, status: 'send_fail', detail: sent.error }); continue; }
+    // dedup 기록 — 발송 성공 후에만
+    try { await atRequest('PATCH', `/${TABLES.Shipments}/${s.id}`, { fields: { '통관알림이력': histAppend(sf['통관알림이력'], '배차요청') }, typecast: true }); } catch (e) {}
+    results.push({ mailbox, bl, status: 'SENT', messageId: sent.messageId });
+  }
+  return res.json({ ok: true, dryRun: !!dryRun, candidates: ships.length, processed: todo.length, results });
+}
+
 module.exports = async (req, res) => {
   if (handleCors(req, res)) return;
   try {
@@ -881,6 +968,11 @@ module.exports = async (req, res) => {
       if (req.method === 'GET' && req.query.op === 'carrier_admin_list') {
         const carriers = await adminListCarriers();
         return res.json({ carriers });
+      }
+      // [배차요청 자동발송 2026-07-01] 중계 cron이 호출 — 수입신고수리 감지 화물 사서함에 배차요청 채널톡.
+      //   ?dryRun=1 = 발송·토큰·이력 안 건드리고 후보만 보고(첫 운영 관찰용).
+      if (req.query.op === 'auto_dispatch_scan') {
+        return await handleAutoDispatchScan(req, res);
       }
       // [통관 진행상황 v1] 도구(Admin 토큰)에서 통관 진행 조회 — 공용 핸들러 호출.
       if (req.method === 'GET' && req.query.op === 'customs_progress') {
