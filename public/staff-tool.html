@@ -68,6 +68,11 @@
   .costUsdCell .cny-main, #totalCostsUsd .cny-main { font-size:15px; font-weight:700; color:#b26a00; }
   .costUsdCell .usd-sub, #totalCostsUsd .usd-sub { font-size:11px; font-weight:400; color:#999; margin-left:3px; }
   #totalCostsUsd .cny-main { font-size:16px; font-weight:800; }
+  /* [v3.2.184] 일괄작업 진행 인디케이터 — Apple 스타일 스피너 + 프로그레스 */
+  .bp-spinner { width:42px; height:42px; border:3px solid #f0ece2; border-top-color:#C9973A; border-radius:50%; animation:bpspin .75s linear infinite; margin:0 auto 18px; }
+  @keyframes bpspin { to { transform:rotate(360deg); } }
+  #batchProgressOverlay { animation:bpfade .2s ease; }
+  @keyframes bpfade { from { opacity:0; } to { opacity:1; } }
   tbody tr.modified { background: #fffbef; }
   tbody tr.modified td:first-child { border-left: 3px solid var(--gold); padding-left: 9px; }
   tbody tr.has-hs td input.hs { background: #f0fdf4; }
@@ -328,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.183</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.184</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -449,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.183</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.184</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -7217,13 +7222,55 @@ async function _autoRegisterFinalIp(opts) {
   }
   return res;
 }
+// [v3.2.184] 일괄작업 공통 진행 인디케이터 — 오버레이 1개 재사용(중복 X). show/step/hide. 표시 전용(로직 불변).
+//   step(text, cur, total): text=단계명, cur/total 있으면 프로그레스 바+건수. await 사이마다 브라우저가 렌더(네트워크 대기가 렌더 기회).
+const _batchProgress = {
+  _el: null,
+  _ensure() {
+    if (this._el) return this._el;
+    const o = document.createElement('div');
+    o.id = 'batchProgressOverlay';
+    o.style.cssText = 'display:none; position:fixed; inset:0; z-index:99999; background:rgba(27,42,59,0.34); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); align-items:center; justify-content:center;';
+    o.innerHTML = `<div style="background:#fff; border-radius:20px; padding:32px 44px; min-width:340px; max-width:88vw; box-shadow:0 24px 70px rgba(27,42,59,0.30); text-align:center; font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+      <div class="bp-spinner"></div>
+      <div id="bpTitle" style="font-size:17px; font-weight:700; color:#1B2A3B; margin-bottom:7px; letter-spacing:-0.2px;">작업 중…</div>
+      <div id="bpStep" style="font-size:13px; color:#8a7a5c; margin-bottom:16px; min-height:18px; letter-spacing:-0.1px;">준비 중…</div>
+      <div style="height:6px; background:#f0ece2; border-radius:3px; overflow:hidden;"><div id="bpBarFill" style="height:100%; width:0%; background:linear-gradient(90deg,#C9973A,#e0b866); border-radius:3px; transition:width .35s cubic-bezier(.4,0,.2,1);"></div></div>
+      <div id="bpCount" style="font-size:12px; color:#b0a58c; margin-top:9px; min-height:15px; font-variant-numeric:tabular-nums;"></div>
+    </div>`;
+    document.body.appendChild(o);
+    this._el = o;
+    return o;
+  },
+  show(title) {
+    const o = this._ensure();
+    o.querySelector('#bpTitle').textContent = title || '작업 중…';
+    o.querySelector('#bpStep').textContent = '준비 중…';
+    o.querySelector('#bpBarFill').style.width = '0%';
+    o.querySelector('#bpCount').textContent = '';
+    o.style.display = 'flex';
+  },
+  step(text, cur, total) {
+    const o = this._el; if (!o || o.style.display === 'none') return;
+    if (text != null) o.querySelector('#bpStep').textContent = text;
+    if (cur != null && total != null && total > 0) {
+      o.querySelector('#bpBarFill').style.width = Math.min(100, Math.round(cur / total * 100)) + '%';
+      o.querySelector('#bpCount').textContent = cur + ' / ' + total;
+    } else if (cur === null) {
+      o.querySelector('#bpCount').textContent = '';
+    }
+  },
+  hide() { if (this._el) this._el.style.display = 'none'; }
+};
 // [v3.2.183] 🟢 대조확인완료 사서함 → 최종IP파일 자동생성(다운로드 없음 · 관세사 페이지 표시용). 각 사서함 loadShipment(非배치=저장 허용)→_autoRegisterFinalIp(내장게이트). 미충족=보류.
 async function _batchAutoGenerateFinalIp(shipIds) {
   const ids = [...new Set((shipIds || []).filter(Boolean))];
   const done = [], skipped = [];
   if (!ids.length) return { done, skipped };
   const origId = (state.shipment && state.shipment.id) || '';
-  for (const id of ids) {
+  for (let _i = 0; _i < ids.length; _i++) {
+    const id = ids[_i];
+    _batchProgress.step('최종IP 생성 중…', _i + 1, ids.length);   // [v3.2.184] 진행 표시(로직 불변)
     try {
       await loadShipment(id);   // 非배치 — _snapshotIp(최종IP파일) 저장 허용
       const sf = (state.shipment && state.shipment.fields) || {};
@@ -16835,10 +16882,12 @@ async function downloadBatchIp(stage) {
   const zip = new JSZip();
   const done = [], skipped = [];
   state._batchMode = true; state._batchWriteBlocked = 0;
+  _batchProgress.show(`${label} IP 전체 생성`);   // [v3.2.184] 진행 인디케이터
   try {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (loadingEl) loadingEl.textContent = `⏳ ${label} IP 생성 ${i + 1}/${rows.length} — ${r.mailbox}`;
+      _batchProgress.step(`${label} IP 생성 중… — ${r.mailbox}`, i + 1, rows.length);   // [v3.2.184]
       try {
         await loadShipment(r.id);   // _batchMode: 쓰기 차단·스키마 스킵. (booking 모달이 화면 덮어 깜빡임 가림)
         const res = await downloadInvoiceExcel({ stage, returnBlob: true });
@@ -16848,8 +16897,10 @@ async function downloadBatchIp(stage) {
     }
   } finally {
     state._batchMode = false;
+    _batchProgress.step('작업 사서함 복원 중…');   // [v3.2.184]
     if (origShipId) { try { await loadShipment(origShipId); } catch (e) {} }   // ★작업 사서함 복원(화면 원복)
     if (loadingEl) loadingEl.textContent = '';
+    _batchProgress.hide();   // [v3.2.184] 루프 완료 → 오버레이 닫음(이후 확인 모달·ZIP)
   }
   const blocked = state._batchWriteBlocked || 0;
   // [v3.2.101 ⓐ/ⓑ] 누락(스킵) 강화 — 스킵 목록 빨강 표시 + ZIP 생성 전 확인 모달 + ZIP에 _누락목록.txt 동봉.
@@ -18006,8 +18057,11 @@ async function runBatchCoCompare() {
   const items = (batchDocState.items || []).filter(it => it.docType === 'co' && !it.isMaster && it.shipId && it.conf !== 'red' && (!it.contentAp || it.contentApMatch !== false));
   const summary = { green: 0, amber: 0, red: 0, autoSaved: 0, ipDone: 0, ipSkipped: [], savedIds: [], details: [] };
   if (!items.length) return summary;
+  _batchProgress.step('CO 제품정보 조회 중…');   // [v3.2.184]
   const idx = await _buildBatchIpIndex(items.map(it => it.mailbox));
+  let _ci = 0;
   for (const it of items) {
+    _batchProgress.step('CO 자동대조 중…', ++_ci, items.length);   // [v3.2.184]
     const row = (bookingState.rows || []).find(r => r.id === it.shipId);
     const shipFields = { '사서함': it.mailbox, '출발지': it.port || (row && row.선적항) || '', '선적항': (row && row.선적항) || '' };
     const prods = idx[it.mailbox] || [];
@@ -18047,6 +18101,7 @@ async function runBatchCoCompare() {
   // [v3.2.183] ★🟢 대조확인완료 사서함 → 최종IP파일 자동생성(관세사 페이지 표시). 게이트 미충족은 자연 보류(거짓IP 안 만듦).
   if (summary.savedIds.length) {
     try {
+      _batchProgress.step('최종IP 생성 준비…');   // [v3.2.184]
       const ipRes = await _batchAutoGenerateFinalIp(summary.savedIds);
       summary.ipDone = ipRes.done.length; summary.ipSkipped = ipRes.skipped;
     } catch (e) { console.warn('[배치 최종IP 자동생성]', e && e.message); }
@@ -18066,8 +18121,10 @@ async function saveBatchDocs() {
   //   같은 사서함의 같은 종류 파일이 이 배치에 여러 개면: 첫 건에서 1회 clear → 이후는 누적(한 배치 = 한 묶음).
   //   재업로드(다음 배치)면 기존 첨부는 다시 clear되어 교체됨. 일괄 흐름은 차단 없이 ⚠ 결과 요약으로 표시.
   const clearedShipField = new Set();
+  _batchProgress.show('서류 일괄 저장');   // [v3.2.184] 진행 인디케이터(표시 전용)
   for (let i = 0; i < rows.length; i++) {
     const it = rows[i];
+    _batchProgress.step('서류 저장 중…', i + 1, rows.length);   // [v3.2.184]
     if (it.isMaster) {
       // [v3.2.80] 마스터BL = 선적일 전체 사서함의 마스터BL파일에 동일 파일(1장 replace) + 출발지(선적 공통). 사서함 매칭 안 함(N/M).
       const sd = it.masterShipDate;
@@ -18141,6 +18198,7 @@ async function saveBatchDocs() {
         <div style="margin-top:5px; color:#888; font-size:11px;">🟢=comparedN&gt;0∧불일치0∧HS실비교 → 대조확인완료+최종IP 자동생성 · 🟡=비교불가(이미지/HS미추출) · 🔴=불일치. 🟡🔴는 §10에서 사람 확인·재업로드.</div></div>`;
     }
   } catch (e) { console.warn('[배치대조] 실행 경고', e.message); }
+  _batchProgress.hide();   // [v3.2.184] 완료 → 오버레이 닫고 결과 요약 노출
 }
 
 async function copyBookingText() {
