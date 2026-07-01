@@ -328,7 +328,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.180</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.181</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -449,7 +449,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.180</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.181</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1034,9 +1034,15 @@
 
 <!-- 5. 박스 관리 (v3.2.0 의도: §4 박스 — 트리거 1) -->
 <div class="section hidden" id="boxSection">
-  <h2><span data-i18n="section.box">2. 박스 관리</span> <span class="small-dim" data-i18n="section.box.sub">(상품의 박스번호 입력 → 박스 자동 생성)</span></h2>
+  <!-- [v3.2.181] 박스 관리 접이식 — 헤더 클릭 펼침/접기. 무게·CBM 요약(#boxSummary)은 접힌 상태에서도 상시 표시. -->
+  <h2 onclick="toggleBoxSection()" style="cursor:pointer; user-select:none; display:flex; align-items:center; gap:6px;" title="클릭하여 박스 상세 펼치기/접기">
+    <span id="boxArrow" style="display:inline-block; width:16px; color:var(--gold);">▶</span>
+    <span data-i18n="section.box">2. 박스 관리</span> <span class="small-dim" data-i18n="section.box.sub">(상품의 박스번호 입력 → 박스 자동 생성)</span>
+    <span id="boxSummary" style="margin-left:auto; font-size:15px; font-weight:700; color:var(--navy);">합계 0.0 kg / 0 CBM</span>
+  </h2>
   <!-- [v3.2.147 A] 박스수정 완료 — 관세사확정완료 사서함이면 ★상시 표시★. 수정 전=비활성·안내 / 수정 후=활성·경고. 내용은 _renderBoxDirtyBanner가 채움. -->
   <div id="boxDirtyBanner" style="display:none; margin:8px 0; padding:10px 14px; border-radius:8px; font-size:13px; font-weight:600;"></div>
+  <div id="boxCollapse" style="display:none;"><!-- [v3.2.181] 접힘 기본 — toggleBoxSection이 펼침 -->
   <!-- v3.0.5: 테이프 색상 선택 (사서함 단위 1개). 패킹리스트 생성 자료로 사용. Shipments에 저장. -->
   <!-- v3.2.50 [Phase 1-F]: UI 강화 — 큰 색상 칩 + 미선택 시 박스 입력 차단 -->
   <div id="tapeColorBox" style="margin:10px 0 14px; padding:16px 18px; background:#fff8e1; border:2px solid var(--gold); border-radius:10px;">
@@ -1100,6 +1106,7 @@
   <!-- v3.2.14 #67: "🔗 고객에게 전송 (v3.0.3)" 패널·버튼 삭제. 고객 발송은 invoice-view 기반으로 별도 재설계 예정.
        JS 함수 (shareToCustomer / promptConsultConfig / buildCustomerMessage / showShortUrlModal) 는 호출처 0이 되었으므로
        삭제해도 안전하지만, 잔재 코드는 의도적으로 보존 — v3.3+ 재설계 시 참고용. -->
+  </div><!-- /boxCollapse -->
 </div>
 
 <!-- 6. 부대비용 (v3.2.2 애플 스타일 재설계 — 카드형, 큰 입력칸, 정돈) -->
@@ -7414,6 +7421,7 @@ function renderBoxes() {
     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--text-dim);">${t('box.no_boxes')}</td></tr>`;
     document.getElementById('totalCbm').textContent = '0 CBM';
     document.getElementById('totalKg').textContent = '0 kg';
+    _updBoxSummary(0, 0);
     return;
   }
 
@@ -7503,6 +7511,7 @@ function renderBoxes() {
 
   document.getElementById('totalCbm').textContent = fmtCBM(totalCbm) + ' CBM';
   document.getElementById('totalKg').textContent = totalKg.toFixed(1) + ' kg';
+  _updBoxSummary(totalKg, totalCbm);
 
   // v3.2.15: renderBoxes 끝 → 11-A 동적 렌더 재호출 (박스 동기화 필요).
   //   원인: state.boxes는 renderBoxes에서 Products.박스번호 기준으로 재구성되므로
@@ -7511,6 +7520,19 @@ function renderBoxes() {
   if (typeof applyBoxInputLock === 'function') applyBoxInputLock();   // v3.2.50: 박스 치수 입력 잠금 재적용
 }
 
+// [v3.2.181] 박스 관리 접이식 토글 + 요약(접힌 상태에서도 상시 표시). 계산 불변 — 표시 위치만.
+function toggleBoxSection() {
+  const c = document.getElementById('boxCollapse');
+  const a = document.getElementById('boxArrow');
+  if (!c) return;
+  const open = c.style.display === 'none';
+  c.style.display = open ? '' : 'none';
+  if (a) a.textContent = open ? '▼' : '▶';
+}
+function _updBoxSummary(kg, cbm) {
+  const e = document.getElementById('boxSummary');
+  if (e) e.textContent = '합계 ' + (parseFloat(kg) || 0).toFixed(1) + ' kg / ' + ((typeof fmtCBM === 'function') ? fmtCBM(cbm || 0) : (cbm || 0)) + ' CBM';
+}
 function recalculateBoxTotals() {
   let totalCbm = 0, totalKg = 0;
   Object.values(state.boxes).forEach(b => {
@@ -7519,6 +7541,7 @@ function recalculateBoxTotals() {
   });
   document.getElementById('totalCbm').textContent = fmtCBM(totalCbm) + ' CBM';
   document.getElementById('totalKg').textContent = totalKg.toFixed(1) + ' kg';
+  _updBoxSummary(totalKg, totalCbm);
 
   // v2.9.7: 라벨 매수 정보 갱신
   const labelInfo = document.getElementById('labelCountInfo');
