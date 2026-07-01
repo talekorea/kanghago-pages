@@ -63,6 +63,11 @@
   tbody td input { padding: 6px 8px; font-size: 13px; min-width: 70px; }
   tbody td input.hs { font-family: ui-monospace, monospace; font-weight: 600; min-width: 110px; }
   tbody td input.usd { background: #fcf6e8; font-family: ui-monospace, monospace; }
+  /* [v3.2.179] 작업비 ¥ 병기 — ¥(주) 크게·굵게 / ($USD)(보조) 작게. 표시 전용, 값·계산 불변 */
+  .costUsdCell { background:#fcf6e8; font-family: ui-monospace, monospace; white-space:nowrap; min-width:132px; text-align:right; }
+  .costUsdCell .cny-main, #totalCostsUsd .cny-main { font-size:15px; font-weight:700; color:#b26a00; }
+  .costUsdCell .usd-sub, #totalCostsUsd .usd-sub { font-size:11px; font-weight:400; color:#999; margin-left:3px; }
+  #totalCostsUsd .cny-main { font-size:16px; font-weight:800; }
   tbody tr.modified { background: #fffbef; }
   tbody tr.modified td:first-child { border-left: 3px solid var(--gold); padding-left: 9px; }
   tbody tr.has-hs td input.hs { background: #f0fdf4; }
@@ -323,7 +328,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.178</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.179</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -444,7 +449,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.178</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.179</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -2296,7 +2301,7 @@ const I18N = {
     'th.currency': '통화', 'th.usd': 'USD',
     'option.select': '-- 선택 --',
     'option.all_distribute': '전체 (분배)',
-    'cost.total_label': '작업비 합계 (USD / CNY):',
+    'cost.total_label': '작업비 합계 (CNY / USD):',
 
     'cost_group.origin': '원산지표기', 'cost_group.sale_label': '판매라벨',
     'cost_group.packing': '포장', 'cost_group.inspection': '검수',
@@ -2532,7 +2537,7 @@ const I18N = {
     'th.currency': '货币', 'th.usd': 'USD',
     'option.select': '-- 请选择 --',
     'option.all_distribute': '全部 (分摊)',
-    'cost.total_label': '加工费合计 (USD / CNY):',
+    'cost.total_label': '加工费合计 (CNY / USD):',
 
     'cost_group.origin': '原产地标', 'cost_group.sale_label': '销售标签',
     'cost_group.packing': '包装', 'cost_group.inspection': '验货',
@@ -2768,7 +2773,7 @@ const I18N = {
     'th.currency': 'Currency', 'th.usd': 'USD',
     'option.select': '-- Select --',
     'option.all_distribute': 'All (distribute)',
-    'cost.total_label': 'Processing Fee Total (USD / CNY):',
+    'cost.total_label': 'Processing Fee Total (CNY / USD):',
 
     'cost_group.origin': 'Country of Origin', 'cost_group.sale_label': 'Sales Label',
     'cost_group.packing': 'Packaging', 'cost_group.inspection': 'Inspection',
@@ -5790,7 +5795,7 @@ function addCostRowToTable(c, isNew) {
         <option value="KRW"${currency==='KRW'?' selected':''}>KRW</option>
       </select>
     </td>
-    <td class="num"><input type="text" class="usd" readonly value="$0" style="min-width:132px;" /></td>
+    <td class="num costUsdCell"><span class="cny-main">¥0.00</span><span class="usd-sub">($0.00)</span></td>
     <td class="col-actions">
       <button class="small" style="background:var(--red);color:#fff;border:none;border-radius:4px;cursor:pointer;padding:4px 8px;" onclick="deleteCostRow('${tr.dataset.recordId}')">×</button>
     </td>
@@ -5932,11 +5937,12 @@ function recalculate() {
     else if (curr === 'KRW') { usd = rateUsdKrw ? total / rateUsdKrw : 0; cny = rateCnyKrw ? total / rateCnyKrw : 0; }
     totalCostsUsd += usd;
     totalCostsCny += cny;
-    tr.querySelector('input.usd').value = '$' + usd.toFixed(2) + ' (¥' + cny.toFixed(2) + ')';   // [v3.2.175] USD 옆 CNY 병기
+    const _uc = tr.querySelector('.costUsdCell');   // [v3.2.179] ¥(주)+($ 보조) 리치표시 — 값 불변, 표시 전용
+    if (_uc) _uc.innerHTML = '<span class="cny-main">¥' + cny.toFixed(2) + '</span><span class="usd-sub">($' + usd.toFixed(2) + ')</span>';
   });
 
   const tcu = document.getElementById('totalCostsUsd');
-  if (tcu) tcu.textContent = '$' + totalCostsUsd.toFixed(2) + ' (¥' + totalCostsCny.toFixed(2) + ')';   // [v3.2.175] 합계 USD 옆 CNY 병기
+  if (tcu) tcu.innerHTML = '<span class="cny-main">¥' + totalCostsCny.toFixed(2) + '</span><span class="usd-sub">($' + totalCostsUsd.toFixed(2) + ')</span>';   // [v3.2.179] 합계 ¥(주)+($ 보조)
 
   // v2.9.1: 워크플로우 상태 갱신
   if (typeof updateWorkflowStatus === 'function' && state.shipment) {
