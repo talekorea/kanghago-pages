@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.185</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.186</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.185</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.186</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -2330,6 +2330,8 @@ const I18N = {
     'cost.inspect_normal': '일반검수', 'cost.inspect_normal.desc': '랜덤 5개 체크',
     'cost.inspect_piece': '정밀검수 (개당)', 'cost.inspect_piece.desc': '기능성/조립 제품',
     'cost.inspect_hour': '정밀검수 (시간당)', 'cost.inspect_hour.desc': '난이도별 협의',
+    'cost.qty_check': '수량 검수 (배송대행만)', 'cost.qty_check.desc': '단순 수량 확인 · 요청자만 · 구매대행 부과 안 함',
+    'cost.nodata_inbound': '노데이터 입고 (결제·배송대행)', 'cost.nodata_inbound.desc': '택배번호 미입력 노데이터분 즉시 입고 · 주문서당 · 구매대행 부과 안 함',
     'cost.wood_dismantle': '나무 파레트 해체', 'cost.wood_dismantle.desc': '건당',
     'cost.remove_pack': '재포장', 'cost.remove_pack.desc': '재포장 작업',
     'cost.remove_tag': '태그 제거', 'cost.remove_tag.desc': '업체 태그 제거',
@@ -2566,6 +2568,8 @@ const I18N = {
     'cost.inspect_normal': '普通验货', 'cost.inspect_normal.desc': '随机抽检5件',
     'cost.inspect_piece': '精密验货 (按件)', 'cost.inspect_piece.desc': '功能性/组装产品',
     'cost.inspect_hour': '精密验货 (按小时)', 'cost.inspect_hour.desc': '按难度协商',
+    'cost.qty_check': '数量验收 (仅配送代)', 'cost.qty_check.desc': '简单数量确认 · 仅请求方 · 采购代不收',
+    'cost.nodata_inbound': '无数据入库 (付款·配送代)', 'cost.nodata_inbound.desc': '无快递单号即时入库 · 每订单 · 采购代不收',
     'cost.wood_dismantle': '木托盘拆解', 'cost.wood_dismantle.desc': '按件',
     'cost.remove_pack': '重新包装', 'cost.remove_pack.desc': '重新包装作业',
     'cost.remove_tag': '移除吊牌', 'cost.remove_tag.desc': '去除原厂吊牌',
@@ -2802,6 +2806,8 @@ const I18N = {
     'cost.inspect_normal': 'Standard inspection', 'cost.inspect_normal.desc': 'Random 5-pc check',
     'cost.inspect_piece': 'Detailed inspection (per pc)', 'cost.inspect_piece.desc': 'Functional/assembly',
     'cost.inspect_hour': 'Detailed inspection (per hour)', 'cost.inspect_hour.desc': 'Per difficulty',
+    'cost.qty_check': 'Quantity check (delivery-agent only)', 'cost.qty_check.desc': 'Simple count · on request · not for purchase-agent',
+    'cost.nodata_inbound': 'No-data inbound (payment/delivery agent)', 'cost.nodata_inbound.desc': 'Immediate inbound of no-tracking items · per order · not for purchase-agent',
     'cost.wood_dismantle': 'Wooden pallet dismantle', 'cost.wood_dismantle.desc': 'Per case',
     'cost.remove_pack': 'Repack', 'cost.remove_pack.desc': 'Repackaging work',
     'cost.remove_tag': 'Remove tag', 'cost.remove_tag.desc': 'Original tag removal',
@@ -3054,6 +3060,7 @@ const COST_PRESETS = [
   { group: 'cost_group.inspection', i18n: 'cost.inspect_normal', price: 0, unit: 'unit.free' },
   { group: 'cost_group.inspection', i18n: 'cost.inspect_piece', price: 1.5, unit: 'unit.pcs' },
   { group: 'cost_group.inspection', i18n: 'cost.inspect_hour', price: 35, unit: 'unit.hour' },
+  { group: 'cost_group.inspection', i18n: 'cost.qty_check', price: 0.3, unit: 'unit.pcs' },   // [v3.2.186] 수량검수(배송대행만·요청자) — 정밀검수와 별개 단순 수량확인
   // 포장
   { group: 'cost_group.packing', i18n: 'cost.wood_dismantle', price: 100, unit: 'unit.case' },   // 나무파레트 해체(건당) NEW
   { group: 'cost_group.packing', i18n: 'cost.remove_pack', price: 0.3, unit: 'unit.pcs' },       // 재포장
@@ -3085,6 +3092,7 @@ const COST_PRESETS = [
   { group: 'cost_group.food', i18n: 'cost.food_factory', price: 300, unit: 'unit.case' },   // 해외제조업소등록 NEW
   { group: 'cost_group.food', i18n: 'cost.food_docs', price: 500, unit: 'unit.case' },      // 제조공장서류 NEW
   // 보관
+  { group: 'cost_group.storage', i18n: 'cost.nodata_inbound', price: 20, unit: 'unit.case' },   // [v3.2.186] 노데이터 입고(결제·배송대행) — 택배번호 미입력 노데이터분 즉시 입고, 주문서당
   { group: 'cost_group.storage', i18n: 'cost.storage', price: 10, unit: 'unit.day' },
   // 기타
   { group: 'cost_group.etc', i18n: 'cost.custom', price: 0, unit: 'unit.empty' }
