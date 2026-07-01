@@ -328,7 +328,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.181</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.182</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -449,7 +449,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.181</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.182</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -17850,7 +17850,11 @@ async function handleBatchDocFiles(fileList) {
       // [v3.2.113] CO 참조 B/L번호 — CO 본문에서 추출(extractBlCandidates 재사용·접두우선·상호reject) → 매칭 사서함 Shipments.BL번호와 대조.
       let coRefBl = '';
       if (docType === 'co' && !isMaster && pdfText) {
-        coRefBl = (extractBlCandidates(pdfText)[0] || {}).value || '';   // [v3.2.136] 사서함 BL 대조는 recomputeBatchVerdict에서(배정 사서함 기준 재계산)
+        // [v3.2.182] CCPIT(中国贸促会 CO 문서번호)는 참조 BL 아님 — CO No.이므로 제외. /^CCPIT/ 아닌 첫 후보만 채택. CCPIT뿐이면 '' (CO는 BL참조 없는 게 정상).
+        //   ★extractBlCandidates 자체는 무변경 — CCPIT 제외는 이 coRefBl 채택에만 적용(BL파일 BL번호 추출엔 무영향).
+        const _coCands = extractBlCandidates(pdfText) || [];
+        const _realRef = _coCands.find(c => c && c.value && !/^CCPIT/i.test(String(c.value)));
+        coRefBl = _realRef ? _realRef.value : '';   // [v3.2.136] 사서함 BL 대조는 recomputeBatchVerdict에서(배정 사서함 기준 재계산)
       }
       // [v3.2.180] CO 자동대조용 필드 추출(텍스트 CO만 — 이미지/미추출은 null → comparedN=0 → 자동저장 차단).
       const coFields = (docType === 'co' && !isMaster && pdfText) ? extractCoFields(pdfText) : null;
@@ -17904,7 +17908,7 @@ function renderBatchDocTable() {
       : `<span style="font-size:22px;" title="${it.isPdf ? 'PDF' : '파일'}">${it.isPdf ? '📄' : '🗎'}</span>`;
     h += `<tr style="border-bottom:1px solid #eee;">
       <td style="padding:5px 6px; text-align:center;">${thumb}</td>
-      <td style="padding:5px 6px; font-family:ui-monospace,monospace; font-size:11px;">${it.filename}${it.isPdf && it.contentAp ? `<br><span style="color:#888;">내용 AP: ${it.contentAp}</span>` : ''}${it.isMaster ? `<br><span style="color:#1B5E9A; font-weight:700;">📦 마스터BL${it.masterShipDate ? ' · 선적일 ' + it.masterShipDate + ' 전체 사서함 저장' : ' (선적일 미상 → 현재 부킹분 적용)'}</span>` : ''}${it.blNumber ? `<br><span style="color:#0a7b40;">BL No: ${it.blNumber}</span>` : ''}${it.docType === 'co' && it.coRefBl ? `<br><span style="color:${it.coRefMatch ? '#0a7b40' : '#c0392b'};">참조 B/L: ${it.coRefBl}${it.coRefMatch ? ' ✓일치' : ' ⚠불일치/확인'}</span>` : ''}${it.docType === 'co' && !it.coRefBl ? `<br><span style="color:#b26a00;">참조 B/L 미추출 — 확인 필요</span>` : ''}${it.port ? `<br><span style="color:#8a6d3b;">출발지: ${it.port}</span>` : ''}</td>
+      <td style="padding:5px 6px; font-family:ui-monospace,monospace; font-size:11px;">${it.filename}${it.isPdf && it.contentAp ? `<br><span style="color:#888;">내용 AP: ${it.contentAp}</span>` : ''}${it.isMaster ? `<br><span style="color:#1B5E9A; font-weight:700;">📦 마스터BL${it.masterShipDate ? ' · 선적일 ' + it.masterShipDate + ' 전체 사서함 저장' : ' (선적일 미상 → 현재 부킹분 적용)'}</span>` : ''}${it.blNumber ? `<br><span style="color:#0a7b40;">BL No: ${it.blNumber}</span>` : ''}${it.docType === 'co' && it.coRefBl ? `<br><span style="color:${it.coRefMatch ? '#0a7b40' : '#c0392b'};">참조 B/L: ${it.coRefBl}${it.coRefMatch ? ' ✓일치' : ' ⚠불일치/확인'}</span>` : ''}${it.docType === 'co' && !it.coRefBl ? `<br><span style="color:#888;">참조 B/L 없음 (CO번호가 주 — 정상)</span>` : ''}${it.port ? `<br><span style="color:#8a6d3b;">출발지: ${it.port}</span>` : ''}</td>
       <td style="padding:5px 6px;"><select onchange="setBatchDocField(${i},'mailbox',this.value)" style="font-size:11px; padding:3px;"${it.isMaster ? ' disabled' : ''}><option value="">(미선택)</option>${mboxOpts(it.mailbox)}</select></td>
       <td style="padding:5px 6px;"><select onchange="setBatchDocField(${i},'docType',this.value)" style="font-size:11px; padding:3px;"><option value="">(미선택)</option><option value="bl"${it.docType === 'bl' ? ' selected' : ''}>BL</option><option value="co"${it.docType === 'co' ? ' selected' : ''}>CO</option></select></td>
       <td style="padding:5px 6px; text-align:center; color:${cColor[it.conf]}; font-weight:700;">${cLabel[it.conf]}</td></tr>`;
@@ -17941,7 +17945,7 @@ function recomputeBatchVerdict(it) {
   else conf = 'amber';   // 이미지/내용 AP 미추출/파일명 폴백 → 모호(사람 확인)
   // 강한키 게이트 (green만 강등)
   if (it.docType === 'bl' && !it.isMaster && conf === 'green' && (!it.blNumber || it.blMismatch)) conf = 'amber';
-  if (it.docType === 'co' && !it.isMaster && conf === 'green' && !it.coRefMatch) conf = 'amber';
+  if (it.docType === 'co' && !it.isMaster && conf === 'green' && it.coRefBl && !it.coRefMatch) conf = 'amber';   // [v3.2.182] 참조BL 있고 사서함BL과 다를 때만 강등. 참조BL 없음(CCPIT 제외/CO는 BL참조 없는 게 정상)=강등 안 함.
   if (!it.isMaster && conf === 'green' && !it.docConfident) conf = 'amber';
   it.conf = conf;
   return conf;
