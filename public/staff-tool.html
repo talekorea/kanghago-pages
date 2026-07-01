@@ -328,7 +328,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.182</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.183</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -449,7 +449,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.182</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.183</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -7194,25 +7194,49 @@ async function handleBlCoFileUpload(kind, fileInput) {
 //   ★새 Vercel 함수 0 — downloadInvoiceExcel+_snapshotIp는 도구→Airtable 직접.
 async function _autoRegisterFinalIp(opts) {
   // [v3.2.172] opts.auto=true → loadShipment 진입 자동저장 경로(중간 '생성 중' 토스트만 억제, 성공/보류 결과 토스트는 유지=거짓성공 방지).
+  // [v3.2.183] opts.silent=true → 배치 자동생성 경로(모든 토스트 억제 + res 반환. 결과는 배치 요약이 집계).
   const _auto = !!(opts && opts.auto);
+  const _silent = !!(opts && opts.silent);
   const sf = (state.shipment && state.shipment.fields) || {};
   const blOk = !!(sf['BL파일'] && sf['BL파일'].length);
   const coOk = !!(sf['CO파일'] && sf['CO파일'].length);
-  if (!blOk || !coOk) return;   // BL∧CO 둘 다일 때만(BL만/CO만이면 등록 안 함)
-  if (!_auto && typeof toastInfo === 'function') toastInfo('확정 IP 생성·등록 중…', { title: '📋 확정 IP' });
+  if (!blOk || !coOk) return { skip: 'BL∧CO 미완(둘 다 필요)' };   // BL∧CO 둘 다일 때만(BL만/CO만이면 등록 안 함)
+  if (!_auto && !_silent && typeof toastInfo === 'function') toastInfo('확정 IP 생성·등록 중…', { title: '📋 확정 IP' });
   const res = await downloadInvoiceExcel({ stage: 'final', returnBlob: true });   // 내장 게이트 통과 시 _snapshotIp(최종IP파일) — 다운로드 X
-  // [v3.2.173] ★투명화·거짓성공 근절 — '시도'만 뜨고 끝나는 일 없게 4갈래 모두 명확 토스트.
+  // [v3.2.173] ★투명화·거짓성공 근절 — '시도'만 뜨고 끝나는 일 없게 4갈래 모두 명확 토스트. (silent=배치는 억제 → 요약이 집계)
   if (res && res.skip) {
-    toastWarn && toastWarn('⚠ 최종IP 미저장(보류) — ' + res.skip + '\n(해당 조건 완료 후 BL/CO 재업로드 또는 사서함 재진입 시 자동 등록)', { title: '⚠ 최종IP 미저장' });
+    if (!_silent) toastWarn && toastWarn('⚠ 최종IP 미저장(보류) — ' + res.skip + '\n(해당 조건 완료 후 BL/CO 재업로드 또는 사서함 재진입 시 자동 등록)', { title: '⚠ 최종IP 미저장' });
   } else if (res && res.blob && res.snapshot && res.snapshot.ok) {
-    toastSuccess && toastSuccess('✅ 최종IP 저장됨 — 관세사 페이지·ZIP에 반영됩니다.', { title: '✅ 최종IP 저장' });
+    if (!_silent) toastSuccess && toastSuccess('✅ 최종IP 저장됨 — 관세사 페이지·ZIP에 반영됩니다.', { title: '✅ 최종IP 저장' });
   } else if (res && res.blob) {
     // blob은 만들었으나 Airtable 저장 실패(5MB 초과 등) — ★거짓 '완료' 금지
-    toastError && toastError('❌ 최종IP 미저장 — ' + ((res.snapshot && res.snapshot.error) || '저장 실패') + '\n(사진 압축 후에도 5MB 초과면 사진 수·해상도 축소 필요)', { title: '❌ 최종IP 저장 실패' });
+    if (!_silent) toastError && toastError('❌ 최종IP 미저장 — ' + ((res.snapshot && res.snapshot.error) || '저장 실패') + '\n(사진 압축 후에도 5MB 초과면 사진 수·해상도 축소 필요)', { title: '❌ 최종IP 저장 실패' });
   } else {
     // res 없음(예외로 중단) — 콘솔에 [최종IP 자동저장] 원인
-    toastError && toastError('❌ 최종IP 처리 중 오류 — 콘솔 [최종IP 자동저장] 메시지 확인', { title: '❌ 최종IP 오류' });
+    if (!_silent) toastError && toastError('❌ 최종IP 처리 중 오류 — 콘솔 [최종IP 자동저장] 메시지 확인', { title: '❌ 최종IP 오류' });
   }
+  return res;
+}
+// [v3.2.183] 🟢 대조확인완료 사서함 → 최종IP파일 자동생성(다운로드 없음 · 관세사 페이지 표시용). 각 사서함 loadShipment(非배치=저장 허용)→_autoRegisterFinalIp(내장게이트). 미충족=보류.
+async function _batchAutoGenerateFinalIp(shipIds) {
+  const ids = [...new Set((shipIds || []).filter(Boolean))];
+  const done = [], skipped = [];
+  if (!ids.length) return { done, skipped };
+  const origId = (state.shipment && state.shipment.id) || '';
+  for (const id of ids) {
+    try {
+      await loadShipment(id);   // 非배치 — _snapshotIp(최종IP파일) 저장 허용
+      const sf = (state.shipment && state.shipment.fields) || {};
+      const mb = sf['사서함'] || id;
+      if (sf['최종IP파일'] && sf['최종IP파일'].length) { done.push(mb); continue; }   // 이미 있으면 스킵(중복·재생성 방지)
+      const res = await _autoRegisterFinalIp({ auto: true, silent: true });
+      const sf2 = (state.shipment && state.shipment.fields) || {};
+      if (sf2['최종IP파일'] && sf2['최종IP파일'].length) done.push(mb);
+      else skipped.push({ mb, reason: (res && res.skip) || (res && res.snapshot && res.snapshot.error) || '게이트 미충족(환율/포워딩사/BL번호/헤더 등)' });
+    } catch (e) { skipped.push({ mb: id, reason: '오류 ' + (e.message || '') }); }
+  }
+  if (origId) { try { await loadShipment(origId); } catch (e) {} }   // ★원 사서함 복원(화면 원복)
+  return { done, skipped };
 }
 
 function bindBlCoFileInputs() {
@@ -17918,7 +17942,7 @@ function renderBatchDocTable() {
   const _coCnt = rows.filter(it => it.docType === 'co' && !it.isMaster && it.shipId).length;
   h += `<div style="margin-top:8px;">
     <button onclick="saveBatchDocs()" style="padding:8px 18px; background:${bad ? '#C9973A' : '#0a7b40'}; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">💾 일괄 저장 (${rows.length}건)</button>
-    ${_coCnt ? `<label style="margin-left:12px; font-size:12px; cursor:pointer;" title="발급사별 CO 파싱 정확도를 실측·확인한 뒤에만 체크하세요. 체크 시 🟢(HS 실비교·전부 일치)만 대조확인완료 자동저장. 🟡🔴는 사람이 §10 확인."><input type="checkbox" id="batchAutoConfirm" style="vertical-align:middle;"> 🔍 자동 대조확인 저장 <span style="color:#b26a00;">(정확도 확인 후 체크 — 기본 OFF)</span></label>` : ''}
+    ${_coCnt ? `<span style="margin-left:12px; font-size:12px; color:#0a7b40;" title="저장 시 CO 자동대조 실행. 🟢(HS·품명·수량 일치)면 대조확인완료+최종IP 자동생성(관세사 페이지 표시). 🟡🔴는 자동 안 함 — 표식으로 남고 사람이 §10 확인·재업로드.">🔍 저장 시 자동대조 → <strong>🟢은 대조확인완료+최종IP 자동생성</strong> · 🟡🔴는 사람 확인</span>` : ''}
     ${bad ? `<span style="margin-left:10px; color:#c0392b; font-size:12px;">⚠ ${bad}건 미매칭/미선택/불일치 — 위 미리보기 보고 드롭다운/일괄지정으로 채운 뒤 저장(저장 시 한 번 더 확인)</span>` : '<span style="margin-left:10px; color:#0a7b40; font-size:12px;">✓ 전부 매칭됨</span>'}
   </div>`;
   el.innerHTML = h;
@@ -17977,10 +18001,10 @@ function batchAssignAll(field, value, onlyEmpty) {
 
 // [v3.2.180] ★배치 CO 자동대조 — 저장된 CO마다 파싱값(coFields)↔IP(제품 HS·수량) 비교. 순수코어(_coCompareCore) 재사용.
 //   판정: mismatches>0=🔴불일치 / comparedN>0∧mismatches0∧HS실비교=🟢일치 / 그 외(비교불가·HS미추출)=🟡모호.
-//   ★자동 대조확인 저장 = 🟢 ∧ #batchAutoConfirm 체크 시에만. 비교 자체는 항상(읽기전용). 거짓일치 방지: HS 미비교면 🟢 금지.
+//   [v3.2.183] ★토글 제거 — 🟢(HS 실비교·전부 일치)면 무조건 대조확인완료 자동저장 + 최종IP 자동생성. 검증은 🟢🟡🔴 표식이 매 업로드 수행. 🟡🔴는 자동 안 함(표식·사람 확인). HS 미비교면 🟢 금지.
 async function runBatchCoCompare() {
   const items = (batchDocState.items || []).filter(it => it.docType === 'co' && !it.isMaster && it.shipId && it.conf !== 'red' && (!it.contentAp || it.contentApMatch !== false));
-  const summary = { green: 0, amber: 0, red: 0, autoSaved: 0, autoOn: !!((document.getElementById('batchAutoConfirm') || {}).checked), details: [] };
+  const summary = { green: 0, amber: 0, red: 0, autoSaved: 0, ipDone: 0, ipSkipped: [], savedIds: [], details: [] };
   if (!items.length) return summary;
   const idx = await _buildBatchIpIndex(items.map(it => it.mailbox));
   for (const it of items) {
@@ -18006,7 +18030,7 @@ async function runBatchCoCompare() {
     it.cmp = { verdict, comparedN: st.comparedN, mismatches: st.mismatches, hsCompared, hasProducts: prods.length > 0, noProdReason: prods.length === 0 ? '제품 미로드/없음' : '' };
     summary[verdict]++;
     summary.details.push({ mailbox: it.mailbox, verdict, comparedN: st.comparedN, mismatches: st.mismatches, noProd: prods.length === 0 });
-    if (verdict === 'green' && summary.autoOn) {
+    if (verdict === 'green') {   // [v3.2.183] 🟢면 무조건 대조확인완료 자동저장(토글 폐지)
       try {
         let ftaConf = '';
         if (/한중|CHINA[\s-]*KOREA|^KC$/.test(inFtaRaw)) ftaConf = '한중FTA';
@@ -18016,9 +18040,16 @@ async function runBatchCoCompare() {
           'CO대조': JSON.stringify({ 자동: true, comparedN: st.comparedN, mismatches: st.mismatches, 일시: new Date().toISOString(), 대조자: '자동대조(배치)' }) };
         if (ftaConf) fields['적용FTA확정'] = ftaConf;
         await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields, typecast: true });
-        summary.autoSaved++; it.cmp.autoSaved = true;
+        summary.autoSaved++; it.cmp.autoSaved = true; summary.savedIds.push(it.shipId);   // [v3.2.183] 최종IP 자동생성 대상
       } catch (e) { console.warn('[배치자동대조] 저장 실패', it.mailbox, e.message); it.cmp.saveFail = true; }
     }
+  }
+  // [v3.2.183] ★🟢 대조확인완료 사서함 → 최종IP파일 자동생성(관세사 페이지 표시). 게이트 미충족은 자연 보류(거짓IP 안 만듦).
+  if (summary.savedIds.length) {
+    try {
+      const ipRes = await _batchAutoGenerateFinalIp(summary.savedIds);
+      summary.ipDone = ipRes.done.length; summary.ipSkipped = ipRes.skipped;
+    } catch (e) { console.warn('[배치 최종IP 자동생성]', e && e.message); }
   }
   return summary;
 }
@@ -18102,10 +18133,12 @@ async function saveBatchDocs() {
     if (cs && (cs.green || cs.amber || cs.red)) {
       const badge = { green: '🟢 일치', amber: '🟡 모호(사람 확인)', red: '🔴 불일치' };
       const lines = cs.details.map(d => `<div style="padding:2px 0;">${badge[d.verdict]} · <strong>${d.mailbox}</strong> — 비교 ${d.comparedN}항목·불일치 ${d.mismatches}${d.noProd ? ' · ⚠제품 미로드' : ''}</div>`).join('');
+      const ipMsg = cs.ipDone ? ` · <span style="color:#0a7b40;">최종IP 자동생성 ${cs.ipDone}건</span>` : '';
+      const ipSkip = (cs.ipSkipped && cs.ipSkipped.length) ? `<div style="margin-top:4px; padding:5px 7px; background:#fff3e0; border-radius:4px; color:#a14a00;">⚠ 최종IP 보류 ${cs.ipSkipped.length}건(게이트 미충족 — 거짓IP 안 만듦): ${cs.ipSkipped.slice(0,5).map(s => `<strong>${s.mb}</strong>(${s.reason})`).join(' · ')}${cs.ipSkipped.length>5?' 외':''}</div>` : '';
       if (el) el.innerHTML += `<div style="margin-top:8px; padding:10px; background:#fff8f0; border:1px solid #e0c090; border-radius:6px; font-size:12px;">
-        <div style="font-weight:700; margin-bottom:5px;">🔍 CO 자동대조 — 🟢 ${cs.green} · 🟡 ${cs.amber} · 🔴 ${cs.red}${cs.autoOn ? ` · <span style="color:#0a7b40;">자동 대조확인 저장 ${cs.autoSaved}건</span>` : ' · <span style="color:#b26a00;">자동저장 OFF(표식만) — 정확도 확인 후 [자동 대조확인 저장] 체크</span>'}</div>
-        ${lines}
-        <div style="margin-top:5px; color:#888; font-size:11px;">🟢=comparedN&gt;0∧불일치0∧HS실비교(자동확인 대상) · 🟡=비교불가(이미지/HS미추출) · 🔴=불일치. 🟡🔴는 §10에서 사람 확인.</div></div>`;
+        <div style="font-weight:700; margin-bottom:5px;">🔍 CO 자동대조 — 🟢 ${cs.green} · 🟡 ${cs.amber} · 🔴 ${cs.red} · <span style="color:#0a7b40;">자동 대조확인 ${cs.autoSaved}건${ipMsg}</span></div>
+        ${lines}${ipSkip}
+        <div style="margin-top:5px; color:#888; font-size:11px;">🟢=comparedN&gt;0∧불일치0∧HS실비교 → 대조확인완료+최종IP 자동생성 · 🟡=비교불가(이미지/HS미추출) · 🔴=불일치. 🟡🔴는 §10에서 사람 확인·재업로드.</div></div>`;
     }
   } catch (e) { console.warn('[배치대조] 실행 경고', e.message); }
 }
