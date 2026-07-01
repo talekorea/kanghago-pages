@@ -908,17 +908,37 @@ async function handleAutoDispatchScan(req, res) {
   const dryRun = String((req.query && req.query.dryRun) || (req.body && req.body.dryRun) || '') === '1' || (req.body && req.body.dryRun === true);
   const RELAY_URL = process.env.RELAY_URL, RELAY_SECRET = process.env.RELAY_SECRET;
   if (!RELAY_URL || !RELAY_SECRET) return res.status(503).json({ ok: false, error: '중계 미설정(RELAY_URL/RELAY_SECRET)' });
-  // 후보 필터 — 화물 ∧ BL ∧ 배차요청 미통지 ∧ 활성 통관 상태(너무 이르거나 종결 제외)
-  const f = `AND({배송방식}='화물',{BL번호}!='',NOT(FIND('배차요청',{통관알림이력}&'')),OR({상태}='관세사확정완료',{상태}='인보이스완료',{상태}='통관중',{상태}='통관완료',{상태}='배송중'))`;
+  // 후보 필드(한글명 인코딩)
+  const CFIELDS = ['사서함', '고객사서함', '상태', '배송방식', 'BL번호', '통관알림이력', '고객토큰', '고객토큰만료일'].map(x => `fields%5B%5D=${encodeURIComponent(x)}`).join('&');
+  // [타깃 모드] ?shipmentId=rec.. 또는 ?mailbox=AP2197-260617 → 그 사서함 1건만(15건 상한·필터 우회). 실고객 대량 발송 위험 차단용.
+  const targetId = String((req.query && req.query.shipmentId) || '').trim();
+  const targetMb = String((req.query && req.query.mailbox) || '').trim();
+  const isTarget = !!(targetId || targetMb);
   let ships = [];
-  try { ships = await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=고객사서함&fields[]=상태&fields[]=배송방식&fields[]=BL번호&fields[]=통관알림이력&fields[]=고객토큰&fields[]=고객토큰만료일`); }
-  catch (e) { return res.status(502).json({ ok: false, error: 'Shipments 후보 조회 실패: ' + e.message }); }
-  const todo = ships.slice(0, AUTO_DISPATCH_MAX);
+  try {
+    if (isTarget) {
+      if (targetId.startsWith('rec')) {
+        const one = await atRequest('GET', `/${TABLES.Shipments}/${targetId}`);
+        ships = (one && one.id) ? [one] : [];
+      } else {
+        const tf = `{사서함}='${targetMb.replace(/'/g, "\\'")}'`;
+        ships = await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(tf)}&${CFIELDS}&maxRecords=1`);
+      }
+    } else {
+      // 전체 스캔 후보 — 화물 ∧ BL ∧ 배차요청 미통지 ∧ 활성 통관 상태
+      const f = `AND({배송방식}='화물',{BL번호}!='',NOT(FIND('배차요청',{통관알림이력}&'')),OR({상태}='관세사확정완료',{상태}='인보이스완료',{상태}='통관중',{상태}='통관완료',{상태}='배송중'))`;
+      ships = await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&${CFIELDS}`);
+    }
+  } catch (e) { return res.status(502).json({ ok: false, error: 'Shipments 후보 조회 실패: ' + e.message }); }
+  const todo = isTarget ? ships : ships.slice(0, AUTO_DISPATCH_MAX);
   const results = [];
   for (const s of todo) {
     const sf = s.fields || {};
     const mailbox = sf['사서함'] || '';
     const bl = String(sf['BL번호'] || '').trim();
+    // ★타깃 모드는 Airtable 필터를 우회하므로 안전 가드를 루프에서 재확인 — 화물·BL 아니면 발송 안 함(택배/무BL 오발송 차단).
+    if (String(sf['배송방식'] || '') !== '화물') { results.push({ mailbox, bl, status: 'skip_not_freight', 배송방식: sf['배송방식'] || '' }); continue; }
+    if (!bl) { results.push({ mailbox, bl: '', status: 'skip_no_bl' }); continue; }
     let rr;
     try { rr = await callCustomsRelay(RELAY_URL, RELAY_SECRET, JSON.stringify({ blNo: bl })); }
     catch (e) { results.push({ mailbox, bl, status: 'relay_fail', detail: String(e.message || e).slice(0, 80) }); continue; }
@@ -945,7 +965,7 @@ async function handleAutoDispatchScan(req, res) {
     try { await atRequest('PATCH', `/${TABLES.Shipments}/${s.id}`, { fields: { '통관알림이력': histAppend(sf['통관알림이력'], '배차요청') }, typecast: true }); } catch (e) {}
     results.push({ mailbox, bl, status: 'SENT', messageId: sent.messageId });
   }
-  return res.json({ ok: true, dryRun: !!dryRun, candidates: ships.length, processed: todo.length, results });
+  return res.json({ ok: true, dryRun: !!dryRun, target: isTarget ? (targetId || targetMb) : null, candidates: ships.length, processed: todo.length, results });
 }
 
 module.exports = async (req, res) => {
