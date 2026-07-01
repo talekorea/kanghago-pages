@@ -323,7 +323,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.177</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.178</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -444,7 +444,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.177</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.178</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -2298,10 +2298,10 @@ const I18N = {
     'option.all_distribute': '전체 (분배)',
     'cost.total_label': '작업비 합계 (USD / CNY):',
 
-    'cost_group.origin': '원산지', 'cost_group.sale_label': '판매라벨',
+    'cost_group.origin': '원산지표기', 'cost_group.sale_label': '판매라벨',
     'cost_group.packing': '포장', 'cost_group.inspection': '검수',
-    'cost_group.box': '패킹', 'cost_group.storage': '보관',
-    'cost_group.etc': '기타',
+    'cost_group.box': '패킹', 'cost_group.food': '식품검역',
+    'cost_group.storage': '보관', 'cost_group.etc': '기타',
 
     'cost.sticker': '스티커 (Made in China)', 'cost.sticker.desc': '상품별 본품/포장지 부착',
     'cost.sewing': '봉제 라벨', 'cost.sewing.desc': '원단 제품 라벨 봉제',
@@ -2310,24 +2310,32 @@ const I18N = {
     'cost.label_main': '상품 라벨 스티커', 'cost.label_main.desc': '바코드 포함 상품정보',
     'cost.label_age': '사용연령 라벨', 'cost.label_age.desc': '14세 이상 표시',
     'cost.label_custom': '주문제작 라벨', 'cost.label_custom.desc': 'KC인증/식품검역/한글표시',
-    'cost.opp': 'OPP 포장', 'cost.opp.desc': '가로+세로>80cm는 ¥0.5',
-    'cost.zipper': '지퍼백', 'cost.zipper.desc': '속옷/의류용 (30×30 등)',
-    'cost.aircap': '에어캡', 'cost.aircap.desc': '파손우려 제품 개별',
-    'cost.bundle_pack': '중포 포장', 'cost.bundle_pack.desc': '10~50개 단위 묶음',
-    'cost.bundle_sku': '번들 포장', 'cost.bundle_sku.desc': '2개 이상 세트',
-    'cost.remove_tag': '행택 제거', 'cost.remove_tag.desc': '업체 행택 제거',
-    'cost.remove_pack': '포장지 제거', 'cost.remove_pack.desc': '업체 포장지 제거',
     'cost.inspect_normal': '일반검수', 'cost.inspect_normal.desc': '랜덤 5개 체크',
-    'cost.inspect_hour': '정밀검수 (시간)', 'cost.inspect_hour.desc': '난이도별 협의',
-    'cost.inspect_piece': '정밀검수 (개)', 'cost.inspect_piece.desc': '기능성/조립 제품',
-    'cost.cn_box': 'CN박스', 'cost.cn_box.desc': '57×45×37cm 풀필먼트용',
-    'cost.pallet': '파렛트', 'cost.pallet.desc': '110×130cm + 랩핑',
-    'cost.sack': '마대자루', 'cost.sack.desc': '부피 축소 (인형/의류)',
+    'cost.inspect_piece': '정밀검수 (개당)', 'cost.inspect_piece.desc': '기능성/조립 제품',
+    'cost.inspect_hour': '정밀검수 (시간당)', 'cost.inspect_hour.desc': '난이도별 협의',
+    'cost.wood_dismantle': '나무 파레트 해체', 'cost.wood_dismantle.desc': '건당',
+    'cost.remove_pack': '재포장', 'cost.remove_pack.desc': '재포장 작업',
+    'cost.remove_tag': '태그 제거', 'cost.remove_tag.desc': '업체 태그 제거',
+    'cost.bundle_sku': 'SKU 분류', 'cost.bundle_sku.desc': 'SKU별 분류',
+    'cost.bundle_pack': '묶음 포장', 'cost.bundle_pack.desc': '묶음 단위 포장',
+    'cost.opp_low': 'OPP 포장 (하)', 'cost.opp_mid': 'OPP 포장 (중)', 'cost.opp_high': 'OPP 포장 (상)',
+    'cost.zipper_low': '지퍼백 (하)', 'cost.zipper_mid': '지퍼백 (중)', 'cost.zipper_high': '지퍼백 (상)',
+    'cost.aircap_60': '에어캡 (60cm)', 'cost.aircap_120': '에어캡 (120cm)',
+    'cost.box_1': '박스 15×11×9', 'cost.box_2': '박스 17×17×15', 'cost.box_3': '박스 36×27×17',
+    'cost.box_4': '박스 36×26×26', 'cost.box_5': '박스 38×36×26', 'cost.box_6': '박스 72×38×21',
+    'cost.box_7': '박스 41×51×61',
+    'cost.sack_s': '마대 75×115', 'cost.sack_l': '마대 120×150',
+    'cost.pallet': '파렛트 (랩핑 포함)', 'cost.pallet.desc': '건당·랩핑 포함',
+    'cost.forklift': '지게차', 'cost.forklift.desc': '시간당',
+    'cost.food_label': '식품 한글표시', 'cost.food_label.desc': '대행 1건당',
+    'cost.food_factory': '해외제조업소 등록', 'cost.food_factory.desc': '대행 1건당',
+    'cost.food_docs': '제조공장 서류', 'cost.food_docs.desc': '대행 1건당',
     'cost.storage': '보관비용 (일)', 'cost.storage.desc': '7일 무료 후 부과',
     'cost.custom': '직접입력', 'cost.custom.desc': '커스텀 항목',
+    'cost.opp': 'OPP 포장', 'cost.zipper': '지퍼백', 'cost.aircap': '에어캡', 'cost.cn_box': 'CN박스', 'cost.sack': '마대자루',   // legacy(드롭다운 미표시·과거데이터 호환)
 
     'unit.pcs': 'PCS', 'unit.set': 'SET', 'unit.sku': 'SKU', 'unit.ea': 'EA',
-    'unit.hour': '시간', 'unit.day': '일', 'unit.free': '무료', 'unit.empty': '',
+    'unit.hour': '시간', 'unit.day': '일', 'unit.free': '무료', 'unit.empty': '', 'unit.case': '건',
 
     'oh.broker': '관세사 수수료', 'oh.handling': '핸들링 수수료',
     'oh.doc': 'Document Fee', 'oh.exp_imp': '진출구수수료',
@@ -2528,8 +2536,8 @@ const I18N = {
 
     'cost_group.origin': '原产地标', 'cost_group.sale_label': '销售标签',
     'cost_group.packing': '包装', 'cost_group.inspection': '验货',
-    'cost_group.box': '装箱', 'cost_group.storage': '仓储',
-    'cost_group.etc': '其他',
+    'cost_group.box': '装箱', 'cost_group.food': '食品检疫',
+    'cost_group.storage': '仓储', 'cost_group.etc': '其他',
 
     'cost.sticker': '原产地贴纸 (Made in China)', 'cost.sticker.desc': '产品主体/包装贴附',
     'cost.sewing': '原产地缝制', 'cost.sewing.desc': '面料产品缝制标签',
@@ -2538,24 +2546,32 @@ const I18N = {
     'cost.label_main': '商品标签贴纸', 'cost.label_main.desc': '含条码商品信息',
     'cost.label_age': '使用年龄标签', 'cost.label_age.desc': '14岁以上标识',
     'cost.label_custom': '定制标签', 'cost.label_custom.desc': 'KC认证/食检/韩文标注',
-    'cost.opp': 'OPP包装', 'cost.opp.desc': '宽+长>80cm 为 ¥0.5',
-    'cost.zipper': '自封袋', 'cost.zipper.desc': '内衣/服装用 (30×30 等)',
-    'cost.aircap': '气泡膜', 'cost.aircap.desc': '易损产品单独包装',
-    'cost.bundle_pack': '中包装', 'cost.bundle_pack.desc': '10~50件一单位',
-    'cost.bundle_sku': '套装包装', 'cost.bundle_sku.desc': '2件以上一套',
-    'cost.remove_tag': '移除吊牌', 'cost.remove_tag.desc': '去除原厂吊牌',
-    'cost.remove_pack': '移除包装', 'cost.remove_pack.desc': '去除原厂包装',
     'cost.inspect_normal': '普通验货', 'cost.inspect_normal.desc': '随机抽检5件',
-    'cost.inspect_hour': '精密验货 (按小时)', 'cost.inspect_hour.desc': '按难度协商',
     'cost.inspect_piece': '精密验货 (按件)', 'cost.inspect_piece.desc': '功能性/组装产品',
-    'cost.cn_box': 'CN纸箱', 'cost.cn_box.desc': '57×45×37cm 入仓专用',
-    'cost.pallet': '托盘', 'cost.pallet.desc': '110×130cm + 缠膜',
-    'cost.sack': '编织袋', 'cost.sack.desc': '缩小体积 (毛绒/服装)',
+    'cost.inspect_hour': '精密验货 (按小时)', 'cost.inspect_hour.desc': '按难度协商',
+    'cost.wood_dismantle': '木托盘拆解', 'cost.wood_dismantle.desc': '按件',
+    'cost.remove_pack': '重新包装', 'cost.remove_pack.desc': '重新包装作业',
+    'cost.remove_tag': '移除吊牌', 'cost.remove_tag.desc': '去除原厂吊牌',
+    'cost.bundle_sku': 'SKU分类', 'cost.bundle_sku.desc': '按SKU分类',
+    'cost.bundle_pack': '捆绑包装', 'cost.bundle_pack.desc': '捆绑单位包装',
+    'cost.opp_low': 'OPP包装 (小)', 'cost.opp_mid': 'OPP包装 (中)', 'cost.opp_high': 'OPP包装 (大)',
+    'cost.zipper_low': '自封袋 (小)', 'cost.zipper_mid': '自封袋 (中)', 'cost.zipper_high': '自封袋 (大)',
+    'cost.aircap_60': '气泡膜 (60cm)', 'cost.aircap_120': '气泡膜 (120cm)',
+    'cost.box_1': '纸箱 15×11×9', 'cost.box_2': '纸箱 17×17×15', 'cost.box_3': '纸箱 36×27×17',
+    'cost.box_4': '纸箱 36×26×26', 'cost.box_5': '纸箱 38×36×26', 'cost.box_6': '纸箱 72×38×21',
+    'cost.box_7': '纸箱 41×51×61',
+    'cost.sack_s': '编织袋 75×115', 'cost.sack_l': '编织袋 120×150',
+    'cost.pallet': '托盘 (含缠膜)', 'cost.pallet.desc': '按件·含缠膜',
+    'cost.forklift': '叉车', 'cost.forklift.desc': '按小时',
+    'cost.food_label': '食品韩文标注', 'cost.food_label.desc': '每单代办',
+    'cost.food_factory': '海外制造企业注册', 'cost.food_factory.desc': '每单代办',
+    'cost.food_docs': '制造工厂文件', 'cost.food_docs.desc': '每单代办',
     'cost.storage': '仓储费 (按日)', 'cost.storage.desc': '前7天免费',
     'cost.custom': '自定义输入', 'cost.custom.desc': '自定义项目',
+    'cost.opp': 'OPP包装', 'cost.zipper': '自封袋', 'cost.aircap': '气泡膜', 'cost.cn_box': 'CN纸箱', 'cost.sack': '编织袋',   // legacy
 
     'unit.pcs': '件', 'unit.set': '套', 'unit.sku': 'SKU', 'unit.ea': '个',
-    'unit.hour': '小时', 'unit.day': '日', 'unit.free': '免费', 'unit.empty': '',
+    'unit.hour': '小时', 'unit.day': '日', 'unit.free': '免费', 'unit.empty': '', 'unit.case': '单',
 
     'oh.broker': '报关行手续费', 'oh.handling': 'Handling 手续费',
     'oh.doc': 'Document Fee', 'oh.exp_imp': '进出口手续费',
@@ -2756,8 +2772,8 @@ const I18N = {
 
     'cost_group.origin': 'Country of Origin', 'cost_group.sale_label': 'Sales Label',
     'cost_group.packing': 'Packaging', 'cost_group.inspection': 'Inspection',
-    'cost_group.box': 'Boxing', 'cost_group.storage': 'Storage',
-    'cost_group.etc': 'Other',
+    'cost_group.box': 'Boxing', 'cost_group.food': 'Food Quarantine',
+    'cost_group.storage': 'Storage', 'cost_group.etc': 'Other',
 
     'cost.sticker': 'Sticker (Made in China)', 'cost.sticker.desc': 'On product/packaging',
     'cost.sewing': 'Sewn label', 'cost.sewing.desc': 'For fabric products',
@@ -2766,24 +2782,32 @@ const I18N = {
     'cost.label_main': 'Product label sticker', 'cost.label_main.desc': 'Barcode + info',
     'cost.label_age': 'Age label', 'cost.label_age.desc': '14+ marking',
     'cost.label_custom': 'Custom label', 'cost.label_custom.desc': 'KC cert / Korean text',
-    'cost.opp': 'OPP packaging', 'cost.opp.desc': 'W+L>80cm is ¥0.5',
-    'cost.zipper': 'Zipper bag', 'cost.zipper.desc': 'Underwear/clothes (30×30 etc.)',
-    'cost.aircap': 'Bubble wrap', 'cost.aircap.desc': 'For fragile items',
-    'cost.bundle_pack': 'Bulk pack', 'cost.bundle_pack.desc': '10~50 pcs per unit',
-    'cost.bundle_sku': 'Bundle pack', 'cost.bundle_sku.desc': '2+ items as set',
-    'cost.remove_tag': 'Remove hangtag', 'cost.remove_tag.desc': 'Original hangtag removal',
-    'cost.remove_pack': 'Remove packaging', 'cost.remove_pack.desc': 'Original packaging removal',
     'cost.inspect_normal': 'Standard inspection', 'cost.inspect_normal.desc': 'Random 5-pc check',
-    'cost.inspect_hour': 'Detailed inspection (hour)', 'cost.inspect_hour.desc': 'Per difficulty',
-    'cost.inspect_piece': 'Detailed inspection (piece)', 'cost.inspect_piece.desc': 'Functional/assembly',
-    'cost.cn_box': 'CN box', 'cost.cn_box.desc': '57×45×37cm fulfillment',
-    'cost.pallet': 'Pallet', 'cost.pallet.desc': '110×130cm + wrap',
-    'cost.sack': 'Woven sack', 'cost.sack.desc': 'Volume reduction (plush/clothes)',
+    'cost.inspect_piece': 'Detailed inspection (per pc)', 'cost.inspect_piece.desc': 'Functional/assembly',
+    'cost.inspect_hour': 'Detailed inspection (per hour)', 'cost.inspect_hour.desc': 'Per difficulty',
+    'cost.wood_dismantle': 'Wooden pallet dismantle', 'cost.wood_dismantle.desc': 'Per case',
+    'cost.remove_pack': 'Repack', 'cost.remove_pack.desc': 'Repackaging work',
+    'cost.remove_tag': 'Remove tag', 'cost.remove_tag.desc': 'Original tag removal',
+    'cost.bundle_sku': 'SKU sorting', 'cost.bundle_sku.desc': 'Sort by SKU',
+    'cost.bundle_pack': 'Bundle pack', 'cost.bundle_pack.desc': 'Bundle-unit packing',
+    'cost.opp_low': 'OPP pack (S)', 'cost.opp_mid': 'OPP pack (M)', 'cost.opp_high': 'OPP pack (L)',
+    'cost.zipper_low': 'Zipper bag (S)', 'cost.zipper_mid': 'Zipper bag (M)', 'cost.zipper_high': 'Zipper bag (L)',
+    'cost.aircap_60': 'Bubble wrap (60cm)', 'cost.aircap_120': 'Bubble wrap (120cm)',
+    'cost.box_1': 'Box 15×11×9', 'cost.box_2': 'Box 17×17×15', 'cost.box_3': 'Box 36×27×17',
+    'cost.box_4': 'Box 36×26×26', 'cost.box_5': 'Box 38×36×26', 'cost.box_6': 'Box 72×38×21',
+    'cost.box_7': 'Box 41×51×61',
+    'cost.sack_s': 'Sack 75×115', 'cost.sack_l': 'Sack 120×150',
+    'cost.pallet': 'Pallet (wrap incl.)', 'cost.pallet.desc': 'Per case, wrap included',
+    'cost.forklift': 'Forklift', 'cost.forklift.desc': 'Per hour',
+    'cost.food_label': 'Food Korean labeling', 'cost.food_label.desc': 'Per agency case',
+    'cost.food_factory': 'Overseas factory reg.', 'cost.food_factory.desc': 'Per agency case',
+    'cost.food_docs': 'Factory documents', 'cost.food_docs.desc': 'Per agency case',
     'cost.storage': 'Storage (per day)', 'cost.storage.desc': 'First 7 days free',
     'cost.custom': 'Custom entry', 'cost.custom.desc': 'Custom item',
+    'cost.opp': 'OPP packaging', 'cost.zipper': 'Zipper bag', 'cost.aircap': 'Bubble wrap', 'cost.cn_box': 'CN box', 'cost.sack': 'Woven sack',   // legacy
 
     'unit.pcs': 'PCS', 'unit.set': 'SET', 'unit.sku': 'SKU', 'unit.ea': 'EA',
-    'unit.hour': 'hour', 'unit.day': 'day', 'unit.free': 'free', 'unit.empty': '',
+    'unit.hour': 'hour', 'unit.day': 'day', 'unit.free': 'free', 'unit.empty': '', 'unit.case': 'case',
 
     'oh.broker': 'Customs broker fee', 'oh.handling': 'Handling fee',
     'oh.doc': 'Document Fee', 'oh.exp_imp': 'Import/export fee',
@@ -2997,32 +3021,52 @@ const TABLES = {
 };
 
 // ========== 강하고 작업비 표준가 (CNY) ==========
+// [v3.2.178] 작업비 표 전면 개편(2026-07-01 사장님 확정) — 전부 CNY. 옵션 세분(OPP 하중상·박스 7종·마대 2종·에어캡 60/120·지퍼 하중상)은 각각 별도 프리셋(작업자 택1).
+//   ★프리즈: 프리셋은 [선택] 시에만 단가 복사 → 과거 CostItems(저장 단가) 불변. 단가 변경분은 신규 입력만 적용.
 const COST_PRESETS = [
-  // 원산지
+  // 원산지표기 (개당)
   { group: 'cost_group.origin', i18n: 'cost.sticker', price: 0.3, unit: 'unit.pcs' },
-  { group: 'cost_group.origin', i18n: 'cost.sewing', price: 0.6, unit: 'unit.pcs' },
+  { group: 'cost_group.origin', i18n: 'cost.sewing', price: 1, unit: 'unit.pcs' },     // 0.6→1
   { group: 'cost_group.origin', i18n: 'cost.stamp', price: 0.6, unit: 'unit.pcs' },
-  { group: 'cost_group.origin', i18n: 'cost.hangtag', price: 0.5, unit: 'unit.pcs' },
-  // 판매라벨
+  { group: 'cost_group.origin', i18n: 'cost.hangtag', price: 1, unit: 'unit.pcs' },    // 0.5→1
+  // 판매라벨 (개당)
   { group: 'cost_group.sale_label', i18n: 'cost.label_main', price: 0.5, unit: 'unit.pcs' },
-  { group: 'cost_group.sale_label', i18n: 'cost.label_age', price: 0.3, unit: 'unit.pcs' },
-  { group: 'cost_group.sale_label', i18n: 'cost.label_custom', price: 0.3, unit: 'unit.pcs' },
-  // 포장
-  { group: 'cost_group.packing', i18n: 'cost.opp', price: 0.3, unit: 'unit.pcs' },
-  { group: 'cost_group.packing', i18n: 'cost.zipper', price: 0.5, unit: 'unit.pcs' },
-  { group: 'cost_group.packing', i18n: 'cost.aircap', price: 2.0, unit: 'unit.pcs' },
-  { group: 'cost_group.packing', i18n: 'cost.bundle_pack', price: 1.0, unit: 'unit.set' },
-  { group: 'cost_group.packing', i18n: 'cost.bundle_sku', price: 0.3, unit: 'unit.sku' },
-  { group: 'cost_group.packing', i18n: 'cost.remove_tag', price: 0.2, unit: 'unit.pcs' },
-  { group: 'cost_group.packing', i18n: 'cost.remove_pack', price: 0.3, unit: 'unit.pcs' },
-  // 검수
+  { group: 'cost_group.sale_label', i18n: 'cost.label_age', price: 0.5, unit: 'unit.pcs' },      // 0.3→0.5
+  { group: 'cost_group.sale_label', i18n: 'cost.label_custom', price: 0.5, unit: 'unit.pcs' },   // 0.3→0.5
+  // 검수 (정밀 개당/시간당 2항목)
   { group: 'cost_group.inspection', i18n: 'cost.inspect_normal', price: 0, unit: 'unit.free' },
-  { group: 'cost_group.inspection', i18n: 'cost.inspect_hour', price: 35, unit: 'unit.hour' },
   { group: 'cost_group.inspection', i18n: 'cost.inspect_piece', price: 1.5, unit: 'unit.pcs' },
-  // 패킹
-  { group: 'cost_group.box', i18n: 'cost.cn_box', price: 9.5, unit: 'unit.ea' },
-  { group: 'cost_group.box', i18n: 'cost.pallet', price: 130, unit: 'unit.ea' },
-  { group: 'cost_group.box', i18n: 'cost.sack', price: 10, unit: 'unit.ea' },
+  { group: 'cost_group.inspection', i18n: 'cost.inspect_hour', price: 35, unit: 'unit.hour' },
+  // 포장
+  { group: 'cost_group.packing', i18n: 'cost.wood_dismantle', price: 100, unit: 'unit.case' },   // 나무파레트 해체(건당) NEW
+  { group: 'cost_group.packing', i18n: 'cost.remove_pack', price: 0.3, unit: 'unit.pcs' },       // 재포장
+  { group: 'cost_group.packing', i18n: 'cost.remove_tag', price: 0.3, unit: 'unit.pcs' },        // 태그제거 0.2→0.3
+  { group: 'cost_group.packing', i18n: 'cost.bundle_sku', price: 0.3, unit: 'unit.sku' },        // SKU분류
+  { group: 'cost_group.packing', i18n: 'cost.bundle_pack', price: 1, unit: 'unit.set' },         // 묶음포장
+  { group: 'cost_group.packing', i18n: 'cost.opp_low', price: 1.5, unit: 'unit.pcs' },           // OPP 하 NEW
+  { group: 'cost_group.packing', i18n: 'cost.opp_mid', price: 2, unit: 'unit.pcs' },             // OPP 중 NEW
+  { group: 'cost_group.packing', i18n: 'cost.opp_high', price: 2.5, unit: 'unit.pcs' },          // OPP 상 NEW
+  { group: 'cost_group.packing', i18n: 'cost.zipper_low', price: 2, unit: 'unit.pcs' },          // 지퍼 하 NEW
+  { group: 'cost_group.packing', i18n: 'cost.zipper_mid', price: 3, unit: 'unit.pcs' },          // 지퍼 중 NEW
+  { group: 'cost_group.packing', i18n: 'cost.zipper_high', price: 4, unit: 'unit.pcs' },         // 지퍼 상 NEW
+  { group: 'cost_group.packing', i18n: 'cost.aircap_60', price: 2, unit: 'unit.pcs' },           // 에어캡 60cm NEW
+  { group: 'cost_group.packing', i18n: 'cost.aircap_120', price: 4, unit: 'unit.pcs' },          // 에어캡 120cm NEW
+  // 패킹 (박스 7종·마대 2종·파렛트·지게차)
+  { group: 'cost_group.box', i18n: 'cost.box_1', price: 6, unit: 'unit.ea' },      // 15×11×9
+  { group: 'cost_group.box', i18n: 'cost.box_2', price: 8, unit: 'unit.ea' },      // 17×17×15
+  { group: 'cost_group.box', i18n: 'cost.box_3', price: 10, unit: 'unit.ea' },     // 36×27×17
+  { group: 'cost_group.box', i18n: 'cost.box_4', price: 13, unit: 'unit.ea' },     // 36×26×26
+  { group: 'cost_group.box', i18n: 'cost.box_5', price: 18, unit: 'unit.ea' },     // 38×36×26
+  { group: 'cost_group.box', i18n: 'cost.box_6', price: 20, unit: 'unit.ea' },     // 72×38×21
+  { group: 'cost_group.box', i18n: 'cost.box_7', price: 25, unit: 'unit.ea' },     // 41×51×61
+  { group: 'cost_group.box', i18n: 'cost.sack_s', price: 10, unit: 'unit.ea' },    // 마대 75×115
+  { group: 'cost_group.box', i18n: 'cost.sack_l', price: 12, unit: 'unit.ea' },    // 마대 120×150
+  { group: 'cost_group.box', i18n: 'cost.pallet', price: 200, unit: 'unit.case' }, // 파렛트(건당·랩핑포함) 130→200
+  { group: 'cost_group.box', i18n: 'cost.forklift', price: 150, unit: 'unit.hour' },// 지게차(시간당) NEW
+  // 식품검역 (각 대행 1건당)
+  { group: 'cost_group.food', i18n: 'cost.food_label', price: 100, unit: 'unit.case' },     // 한글표시 NEW
+  { group: 'cost_group.food', i18n: 'cost.food_factory', price: 300, unit: 'unit.case' },   // 해외제조업소등록 NEW
+  { group: 'cost_group.food', i18n: 'cost.food_docs', price: 500, unit: 'unit.case' },      // 제조공장서류 NEW
   // 보관
   { group: 'cost_group.storage', i18n: 'cost.storage', price: 10, unit: 'unit.day' },
   // 기타
