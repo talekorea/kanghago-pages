@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.186</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.187</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.186</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.187</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6888,6 +6888,32 @@ function _coCompareCore(inp, src) {
   // [v3.2.123] ok = 실불일치 0(비교된 것 중). 전부 스킵(이미지·미추출)이면 ok=true → 사람 게이트(blind) 허용. 실불일치 있으면 차단.
   return { items, ok: mismatches === 0, mismatches, comparedN: compared.length };
 }
+// [v3.2.187] CO 자동대조 판정 단일 함수 — 배치(runBatchCoCompare)·개별(§4 handleBlCoFileUpload) 공용. 중복 0.
+//   coFields=extractCoFields 결과, src=IP소스(_ipSourceFromProducts 또는 _coInvoiceSource), hasProducts=제품>0 존재.
+//   🟢=comparedN>0 ∧ mismatches0 ∧ HS실비교 / 🔴=mismatches>0(오배치 AP마크 불일치 포함) / 🟡=제품미로드·비교불가·HS미추출.
+//   ftaConf = CO의 FTA종류 → 적용FTA확정 값(자동설정용). 미식별이면 ''.
+function _computeCoVerdict(coFields, src, hasProducts) {
+  const co = coFields || {};
+  const inHs = [...new Set((co.hs || []).map(x => String(x).replace(/[^0-9]/g, '').slice(0, 6)).filter(Boolean))].sort();
+  const inQty = (co.qty != null && !isNaN(co.qty)) ? parseInt(co.qty, 10) : NaN;
+  const inMark = baseMailbox(String(co.mark || '')).toUpperCase();
+  const inOrigin = String(co.origin || '');
+  const inFtaRaw = String(co.fta || '').toUpperCase();
+  const inFta = [...new Set(inFtaRaw.split(/[\s,]+/).map(x => x.trim()).filter(Boolean))].sort();
+  const st = _coCompareCore({ bl: {}, co, inHs, inQty, inMark, inOrigin, inFta, inFtaRaw }, src);
+  const hsItem = st.items.find(i => i.label === 'HS코드');
+  const hsCompared = !!(hsItem && hsItem.match !== null);
+  let verdict;
+  if (!hasProducts) verdict = 'amber';               // 제품 미로드/0개 → 비교불가(qty 0 대비 거짓 🔴 방지)
+  else if (st.mismatches > 0) verdict = 'red';        // 오배치(AP마크)·HS·수량 불일치
+  else if (st.comparedN > 0 && hsCompared) verdict = 'green';
+  else verdict = 'amber';                             // comparedN0(이미지) 또는 HS 미비교 → 사람 확인
+  let ftaConf = '';
+  if (/한중|CHINA[\s-]*KOREA|^KC$/.test(inFtaRaw)) ftaConf = '한중FTA';
+  else if (/RCEP/.test(inFtaRaw)) ftaConf = 'RCEP협정';
+  else if (/아태|APTA|ASEAN|ASIA/.test(inFtaRaw)) ftaConf = '아태협정';
+  return { verdict, st, hsCompared, ftaConf, comparedN: st.comparedN, mismatches: st.mismatches };
+}
 async function runCoCompare() {
   if (!state.shipment) { toastWarn && toastWarn('사서함 먼저 불러오세요'); return; }
   if (!_blFields && typeof autoFillBlFromAttachment === 'function') { try { await autoFillBlFromAttachment(); } catch (e) {} }   // [v3.2.123] 삼각용 BL 추출(첫 비교 시 1회)
@@ -7160,6 +7186,28 @@ async function uploadAirtableAttachment(recordId, fieldId, file, filenameOverrid
   return res.json();   // { id, createdTime, fields: { <fieldId>: [att...] } }
 }
 
+// [v3.2.187] §4 개별 CO 업로드 자동대조 — autoFillCoFromFile 파싱본(_coExtracted)을 state IP소스(_coInvoiceSource)와 대조.
+//   🟢=대조확인완료+적용FTA 자동(confirmCoCompare 재사용) / 🟡🔴=저장 안 함·표식만(사람 §10). 배치와 동일 판정(_computeCoVerdict).
+async function _autoConfirmCoIfGreen() {
+  if (!state.shipment) return null;
+  if (!_coExtracted) {   // 이미지/스캔/텍스트없음 → 자동추출 불가 = 🟡(사람 확인). resetDocMatch가 앞서 _coExtracted=null로 초기화(스테일 없음).
+    toastWarn && toastWarn('🟡 CO 자동대조 불가(이미지/스캔) — §10에서 사람이 대조 확인', { title: '🔍 자동대조' });
+    return { verdict: 'amber' };
+  }
+  const src = _coInvoiceSource();
+  const prods = (state.products || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0);
+  const cv = _computeCoVerdict(_coExtracted, src, prods.length > 0);
+  if (cv.verdict === 'green') {
+    _coCompareState = cv.st;   // confirmCoCompare가 _coCompareState.ok 요구 → green이면 ok=true
+    try { await confirmCoCompare(); }   // 대조확인완료 + CO대조 + 적용FTA확정(coCmpFta) 저장 — 기존 [✓ 확정] 로직 재사용
+    catch (e) { console.warn('[개별 자동대조 확정]', e && e.message); }
+  } else if (cv.verdict === 'red') {
+    toastWarn && toastWarn(`🔴 CO 자동대조 불일치 ${cv.mismatches}건 — §10 확인(★오배치 의심: CO의 AP ↔ 이 사서함 불일치 등)`, { title: '🔍 자동대조', duration: 8000 });
+  } else {
+    toastWarn && toastWarn('🟡 CO 자동대조 모호(HS 미추출 등) — §10에서 사람 확인', { title: '🔍 자동대조' });
+  }
+  return cv;
+}
 async function handleBlCoFileUpload(kind, fileInput) {
   if (!state.shipment) { toastWarn && toastWarn('사서함 먼저 불러오세요'); return; }
   if (!fileInput.files || !fileInput.files.length) return;
@@ -7194,7 +7242,12 @@ async function handleBlCoFileUpload(kind, fileInput) {
     if (typeof saveAll === 'function') { try { await saveAll({ silent: true }); } catch (e) {} }
     // [v3.2.54] BL PDF면 BL번호 자동추출 (미저장 채우기 — 확정 버튼 전까지 저장 안 됨)
     if (kind === 'bl' && files[0]) { try { extractBlNumberFromFile(files[0]); } catch (e) {} }
-    if (kind === 'co' && files[0]) { try { autoFillCoFromFile(files[0]); } catch (e) {} }   // [v3.2.118] CO 업로드 시 대조 패널 자동채움(확인요망·확정은 사람)
+    if (kind === 'co' && files[0]) {
+      try {
+        await autoFillCoFromFile(files[0]);   // [v3.2.118] CO 파싱 → _coExtracted + 대조패널 채움
+        await _autoConfirmCoIfGreen();         // [v3.2.187] 개별 CO 자동대조 → 🟢면 대조확인완료+적용FTA 자동 / 🟡🔴 표식
+      } catch (e) { console.warn('[개별 CO 자동대조]', e && e.message); }
+    }
     if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();
     // [v3.2.163] ★BL∧CO 둘 다 업로드된 순간 = 확정 IP 자동등록(BL번호·선적항·특혜세율 반영). 다운로드 없이 최종IP파일에 등록.
     try { await _autoRegisterFinalIp(); } catch (e) { console.warn('[확정 IP 자동등록]', e && e.message); }
@@ -11418,9 +11471,11 @@ function renderFinalConfirm() {
   const blFileOk = !!(f['BL파일'] && Array.isArray(f['BL파일']) && f['BL파일'].length);
   const coFileOk = !!(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length);
   const matchOk = f['대조확인상태'] === '확인완료';   // v3.2.49 [Phase 1-G]: BL/CO 대조 확인 게이트
+  // [v3.2.187] ★대조확인 요구 = _publishGateReason('finalIp')과 일치 — 특혜세율(한중/RCEP/아태)일 때만 하드. 미선택/기본=대조 불요(잠금 혼란 제거).
+  const _isPref = ['한중FTA', 'RCEP협정', '아태협정'].includes(String(f['적용FTA확정'] || '').trim());
   // [v3.2.124] ★작업비 = soft(하드 요건 제외) — 강하고 작업 없는 사서함은 작업비 0이 정상(AP1520 등). 표시만 ✓/—, 차단 안 함.
   const finalReady = s1 && hasBoxes && rOk
-                  && s2 && blNumOk && blFileOk && coFileOk && matchOk;
+                  && s2 && blNumOk && blFileOk && coFileOk && (!_isPref || matchOk);
 
   // v3.1.0 발행 후 진행 추적 (게이트 X, 정보만)
   const hasInvoiceIssued = !!f['청구서발행일시'];
@@ -11456,9 +11511,9 @@ function renderFinalConfirm() {
   if (!blFileOk) finalMiss.push('BL파일');
   // [v3.2.103] CO 조건부 — 적용FTA확정 미선택=차단 / CO필요 FTA(한중·RCEP·아태)면 CO 필수 / 일반=CO 불요.
   const _ftaConf103 = String(f['적용FTA확정'] || '').trim();
-  if (!_ftaConf103 || _ftaConf103 === '미선택') finalMiss.push('적용FTA확정(미선택)');
+  if (!_ftaConf103 || _ftaConf103 === '미선택') finalMiss.push('적용FTA 미확정 — 확정 필요');   // [v3.2.187] (b) 정책 — CO 있는 최종제출은 FTA 확정 요구(자동대조 🟢가 대부분 자동설정)
   else if (['한중FTA', 'RCEP협정', '아태협정'].includes(_ftaConf103) && !coFileOk) finalMiss.push('CO파일(FTA용)');
-  if (!matchOk) finalMiss.push('BL/CO 대조확인');
+  if (_isPref && !matchOk) finalMiss.push('BL/CO 대조확인');   // [v3.2.187] 특혜세율일 때만(다운로드 게이트 일치). 미선택/기본=대조 불요
 
   body.innerHTML = `
     <div style="font-size:13px;">
@@ -11472,7 +11527,7 @@ function renderFinalConfirm() {
       ${chk(blNumOk, '⑥ BL 번호', f['BL번호'] || '')}
       ${chk(blFileOk, '⑦ BL 파일 업로드')}
       ${chk(coFileOk, '⑧ CO 파일 업로드')}
-      ${chk(matchOk, '⑨ BL/CO 대조 확인', matchOk ? (f['대조확인일시'] || '') : '§10에서 [확인 완료]')}
+      ${chk(matchOk || !_isPref, '⑨ BL/CO 대조 확인', matchOk ? (f['대조확인일시'] || '') : (_isPref ? '§10에서 [확인 완료]' : '미선택/기본세율 = 대조 불요'))}
     </div>
     <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #ddd; font-size:13px;">
       <div style="font-weight:600; color:#666; font-size:12px; margin-bottom:4px;">📊 발행 후 진행 (관세사확정 → 청구발행 → 입금 → 출고 · 정보, 게이트 X)</div>
@@ -18078,32 +18133,16 @@ async function runBatchCoCompare() {
     const shipFields = { '사서함': it.mailbox, '출발지': it.port || (row && row.선적항) || '', '선적항': (row && row.선적항) || '' };
     const prods = idx[it.mailbox] || [];
     const src = _ipSourceFromProducts(prods, shipFields, 0);
-    const co = it.coFields || {};
-    const inHs = [...new Set((co.hs || []).map(x => String(x).replace(/[^0-9]/g, '').slice(0, 6)).filter(Boolean))].sort();
-    const inQty = (co.qty != null && !isNaN(co.qty)) ? parseInt(co.qty, 10) : NaN;
-    const inMark = baseMailbox(String(co.mark || '')).toUpperCase();
-    const inOrigin = String(co.origin || '');
-    const inFtaRaw = String(co.fta || '').toUpperCase();
-    const inFta = [...new Set(inFtaRaw.split(/[\s,]+/).map(x => x.trim()).filter(Boolean))].sort();
-    const st = _coCompareCore({ bl: {}, co, inHs, inQty, inMark, inOrigin, inFta, inFtaRaw }, src);
-    const hsItem = st.items.find(i => i.label === 'HS코드');
-    const hsCompared = !!(hsItem && hsItem.match !== null);
-    let verdict;
-    if (prods.length === 0) verdict = 'amber';   // [v3.2.180] 제품 미로드/0개 → 비교불가(qty 0 대비 거짓 🔴 방지). 자동저장 안 됨.
-    else if (st.mismatches > 0) verdict = 'red';
-    else if (st.comparedN > 0 && hsCompared) verdict = 'green';
-    else verdict = 'amber';   // 비교불가(comparedN0) 또는 HS 미비교 → 사람 확인(거짓일치 방지)
-    it.cmp = { verdict, comparedN: st.comparedN, mismatches: st.mismatches, hsCompared, hasProducts: prods.length > 0, noProdReason: prods.length === 0 ? '제품 미로드/없음' : '' };
+    const cv = _computeCoVerdict(it.coFields, src, prods.length > 0);   // [v3.2.187] 판정 단일 함수(개별과 공용)
+    const verdict = cv.verdict, st = cv.st;
+    it.cmp = { verdict, comparedN: cv.comparedN, mismatches: cv.mismatches, hsCompared: cv.hsCompared, hasProducts: prods.length > 0, noProdReason: prods.length === 0 ? '제품 미로드/없음' : '' };
     summary[verdict]++;
-    summary.details.push({ mailbox: it.mailbox, verdict, comparedN: st.comparedN, mismatches: st.mismatches, noProd: prods.length === 0 });
+    summary.details.push({ mailbox: it.mailbox, verdict, comparedN: cv.comparedN, mismatches: cv.mismatches, noProd: prods.length === 0 });
     if (verdict === 'green') {   // [v3.2.183] 🟢면 무조건 대조확인완료 자동저장(토글 폐지)
       try {
-        let ftaConf = '';
-        if (/한중|CHINA[\s-]*KOREA|^KC$/.test(inFtaRaw)) ftaConf = '한중FTA';
-        else if (/RCEP/.test(inFtaRaw)) ftaConf = 'RCEP협정';
-        else if (/아태|APTA|ASEAN|ASIA/.test(inFtaRaw)) ftaConf = '아태협정';
+        const ftaConf = cv.ftaConf;
         const fields = { '대조확인상태': '확인완료', '대조확인일시': new Date().toISOString().slice(0, 10), '대조확인자': '자동대조(배치)',
-          'CO대조': JSON.stringify({ 자동: true, comparedN: st.comparedN, mismatches: st.mismatches, 일시: new Date().toISOString(), 대조자: '자동대조(배치)' }) };
+          'CO대조': JSON.stringify({ 자동: true, comparedN: cv.comparedN, mismatches: cv.mismatches, 일시: new Date().toISOString(), 대조자: '자동대조(배치)' }) };
         if (ftaConf) fields['적용FTA확정'] = ftaConf;
         await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields, typecast: true });
         summary.autoSaved++; it.cmp.autoSaved = true; summary.savedIds.push(it.shipId);   // [v3.2.183] 최종IP 자동생성 대상
