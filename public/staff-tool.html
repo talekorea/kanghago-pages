@@ -323,7 +323,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.175</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.176</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -444,7 +444,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.175</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.176</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -7157,7 +7157,7 @@ async function loadPdfJs() {
   throw new Error('PDF 파서 CDN 모두 차단됨 (' + (lastErr && lastErr.message) + ')');
 }
 
-const BL_PREFIXES = ['XWK', 'WY', 'TALE', 'HBL', 'MBL', 'SITC', 'DH'];   // 접두 폴백 — 발견 시 한 줄 추가 (DH=电放提单 v3.2.126)
+const BL_PREFIXES = ['XWK', 'WY', 'TALE', 'HBL', 'MBL', 'SITC', 'DH', 'WENYUAN'];   // 접두 폴백 — 발견 시 한 줄 추가 (DH=电放提单 v3.2.126 / WENYUAN=웬위안 7자접두 v3.2.176)
 // [v3.2.112] 포워더 상호·전화 오인식 차단(거짓 BL — ICOFKOREA1661-5776류). 거짓초록불 사고(260617 9건) 근본 처방.
 const _BL_REJECT = /KOREA|CO[.,]?LTD|LTD|INC\b|CORP|LOGIS|EXPRESS|SHIPPING|FORWARD|HANSUNG/;
 function extractBlCandidates(text) {
@@ -7181,7 +7181,7 @@ function extractBlCandidates(text) {
   const preRe = new RegExp('\\b((?:' + BL_PREFIXES.join('|') + ')[A-Z0-9-]{4,})\\b', 'ig');
   while ((m = preRe.exec(T))) add(m[1], 0);
   // (c) 일반 폴백
-  const genRe = /\b([A-Z]{2,5}\d{5,}[A-Z0-9]*)\b/g;
+  const genRe = /\b([A-Z]{2,8}\d{5,}[A-Z0-9]*)\b/g;   // [v3.2.176] 5→8자 접두 포착(7자 접두 대응). ISO컨테이너(4자+7숫자)·상호·전화는 add()에서 reject.
   while ((m = genRe.exec(T))) add(m[1], 2);
   return [...seen.entries()].sort((a, b) => a[1] - b[1]).map(([value, rank]) => ({ value, rank }));
 }

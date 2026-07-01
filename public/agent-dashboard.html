@@ -444,7 +444,7 @@
     return text;
   }
   // [v3.2.112] BL번호 후보 추출 — ★접두(HBL) 최우선 + 포워더 상호·전화 reject (도구 extractBlCandidates와 동일 원칙·거짓BL 차단).
-  const _BL_PREFIXES = ['XWK', 'WY', 'TALE', 'HBL', 'MBL', 'SITC'];
+  const _BL_PREFIXES = ['XWK', 'WY', 'TALE', 'HBL', 'MBL', 'SITC', 'DH', 'WENYUAN'];   // [v3.2.176] DH·WENYUAN 보강(도구 동기)
   const _BL_REJECT = /KOREA|CO[.,]?LTD|LTD|INC\b|CORP|LOGIS|EXPRESS|SHIPPING|FORWARD|HANSUNG/;
   function _blCandidates(text) {
     const T = String(text || '').replace(/ /g, ' ');
@@ -455,7 +455,7 @@
     while ((m = preRe.exec(T))) add(m[1], 0);
     const labelRe = /(?:HOUSE\s*B\s*\/?\s*L|H\s*\/?\s*B\s*\/?\s*L|B\s*\/?\s*L|선하증권|BILL\s*OF\s*LADING)\s*(?:No\.?|NO\.?|NUMBER|번호|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\- ]{4,22})/ig;
     while ((m = labelRe.exec(T))) add(m[1].split(/\s{2,}/)[0], 1);
-    const genRe = /\b([A-Z]{2,5}\d{5,}[A-Z0-9]*)\b/g;
+    const genRe = /\b([A-Z]{2,8}\d{5,}[A-Z0-9]*)\b/g;   // [v3.2.176] 5→8자(도구 동기)
     while ((m = genRe.exec(T))) add(m[1], 2);
     return [...seen.entries()].sort((a, b) => a[1] - b[1]).map(([value]) => value);
   }
