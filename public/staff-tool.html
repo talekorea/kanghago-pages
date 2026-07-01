@@ -328,7 +328,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.179</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.180</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -449,7 +449,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.179</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.180</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6781,19 +6781,47 @@ function _coInvoiceSource() {
   const invoiceNo = (fwd && seq > 0 && yymmdd) ? `${fwd}-${yymmdd}-${seq}` : '';
   return { hsSet, nameSet, qtyTotal, boxCount, apMark, origin, ftaSet, consigneeBiz, invoiceNo };
 }
+// [v3.2.180] 배치 자동대조용 IP소스 — 로드된 state 없이 제품배열+사서함필드로 구성(단건 _coInvoiceSource의 배치판).
+//   consignee/invoiceNo는 배치에서 미제공(orders/customer 미로드) → 해당 항목 자동 스킵. HS·수량·마크·적출항이 실비교 대상.
+function _ipSourceFromProducts(prods, shipFields, boxCount) {
+  const f = shipFields || {};
+  const ps = (prods || []).filter(p => (parseFloat((p.fields || {})['수량']) || 0) > 0);
+  const hsSet = [...new Set(ps.map(p => String((p.fields || {})['HS코드'] || '').replace(/[^0-9]/g, '').slice(0, 6)).filter(Boolean))].sort();
+  const nameSet = [...new Set(ps.map(p => String((p.fields || {})['Description'] || (p.fields || {})['통관품명_영문'] || '').trim()).filter(Boolean))];
+  const qtyTotal = ps.reduce((s, p) => s + (parseInt((p.fields || {})['수량'], 10) || 0), 0);
+  const apMark = baseMailbox(f['사서함'] || '').toUpperCase();
+  const origin = String(f['출발지'] || f['선적항'] || '').trim();
+  const ftaSet = [...new Set(ps.map(p => String((p.fields || {})['적용FTA'] || '').trim()).filter(Boolean))].sort();
+  return { hsSet, nameSet, qtyTotal, boxCount: boxCount || 0, apMark, origin, ftaSet, consigneeBiz: '', invoiceNo: '' };
+}
+// [v3.2.180] 배치 대상 사서함들의 제품 인덱스 1회 구축(제품 전체 1콜 + 사서함별 Orders 조회). name→products[].
+async function _buildBatchIpIndex(shipmentNames) {
+  const idx = {};
+  const names = [...new Set((shipmentNames || []).filter(Boolean))];
+  if (!names.length) return idx;
+  let allProducts = [];
+  try { allProducts = await apiPaged(`/${TABLES.Products}?pageSize=100`); } catch (e) { console.warn('[배치대조] 제품 로드 실패', e.message); return idx; }
+  for (const name of names) {
+    try {
+      const orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(`SEARCH('${name}',ARRAYJOIN({Shipment}))`)}`);
+      const oids = new Set(orders.map(o => o.id));
+      idx[name] = allProducts.filter(p => (p.fields['Order'] || []).some(id => oids.has(id)));
+    } catch (e) { idx[name] = []; console.warn('[배치대조] Orders 조회 실패', name, e.message); }
+  }
+  return idx;
+}
 let _coCompareState = null, _coExtracted = null, _blFields = null;
-async function runCoCompare() {
-  if (!state.shipment) { toastWarn && toastWarn('사서함 먼저 불러오세요'); return; }
-  if (!_blFields && typeof autoFillBlFromAttachment === 'function') { try { await autoFillBlFromAttachment(); } catch (e) {} }   // [v3.2.123] 삼각용 BL 추출(첫 비교 시 1회)
-  const src = _coInvoiceSource();
-  const bl = _blFields || {};
-  const co = _coExtracted || {};
-  const gv = id => ((document.getElementById(id) || {}).value || '').trim();
-  const inHs = [...new Set(String(gv('coCmpHs')).split(/[\s,]+/).map(x => x.replace(/[^0-9]/g, '').slice(0, 6)).filter(Boolean))].sort();
-  const inQty = parseInt(String(gv('coCmpQty')).replace(/[^0-9]/g, ''), 10);
-  const inMark = baseMailbox(gv('coCmpMark')).toUpperCase();
-  const inOrigin = gv('coCmpOrigin');
-  const inFta = [...new Set(String(gv('coCmpFta')).split(/[\s,]+/).map(x => x.trim()).filter(Boolean))].sort();
+// [v3.2.180] ★순수 비교코어 — DOM 비의존. runCoCompare(단건)·배치 자동대조 공용 단일 소스.
+//   inp={bl,co,inHs,inQty,inMark,inOrigin,inFta,inFtaRaw}, src=IP소스(_coInvoiceSource 또는 _ipSourceFromProducts).
+function _coCompareCore(inp, src) {
+  const bl = inp.bl || {};
+  const co = inp.co || {};
+  const inHs = inp.inHs || [];
+  const inQty = inp.inQty;
+  const inMark = inp.inMark || '';
+  const inOrigin = inp.inOrigin || '';
+  const inFta = inp.inFta || [];
+  const inFtaRaw = inp.inFtaRaw || '';
   const items = [];
   // ── 삼각(BL∩CO∩IP): 추출된 소스끼리 일치해야 🟢. <2개면 비교불가(스킵). 회사명 등 빈값은 미추출 처리.
   const present = v => (v != null && String(v).trim() !== '' && String(v).trim() !== '(미입력)');
@@ -6832,13 +6860,26 @@ async function runCoCompare() {
   const coInv = String(co.invNo || '').toUpperCase();
   items.push({ label: 'invoice no', scope: 'CO↔IP', bl: '—', co: coInv || '(미추출)', ip: src.invoiceNo || '(미발행)', match: (coInv && src.invoiceNo) ? (coInv === src.invoiceNo.toUpperCase()) : null });
   // FTA종류 = 정보(닭-달걀, 확정 시 적용FTA확정 set)
-  const _coFtaRaw = String(gv('coCmpFta')).trim().toUpperCase();
+  const _coFtaRaw = inFtaRaw;   // [v3.2.180] DOM 비의존 — 코어 인자
   const _willSet = /한중|CHINA[\s-]*KOREA|^KC$/.test(_coFtaRaw) ? '한중FTA' : (/RCEP/.test(_coFtaRaw) ? 'RCEP협정' : (/아태|APTA|ASEAN|ASIA/.test(_coFtaRaw) ? '아태협정' : ''));
   items.push({ label: 'FTA종류', scope: '정보', bl: '—', co: inFta.join(', ') || '(미입력)', ip: src.ftaSet.join(', ') || '(제품 적용FTA)', match: null, info: true, willSet: _willSet ? ('확정 시 적용FTA확정=' + _willSet) : 'FTA 미식별 — 수동' });
   const compared = items.filter(it => it.match !== null && !it.info);
   const mismatches = compared.filter(it => it.match === false).length;
   // [v3.2.123] ok = 실불일치 0(비교된 것 중). 전부 스킵(이미지·미추출)이면 ok=true → 사람 게이트(blind) 허용. 실불일치 있으면 차단.
-  _coCompareState = { items, ok: mismatches === 0, mismatches, comparedN: compared.length };
+  return { items, ok: mismatches === 0, mismatches, comparedN: compared.length };
+}
+async function runCoCompare() {
+  if (!state.shipment) { toastWarn && toastWarn('사서함 먼저 불러오세요'); return; }
+  if (!_blFields && typeof autoFillBlFromAttachment === 'function') { try { await autoFillBlFromAttachment(); } catch (e) {} }   // [v3.2.123] 삼각용 BL 추출(첫 비교 시 1회)
+  const src = _coInvoiceSource();
+  const gv = id => ((document.getElementById(id) || {}).value || '').trim();
+  const inHs = [...new Set(String(gv('coCmpHs')).split(/[\s,]+/).map(x => x.replace(/[^0-9]/g, '').slice(0, 6)).filter(Boolean))].sort();
+  const inQty = parseInt(String(gv('coCmpQty')).replace(/[^0-9]/g, ''), 10);
+  const inMark = baseMailbox(gv('coCmpMark')).toUpperCase();
+  const inOrigin = gv('coCmpOrigin');
+  const inFta = [...new Set(String(gv('coCmpFta')).split(/[\s,]+/).map(x => x.trim()).filter(Boolean))].sort();
+  const inFtaRaw = String(gv('coCmpFta')).trim().toUpperCase();
+  _coCompareState = _coCompareCore({ bl: _blFields || {}, co: _coExtracted || {}, inHs, inQty, inMark, inOrigin, inFta, inFtaRaw }, src);
   renderCoCompare();
 }
 function renderCoCompare() {
@@ -17788,6 +17829,8 @@ async function handleBatchDocFiles(fileList) {
       if (docType === 'co' && !isMaster && pdfText) {
         coRefBl = (extractBlCandidates(pdfText)[0] || {}).value || '';   // [v3.2.136] 사서함 BL 대조는 recomputeBatchVerdict에서(배정 사서함 기준 재계산)
       }
+      // [v3.2.180] CO 자동대조용 필드 추출(텍스트 CO만 — 이미지/미추출은 null → comparedN=0 → 자동저장 차단).
+      const coFields = (docType === 'co' && !isMaster && pdfText) ? extractCoFields(pdfText) : null;
       // [v3.2.80] 출발지(BL 내용 Port of Loading) + 마스터 선적일(TALE{YYMMDD})
       const port = (docType === 'bl' || docType === 'co') ? _portOfLoading(pdfText) : '';   // [v3.2.88] 출발지(ko·배차)
       const portEn = (docType === 'bl' || docType === 'co') ? _portEn(pdfText) : '';   // [v3.2.122] 선적항(en·IP)
@@ -17800,7 +17843,7 @@ async function handleBatchDocFiles(fileList) {
                        : (_nBase && rowByBase[_nBase]) ? rowByBase[_nBase] : null;
       const it = { file, filename: file.name, mailbox: matchedRow ? matchedRow.mailbox : '', shipId: matchedRow ? matchedRow.id : '',
         docType, docConfident, conf: 'red', contentAp, nameAp, isPdf, isImg, thumbUrl, isMaster,
-        blNumber, blMismatch, coRefBl, coRefMatch: false, port, portEn, vessel, masterShipDate };
+        blNumber, blMismatch, coRefBl, coRefMatch: false, coFields, cmp: null, port, portEn, vessel, masterShipDate };
       recomputeBatchVerdict(it);   // ★verdict·coRefMatch·contentApMatch = 배정 사서함 기준 단일 계산(업로드·재배정 공용)
       items.push(it);
     } catch (e) {
@@ -17845,8 +17888,10 @@ function renderBatchDocTable() {
   });
   h += `</tbody></table>`;
   const bad = rows.filter(it => !it.mailbox || !it.docType || it.conf === 'red').length;
+  const _coCnt = rows.filter(it => it.docType === 'co' && !it.isMaster && it.shipId).length;
   h += `<div style="margin-top:8px;">
     <button onclick="saveBatchDocs()" style="padding:8px 18px; background:${bad ? '#C9973A' : '#0a7b40'}; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">💾 일괄 저장 (${rows.length}건)</button>
+    ${_coCnt ? `<label style="margin-left:12px; font-size:12px; cursor:pointer;" title="발급사별 CO 파싱 정확도를 실측·확인한 뒤에만 체크하세요. 체크 시 🟢(HS 실비교·전부 일치)만 대조확인완료 자동저장. 🟡🔴는 사람이 §10 확인."><input type="checkbox" id="batchAutoConfirm" style="vertical-align:middle;"> 🔍 자동 대조확인 저장 <span style="color:#b26a00;">(정확도 확인 후 체크 — 기본 OFF)</span></label>` : ''}
     ${bad ? `<span style="margin-left:10px; color:#c0392b; font-size:12px;">⚠ ${bad}건 미매칭/미선택/불일치 — 위 미리보기 보고 드롭다운/일괄지정으로 채운 뒤 저장(저장 시 한 번 더 확인)</span>` : '<span style="margin-left:10px; color:#0a7b40; font-size:12px;">✓ 전부 매칭됨</span>'}
   </div>`;
   el.innerHTML = h;
@@ -17903,6 +17948,53 @@ function batchAssignAll(field, value, onlyEmpty) {
   renderBatchDocTable();
 }
 
+// [v3.2.180] ★배치 CO 자동대조 — 저장된 CO마다 파싱값(coFields)↔IP(제품 HS·수량) 비교. 순수코어(_coCompareCore) 재사용.
+//   판정: mismatches>0=🔴불일치 / comparedN>0∧mismatches0∧HS실비교=🟢일치 / 그 외(비교불가·HS미추출)=🟡모호.
+//   ★자동 대조확인 저장 = 🟢 ∧ #batchAutoConfirm 체크 시에만. 비교 자체는 항상(읽기전용). 거짓일치 방지: HS 미비교면 🟢 금지.
+async function runBatchCoCompare() {
+  const items = (batchDocState.items || []).filter(it => it.docType === 'co' && !it.isMaster && it.shipId && it.conf !== 'red' && (!it.contentAp || it.contentApMatch !== false));
+  const summary = { green: 0, amber: 0, red: 0, autoSaved: 0, autoOn: !!((document.getElementById('batchAutoConfirm') || {}).checked), details: [] };
+  if (!items.length) return summary;
+  const idx = await _buildBatchIpIndex(items.map(it => it.mailbox));
+  for (const it of items) {
+    const row = (bookingState.rows || []).find(r => r.id === it.shipId);
+    const shipFields = { '사서함': it.mailbox, '출발지': it.port || (row && row.선적항) || '', '선적항': (row && row.선적항) || '' };
+    const prods = idx[it.mailbox] || [];
+    const src = _ipSourceFromProducts(prods, shipFields, 0);
+    const co = it.coFields || {};
+    const inHs = [...new Set((co.hs || []).map(x => String(x).replace(/[^0-9]/g, '').slice(0, 6)).filter(Boolean))].sort();
+    const inQty = (co.qty != null && !isNaN(co.qty)) ? parseInt(co.qty, 10) : NaN;
+    const inMark = baseMailbox(String(co.mark || '')).toUpperCase();
+    const inOrigin = String(co.origin || '');
+    const inFtaRaw = String(co.fta || '').toUpperCase();
+    const inFta = [...new Set(inFtaRaw.split(/[\s,]+/).map(x => x.trim()).filter(Boolean))].sort();
+    const st = _coCompareCore({ bl: {}, co, inHs, inQty, inMark, inOrigin, inFta, inFtaRaw }, src);
+    const hsItem = st.items.find(i => i.label === 'HS코드');
+    const hsCompared = !!(hsItem && hsItem.match !== null);
+    let verdict;
+    if (prods.length === 0) verdict = 'amber';   // [v3.2.180] 제품 미로드/0개 → 비교불가(qty 0 대비 거짓 🔴 방지). 자동저장 안 됨.
+    else if (st.mismatches > 0) verdict = 'red';
+    else if (st.comparedN > 0 && hsCompared) verdict = 'green';
+    else verdict = 'amber';   // 비교불가(comparedN0) 또는 HS 미비교 → 사람 확인(거짓일치 방지)
+    it.cmp = { verdict, comparedN: st.comparedN, mismatches: st.mismatches, hsCompared, hasProducts: prods.length > 0, noProdReason: prods.length === 0 ? '제품 미로드/없음' : '' };
+    summary[verdict]++;
+    summary.details.push({ mailbox: it.mailbox, verdict, comparedN: st.comparedN, mismatches: st.mismatches, noProd: prods.length === 0 });
+    if (verdict === 'green' && summary.autoOn) {
+      try {
+        let ftaConf = '';
+        if (/한중|CHINA[\s-]*KOREA|^KC$/.test(inFtaRaw)) ftaConf = '한중FTA';
+        else if (/RCEP/.test(inFtaRaw)) ftaConf = 'RCEP협정';
+        else if (/아태|APTA|ASEAN|ASIA/.test(inFtaRaw)) ftaConf = '아태협정';
+        const fields = { '대조확인상태': '확인완료', '대조확인일시': new Date().toISOString().slice(0, 10), '대조확인자': '자동대조(배치)',
+          'CO대조': JSON.stringify({ 자동: true, comparedN: st.comparedN, mismatches: st.mismatches, 일시: new Date().toISOString(), 대조자: '자동대조(배치)' }) };
+        if (ftaConf) fields['적용FTA확정'] = ftaConf;
+        await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields, typecast: true });
+        summary.autoSaved++; it.cmp.autoSaved = true;
+      } catch (e) { console.warn('[배치자동대조] 저장 실패', it.mailbox, e.message); it.cmp.saveFail = true; }
+    }
+  }
+  return summary;
+}
 async function saveBatchDocs() {
   const rows = batchDocState.items || [];
   if (!rows.length) return;
@@ -17977,6 +18069,18 @@ async function saveBatchDocs() {
   }
   if (typeof toastSuccess === 'function') toastSuccess(`✓ 일괄 저장 — 사서함 ${saved} / 마스터 ${masterSaved} / BL번호 ${blNoUpdated} / 출발지 ${portSet} / 미매칭 ${skipped} / 실패 ${failed}`, { title: '📁 서류' });
   if (el) el.innerHTML += `<div style="margin-top:8px; padding:8px; background:#f5f5f5; border-radius:5px; font-size:12px;">결과: 사서함 저장 <strong>${saved}</strong> · 마스터BL <strong>${masterSaved}</strong>건(선적일 사서함, 내부전용) · BL번호 갱신 <strong>${blNoUpdated}</strong> · 출발지 <strong>${portSet}</strong> · 미매칭 <strong>${skipped}</strong> · 마스터 미적용 <strong>${masterSkip}</strong> · 실패 <strong>${failed}</strong>. (BL·CO=replace[재업로드 시 기존 교체]·BL번호/출발지→Shipments)</div>`;
+  // [v3.2.180] CO 자동대조 + (토글 시)자동 대조확인 저장 — 표식은 항상, 저장은 🟢∧토글만.
+  try {
+    const cs = await runBatchCoCompare();
+    if (cs && (cs.green || cs.amber || cs.red)) {
+      const badge = { green: '🟢 일치', amber: '🟡 모호(사람 확인)', red: '🔴 불일치' };
+      const lines = cs.details.map(d => `<div style="padding:2px 0;">${badge[d.verdict]} · <strong>${d.mailbox}</strong> — 비교 ${d.comparedN}항목·불일치 ${d.mismatches}${d.noProd ? ' · ⚠제품 미로드' : ''}</div>`).join('');
+      if (el) el.innerHTML += `<div style="margin-top:8px; padding:10px; background:#fff8f0; border:1px solid #e0c090; border-radius:6px; font-size:12px;">
+        <div style="font-weight:700; margin-bottom:5px;">🔍 CO 자동대조 — 🟢 ${cs.green} · 🟡 ${cs.amber} · 🔴 ${cs.red}${cs.autoOn ? ` · <span style="color:#0a7b40;">자동 대조확인 저장 ${cs.autoSaved}건</span>` : ' · <span style="color:#b26a00;">자동저장 OFF(표식만) — 정확도 확인 후 [자동 대조확인 저장] 체크</span>'}</div>
+        ${lines}
+        <div style="margin-top:5px; color:#888; font-size:11px;">🟢=comparedN&gt;0∧불일치0∧HS실비교(자동확인 대상) · 🟡=비교불가(이미지/HS미추출) · 🔴=불일치. 🟡🔴는 §10에서 사람 확인.</div></div>`;
+    }
+  } catch (e) { console.warn('[배치대조] 실행 경고', e.message); }
 }
 
 async function copyBookingText() {
