@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.189</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.190</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.189</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.190</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -15042,11 +15042,23 @@ async function shareInvoiceViewUrl() {
 
   try {
     // v3.2.141: [통합 청구서 URL] = 발송 시점 최신 금액 표시 + 확인 1회 (돈 안전 게이트). 페이앱 생성 없음.
-    const grandTotalKrw = (typeof calcGrandTotalKrw === 'function') ? calcGrandTotalKrw() : 0;
-    if (grandTotalKrw <= 0) {
-      toastWarn && toastWarn('총 청구 금액 0원 — §6 부대비용·§11 운임 입력 후 다시 시도');
+    // [v3.2.190] ★돈 하드게이트 — 통합청구서 URL은 §12/§9 [청구서 발행](청구금액_KRW·breakdown 저장) 후에만.
+    //   invoice-view 본문은 저장된 청구금액_KRW를 읽음 → 미발행이면 본문 ₩0("물류비 미발생")인데 URL만 나가 팝업(LIVE)과 불일치·빈청구서 발송. 발행 강제.
+    const publishedKrw = parseFloat(f['청구금액_KRW']) || 0;
+    if (publishedKrw <= 0 || !f['청구서발행일시']) {
+      toastWarn && toastWarn('⛔ 먼저 §12/§9 [청구서 발행]으로 물류비를 확정·저장하세요.\n미발행이면 청구서 본문이 ₩0("물류비 미발생")으로 표시되어 잘못된 청구가 나갑니다.', { title: '⛔ 청구서 미발행 — URL 차단' });
       if (btn) { btn.disabled = false; btn.textContent = '📄 통합 청구서 URL (계좌이체)'; }
       return;
+    }
+    // 팝업·카톡 금액 = 저장된 청구금액_KRW (= invoice-view 본문). ★단일 소스(불일치 제거).
+    const grandTotalKrw = publishedKrw;
+    // 발행 후 §6/§11 변경 감지 — LIVE 계산 ≠ 발행값이면 재발행 안내(발송해도 본문=발행값이라 금액은 안전, 경고만).
+    const _liveKrw = (typeof calcGrandTotalKrw === 'function') ? calcGrandTotalKrw() : publishedKrw;
+    if (Math.abs(_liveKrw - publishedKrw) > 1) {
+      if (!confirm(`⚠ 발행 청구금액 ₩${publishedKrw.toLocaleString()} ≠ 현재 계산 ₩${_liveKrw.toLocaleString()}\n발행 후 §6/§11이 변경됐습니다. §12에서 [재발행]해야 본문·팝업이 최신으로 일치합니다.\n\n발행된 ₩${publishedKrw.toLocaleString()}로 URL을 생성할까요?  [취소]=재발행 먼저`)) {
+        if (btn) { btn.disabled = false; btn.textContent = '📄 통합 청구서 URL (계좌이체)'; }
+        return;
+      }
     }
     // 발송 직전 확인 (돈 게이트) — 계좌이체 청구
     if (!confirm(`통합 청구서 URL 발송 (계좌이체)\n\n▷ 청구 금액: ₩${grandTotalKrw.toLocaleString()}\n▷ 입금계좌: ${ISSUER.bankLine}\n\n청구서 URL + 카톡 메시지(입금계좌 포함)를 생성합니다. 진행하시겠습니까?`)) {
