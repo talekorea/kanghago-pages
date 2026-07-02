@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.187</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.188</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.187</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.188</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -7234,7 +7234,10 @@ async function handleBlCoFileUpload(kind, fileInput) {
       if (kind === 'bl') break;   // BL은 1장만 (CO는 한 액션에서 선택한 다중 장 함께 저장)
     }
     if (last && last.fields) state.shipment.fields[fieldName] = last.fields[fieldId] || state.shipment.fields[fieldName] || [];
-    resetDocMatch();   // v3.2.49: BL/CO 변경 → 대조 대기 리셋 (재확인 강제)
+    // [v3.2.188] ②안 — BL만 갱신 시, CO 대조가 이미 '확인완료'면 리셋 안 함(BL 파일 교체가 CO 검증을 풀 이유 없음 — A안 보완).
+    //   CO 업로드는 기존대로 리셋(+자동대조 재실행) — 내용 변경 시 재검증. 대조대기 상태면 리셋해도 무관(기존 동작).
+    const _matchDone = ((state.shipment && state.shipment.fields) || {})['대조확인상태'] === '확인완료';
+    if (!(kind === 'bl' && _matchDone)) resetDocMatch();   // v3.2.49: BL/CO 변경 → 대조 대기 리셋 (BL+확인완료만 예외 유지)
     renderBlCoFiles();
     if (typeof log === 'function') log(`✓ ${fieldName} ${n}장 Airtable 업로드 완료 — 대조 확인 필요`, 'ok');
     if (typeof toastSuccess === 'function') toastSuccess(`✓ ${fieldName} ${n}장 업로드`);
