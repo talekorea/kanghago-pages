@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.190</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.191</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.190</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.191</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6755,8 +6755,9 @@ function realAgentTypeSet(orders) {
 //   구매대행 → 수입자=테일코리아 / 결제·배송대행 → 수입자=실화주(고객). 결제·배송은 같은 수입자 그룹(합쳐도 됨).
 //   혼재 차단은 '대행종류 distinct'가 아니라 '수입자 그룹 distinct ≥2'(구매대행 ↔ 실화주)일 때만.
 function importerGroupOf(agentType) {
-  return (agentType === '결제대행' || agentType === '배송대행') ? '실화주'
-       : (agentType === '구매대행' ? '구매대행' : null);   // 비대행종류=null(제외)
+  // [v3.2.191] ★수입자 전부 실화주 통일(관세사 합의) — 구매대행도 수입자=실화주(고객). 테일코리아=notify로만.
+  //   효과: importerGroupSet 항상 단일 '실화주' → 혼재 차단(12328) 불발(불필요), _isCustImporter 항상 true.
+  return (agentType === '구매대행' || agentType === '결제대행' || agentType === '배송대행') ? '실화주' : null;   // 비대행종류=null(제외)
 }
 function importerGroupSet(orders) {
   return [...new Set(realAgentTypeSet(orders).map(importerGroupOf).filter(Boolean))];
@@ -6792,7 +6793,7 @@ function _coInvoiceSource() {
   const _impG = importerGroupSet(state.orders);
   const _isCust = _impG.length === 1 && _impG[0] === '실화주';
   const cf = (state.customer && state.customer.fields) || {};
-  const consigneeBiz = (_isCust ? String(cf['사업자번호'] || '').trim() : '162-86-01960').replace(/[^0-9]/g, '');
+  const consigneeBiz = String(cf['사업자번호'] || '').trim().replace(/[^0-9]/g, '');   // [v3.2.191] 수입자 전부 실화주 → consignee=항상 고객 사업자번호(테일코리아 162-86 분기 폐지)
   const fwd = String(f['포워딩사'] || '').trim(); const seq = parseInt(f['인보이스순번']) || 0;
   const yymmdd = String(f['선적일'] || '').slice(2, 10).replace(/-/g, '');
   const invoiceNo = (fwd && seq > 0 && yymmdd) ? `${fwd}-${yymmdd}-${seq}` : '';
@@ -12330,8 +12331,8 @@ async function downloadInvoiceExcel(opts) {
     alert('🚫 발행 차단 — 수입자 혼재\n\n이 사서함에 구매대행(수입자=테일코리아)과 결제/배송대행(수입자=실화주)이 섞여 있습니다 (' + _agentTypes.join(' + ') + ').\n수입자가 달라 한 인보이스로 발행할 수 없습니다.\n\n→ 대행유형을 통일(Orders.대행종류 수동 변경, 관세사 확인)하거나, 유형별로 분리해 신고하세요.');
     return;
   }
-  const _impGroup = _impGroups[0] || '구매대행';            // 단일 수입자 그룹(빈값·합배송 등=구매대행 폴백)
-  const _isCustImporter = (_impGroup === '실화주');         // 결제·배송=실화주(고객 수입자)
+  const _impGroup = _impGroups[0] || '실화주';            // [v3.2.191] 수입자 전부 실화주 통일 — 빈값·합배송·미상도 실화주(구매대행 폴백 폐지)
+  const _isCustImporter = (_impGroup === '실화주');         // [v3.2.191] 항상 true — 전 대행 수입자=고객(테일코리아=notify)
   // 표시·문구용 대행유형명 — 단일이면 그 값, 결제+배송이면 '결제/배송대행'
   const _agentType = _agentTypes.length === 1 ? _agentTypes[0] : (_isCustImporter ? '결제/배송대행' : '구매대행');
   if (!_agentTypes.length && !_rb) toastWarn('대행유형 미상(실대행종류 없음 — 빈값/합배송 등) — 구매대행 양식으로 발행합니다.', { title: '대행유형 미상' });
@@ -12813,39 +12814,8 @@ async function downloadInvoiceExcel(opts) {
       console.log(`[H3] 패킹 사진 ${embedded}/${packImgJobs.length} 임베드`);
     }
 
-    // ── 시트 3: FREIGHT INVOICE (운임 신고용 — 통관 신고 전용, 강하고 청구 해상운임과 별개) ──
-    // ⑨ 정액제(2026-06, 사장님 확정·관세사 확인): 구간 정액 $10/$20/$30 (CBM·kg 중 높은 구간). ★CBM 곱셈 없음.
-    //   calcIvFreightUSD 단일 함수. calcSeaFreightKRW(§6/§9 고객 청구)와 별개 — 합치지 말 것.
-    const ivCbm = Number(pTotCbm.toFixed(5));   // ★운임 band 판정용 raw(현행 유지 — 변경 0)
-    const ivKg = Number(pTotWt.toFixed(1));
-    const ivTotal = calcIvFreightUSD(ivCbm, ivKg);   // raw로 계산 → band·운임 불변
-    const ivCbmDisp = Number(fmtCBM(pTotCbm));   // [v3.2.76] IV 시트 표시용 CBM 2자리(계산엔 미사용)
-    const ws3 = wb.addWorksheet('IV', { views: [{ zoomScale: 200, zoomScaleNormal: 200 }], pageSetup: { fitToPage: true, fitToWidth: 1, fitToHeight: 0, orientation: 'landscape' } });   // [v3.2.131] 열릴 때 줌 200%
-    // [v3.2.102] FREIGHT 컬럼 확대(표현만, 값 불변) — 헤더 우측블록(C:D) 폭↑로 'No.&date of invoice' 등 긴 줄 wrap 최소화. 데이터 'FREIGHT CHARGE(USD)'도 여유.
-    ws3.columns = [{ width: 26 }, { width: 16 }, { width: 22 }, { width: 24 }];
-    writeFormHeader(ws3, 'FREIGHT INVOICE', 4, 28);   // 헤더 행높이 28 — 좁은 시트 wrap 2줄 수용(겹침 0)
-    const ivHead = ws3.addRow(['Description', 'CBM', 'G.W.(KG)', 'FREIGHT CHARGE(USD)']);
-    ivHead.font = { ...FONT, bold: true, size: 12 };
-    ivHead.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-    ivHead.height = 26;
-    for (let c = 1; c <= 4; c++) { const cell = ivHead.getCell(c); cell.border = allBorder; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E2D5' } }; }
-    const ivRow = ws3.addRow(['OCEAN FREIGHT', ivCbmDisp, ivKg, ivTotal]);   // [v3.2.76] 표시값 2자리(운임은 raw ivCbm로 계산됨)
-    ivRow.font = { ...FONT, size: 10 };
-    ivRow.height = 18;
-    ivRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
-    ivRow.getCell(2).alignment = { vertical: 'middle', horizontal: 'center' }; ivRow.getCell(2).numFmt = '0.00';   // [v3.2.76] CBM 5자리→2자리
-    ivRow.getCell(3).alignment = { vertical: 'middle', horizontal: 'center' }; ivRow.getCell(3).numFmt = '0.0';
-    ivRow.getCell(4).alignment = { vertical: 'middle', horizontal: 'center' }; ivRow.getCell(4).numFmt = '"$"#,##0.00';
-    for (let c = 1; c <= 4; c++) ivRow.getCell(c).border = allBorder;
-    const ivTotRow = ws3.addRow(['TOTAL', '', '', ivTotal]);
-    ivTotRow.font = { ...FONT, bold: true, size: 11 }; ivTotRow.height = 22;
-    ivTotRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'right' };
-    ivTotRow.getCell(4).alignment = { vertical: 'middle', horizontal: 'center' }; ivTotRow.getCell(4).numFmt = '"$"#,##0.00';
-    for (let c = 1; c <= 4; c++) { const cell = ivTotRow.getCell(c); cell.border = { top: MEDIUM, left: THIN, bottom: MEDIUM, right: THIN }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8F4E9' } }; }
-    const ivNote = ws3.addRow(['※ 통관 신고용 운임 인보이스 — 강하고 청구 해상운임(§6)과 별개']);
-    ws3.mergeCells('A' + ivNote.number + ':D' + ivNote.number);
-    ivNote.getCell(1).font = { ...FONT, italic: true, size: 9, color: { argb: 'FF999999' } };
-    ivNote.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+    // [v3.2.191] ★IV 시트(FREIGHT INVOICE, ws3) 제거 — IP 다운 엑셀은 CI(인보이스)+PL(패킹리스트) 2탭만.
+    //   ★해운비 과세 안분은 유지: _freightKrw(10278) → _freightShare(과세가격 invoiceLineKrw) → 신고가 CBM 비례 그대로. calcIvFreightUSD(함수)도 유지(과세에서 사용). IV는 '표시 시트'만 제거, 관세 신고가 불변.
 
     // [v3.2.160] ★printArea = 실제 used range로 한정(빈 그리드 인쇄 제외). 각 시트 마지막 행·열까지만.
     //   pageSetup(fitToWidth:1)은 addWorksheet 옵션에서 설정 — 표가 한 페이지 폭에 맞춤. zoom 200%(views)와 별개(인쇄 무관).
@@ -12853,7 +12823,7 @@ async function downloadInvoiceExcel(opts) {
       const _pa = (ws, lastColLetter) => { if (ws && ws.rowCount > 0) { ws.pageSetup = ws.pageSetup || {}; ws.pageSetup.printArea = 'A1:' + lastColLetter + ws.rowCount; } };
       _pa(ws1, ws1.getColumn(ws1Cols).letter);   // CI: A1~{ws1Cols}{lastRow}
       _pa(ws2, 'M');                              // PL: 13열 고정 → M
-      _pa(ws3, 'D');                              // IV: 4열 고정 → D
+      // [v3.2.191] _pa(ws3) 제거 — IV 시트 폐지
     } catch (e) { console.warn('[printArea]', e && e.message); }
 
     // 다운로드 (또는 배치=blob 반환)
@@ -17161,7 +17131,7 @@ async function fetchDispatchMaster(daysOverride) {
       const trkRep = uniqTrk.length === 0 ? '' : (uniqTrk.length === 1 ? uniqTrk[0] : `${uniqTrk[0]} 외${uniqTrk.length - 1}`);
       // 납세의무자: 구매대행/빈 → 테일코리아 / 배송·결제대행 → 고객
       const agent = agentByShip[s.id] || '';
-      const taxpayer = (agent === '배송대행' || agent === '결제대행') ? (cust.회사명 || cust.회원명 || memberByShip[s.id] || '고객') : '주식회사 테일코리아';
+      const taxpayer = cust.회사명 || cust.회원명 || memberByShip[s.id] || '고객';   // [v3.2.191] ★수입자 전부 실화주 통일 — 대행종류 무관 납세의무자=고객(구매/미상→테일코리아 하드코딩 폐지)
       // [v3.2.164] 해운비 원가/매출(계산) — calcSeaFreightKRW(cbm·선적일·환율). ★환율은 현재 로드된 #rateUsdKrw(없으면 0 → KRW 0). 저장 안 함.
       const _rateUK = parseFloat((document.getElementById('rateUsdKrw') || {}).value) || 0;
       let _seaCost = 0, _seaRev = 0;
