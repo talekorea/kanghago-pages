@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.188</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.189</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.188</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.189</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6719,16 +6719,13 @@ function _publishGateReason(kind) {
   const matchOk = f['대조확인상태'] === '확인완료';
   const autoMismatch = !!(_coCompareState && !_coCompareState.ok);
   if (autoMismatch) return `BL↔CO↔IP 자동대조 불일치 ${_coCompareState.mismatches}건 — §10에서 해소 후 진행`;
-  if (kind === 'payapp') {
-    // [v3.2.141] kind 'payapp' = 청구서 발행(계좌이체) 발송 게이트. 페이앱 제거 후에도 대조확인은 발송 전 필수.
-    return matchOk ? '' : 'BL/CO 대조확인 미완 — §10 [대조 확인 완료] 후 청구서 발송';
-  }
-  // kind === 'finalIp' — 특혜세율(관세사 제출용) 모드만 하드 게이트. 기본세율/미선택(CO발급용)은 통과.
+  // [v3.2.189] ★finalIp·payapp 통일 — 대조확인은 특혜세율(한중/RCEP/아태)일 때만 요구. 기본세율/미선택은 CO 특혜 안 받으니 대조 불요.
+  //   (이전: payapp만 무조건 대조 요구 → 미선택 사서함이 최종IP는 통과·통합청구서는 차단되는 게이트 불일치. 근본 통일. autoMismatch(위)는 둘 다 항상 차단.)
   const ftaConf = String(f['적용FTA확정'] || '').trim();
   if (['한중FTA', 'RCEP협정', '아태협정'].includes(ftaConf)) {
     const coFileOk = !!(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length);
-    if (!coFileOk) return 'CO 파일 필요(특혜세율 제출용 최종 IP) — CO 업로드 후 다시';
-    if (!matchOk) return 'BL/CO 대조확인 미완(특혜세율 제출용) — §10 [대조 확인 완료] 후 다시';
+    if (!coFileOk) return kind === 'payapp' ? 'CO 파일 필요(특혜세율 청구) — CO 업로드 후 청구서 발송' : 'CO 파일 필요(특혜세율 제출용 최종 IP) — CO 업로드 후 다시';
+    if (!matchOk) return kind === 'payapp' ? 'BL/CO 대조확인 미완(특혜세율) — §10 [대조 확인 완료] 후 청구서 발송' : 'BL/CO 대조확인 미완(특혜세율 제출용) — §10 [대조 확인 완료] 후 다시';
   }
   return '';
 }
