@@ -3743,9 +3743,17 @@ async function addField(tableId, fieldDef) {
   });
   if (!res.ok) {
     const t = await res.text();
-    // [v3.2.197 로그정리] 이미 존재(중복)로 인한 422는 양성 — ✗ 로그 억제. ensureSchema는 !existing.has일 때만 호출하나
-    //   메타 캐시 지연·직전 addField 후 eventual consistency·race로 배차방식 등에서 첫 시도 422 후 최종 존재하는 경우 발생.
-    if (!(res.status === 422 && /DUPLICATE|already\s*exist|중복|exist/i.test(t))) {
+    // [v3.2.198 로그정리] 최종 존재하면 선행 오류는 노이즈 → ✗ 억제. 진짜 실패(재조회에도 없음)만 ✗ 유지. 기능 변경 0(생성 동작 동일, 로그만).
+    //   ① 명시적 중복(422 DUPLICATE) = 재조회 없이 존재 간주.
+    //   ② 그 외 오류(INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND 등)도 테이블 메타 재조회로 필드 실재 확인 — 있으면 억제(캐시 지연·race로 실제론 생성/존재).
+    let _existsNow = res.status === 422 && /DUPLICATE|already\s*exist|중복|exist/i.test(t);
+    if (!_existsNow) {
+      try {
+        const mr = await fetch('https://api.airtable.com/v0/meta/bases/' + BASE_ID + '/tables', { headers: { 'Authorization': 'Bearer ' + airtablePat() } });
+        if (mr.ok) { const mj = await mr.json(); const tbl = (mj.tables || []).find(x => x.id === tableId || x.name === tableId); _existsNow = !!(tbl && (tbl.fields || []).some(f => f.name === fieldDef.name)); }
+      } catch (e) { /* 재조회 실패 → 보수적으로 ✗ 유지 */ }
+    }
+    if (!_existsNow) {
       log(`  ✗ ${fieldDef.name}: ${t.substring(0,200)}`, 'err');
     }
   }
