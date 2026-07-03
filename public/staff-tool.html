@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.197</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.198</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.197</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.198</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -17272,18 +17272,13 @@ function renderDispatchMaster() {
       body += '<tr style="border-bottom:1px solid #eee;">' + cols.map(c => {
         const v = c.get(r);
         if (c.key === 'dispStat') return `<td style="padding:4px 7px; text-align:center; overflow:hidden;">${badge(v)}</td>`;
-        // [v3.2.192] 배송방법 드롭다운 — 화물만 독차/합차 활성, 택배·밀크런은 표시만(비활성)
+        // [v3.2.198] 배송방법 = 읽기전용 텍스트(드롭다운 폐지). 입력은 §5(박스)/§11에서만. 배차마스터는 조회·확인 전용.
+        //   화물+독차/합차 → "화물-독차"/"화물-합차" / 화물만 → "화물" / 택배·밀크런 → 그대로 / 없음 → "—". ("화물 (독차/합차?)" 미확정 표기 제거.)
         if (c.key === 'shipMethodSel') {
           const m = r.shipMethod || '';
-          if (m === '화물') {
-            const dm = r.배차방식 || '';
-            return `<td style="padding:2px 4px; overflow:hidden;"><select onchange="saveDispatchMethod('${r.id}', this.value)" style="font-size:11px; padding:2px 3px; border:1px solid #c9973a; border-radius:4px; width:100%; background:#fff;">
-              <option value=""${!dm ? ' selected' : ''}>화물 (독차/합차?)</option>
-              <option value="독차"${dm === '독차' ? ' selected' : ''}>화물-독차</option>
-              <option value="합차"${dm === '합차' ? ' selected' : ''}>화물-합차</option>
-            </select></td>`;
-          }
-          return `<td style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#888;" title="${esc(m)}">${esc(m || '—')}</td>`;
+          const dm = r.배차방식 || '';
+          const disp = (m === '화물') ? (dm ? `화물-${dm}` : '화물') : (m || '—');
+          return `<td style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#555;" title="${esc(disp)}">${esc(disp)}</td>`;
         }
         const mono = (c.key === 'box' || c.key === 'blNo') ? ' font-family:ui-monospace,monospace;' : '';
         return `<td title="${esc(v)}" style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;${mono}">${esc(v)}</td>`;
@@ -17760,7 +17755,7 @@ async function batchUnipassAutofill() {
   const resEl = document.getElementById('dmUnipassResult');
   const auth = (typeof customsAuthHeader === 'function') ? customsAuthHeader() : null;
   if (!auth) { toastWarn && toastWarn('관세사/관리자 토큰 필요 (👥 관세사 관리)', { title: '🛃 유니패스' }); return; }
-  const blRows = (bookingState.rows || []).filter(r => String(r.blNo || '').trim());
+  const blRows = (dispatchState.rows || []).filter(r => String(r.blNo || '').trim());   // [v3.2.198] ★배차마스터 store는 dispatchState.rows(bookingState 아님) — 44건 로드해도 "없음" 뜨던 BUG-1
   if (!blRows.length) { toastWarn && toastWarn('BL번호 있는 사서함이 없습니다 (조회 먼저)', { title: '🛃 유니패스' }); return; }
   // 대상: BL 있음 AND (보세창고 비었거나 통관완료일 비었거나). row.통관일 = 통관완료일(렌더 소스).
   const targets = blRows.filter(r => !String(r.보세창고 || '').trim() || !String(r.통관일 || '').trim());
