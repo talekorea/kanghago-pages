@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.191</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.192</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.191</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.192</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1761,7 +1761,7 @@
       </div>
       <div><label style="display:block; color:#666;">배차상태</label><select id="dmStatus" onchange="renderDispatchMaster()" style="padding:6px 8px; border:1px solid #ccc; border-radius:5px;"><option value="">전체</option><option value="대기">대기</option><option value="완료">완료</option></select></div>
       <div><label style="display:block; color:#666;">검색(사서함·고객·BL)</label><input id="dmSearch" oninput="renderDispatchMaster()" placeholder="검색어" style="padding:6px 8px; border:1px solid #ccc; border-radius:5px; width:160px;"></div>
-      <button id="dmFullViewBtn" class="secondary small" onclick="toggleDispatchFullView()" style="padding:7px 14px; background:#1B5E9A; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700;" title="전체 보기 = 사장 지정 23칼럼(한 사서함=한 행). 다시 누르면 배차 보기.">📋 전체 보기(23칼럼)</button>
+      <span id="dispatchTabBar" style="display:inline-flex; align-items:flex-end;"><!-- [v3.2.192] 3탭: 전체보기/배차정보/엑셀 — _renderDispatchTabs가 채움 --></span>
       <button class="secondary small" onclick="exportDispatchExcel()" style="padding:7px 14px; background:#1b7a44; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700;">⬇ Excel(현재 보기)</button>
       <span id="dmLoading" style="font-size:11px; color:#888;"></span>
     </div>
@@ -3664,6 +3664,8 @@ async function ensureSchema() {
       ]}},
       // [v3.2.93] 마스터 배차표 오른쪽 절반 — 배차 운영 데이터(부킹 요약 모달). 마진·청구 연동은 Phase 2.
       { name: '보세창고', type: 'singleLineText' },                                  // UNIPASS shedNm 자동(빈값일 때만) + 수동 수정
+      { name: '배차방식', type: 'singleSelect', options: { choices: [{ name: '독차' }, { name: '합차' }] } },   // [v3.2.192] 화물 독차/합차 — 배차정보 탭 드롭다운
+
       { name: '입항일', type: 'date', options: { dateFormat: { name: 'iso' } } },     // UNIPASS etprDt 자동(항상 최신)
       { name: '한국포워딩사', type: 'singleLineText' },                              // UNIPASS frwrEntsConm 자동(항상 최신)
       { name: '배차견적액', type: 'number', options: { precision: 0 } },             // 수동(자동견적 후속)
@@ -16996,9 +16998,26 @@ function _renderBatchIpResult(label, done, skipped, blocked) {
 }
 
 // ===== [v3.2.94] 배차 마스터 — 읽기전용 전체 현황 + Excel. 기존 조인 패턴 재사용(부킹 모달과 동일 소스). 새 함수 0. =====
-const dispatchState = { rows: [], dateLabel: '', fullView: false };
+const dispatchState = { rows: [], dateLabel: '', fullView: false, viewTab: 'dispatch' };   // [v3.2.192] viewTab: 'full'|'dispatch'|'excel'
 // [v3.2.164] 전체보기(23칼럼) ↔ 배차보기 토글
 function toggleDispatchFullView() { dispatchState.fullView = !dispatchState.fullView; const b = document.getElementById('dmFullViewBtn'); if (b) b.textContent = dispatchState.fullView ? '📋 배차 보기' : '📋 전체 보기(23칼럼)'; renderDispatchMaster(); }
+// [v3.2.192] 배차마스터 3탭 — 전체보기/배차정보/엑셀. 엑셀=다운로드만(탭 전환 X). 활성탭 강조는 _renderDispatchTabs.
+function setDispatchTab(tab) {
+  if (tab === 'excel') { if (typeof exportDispatchExcel === 'function') exportDispatchExcel(); return; }   // 엑셀=다운로드, 탭 유지
+  dispatchState.viewTab = tab;
+  dispatchState.fullView = (tab === 'full');   // 기존 fullView 동기(호환)
+  _renderDispatchTabs();
+  renderDispatchMaster();
+}
+function _renderDispatchTabs() {
+  const bar = document.getElementById('dispatchTabBar'); if (!bar) return;
+  const cur = dispatchState.viewTab || 'dispatch';
+  const tabs = [{ k: 'full', l: '📋 전체보기' }, { k: 'dispatch', l: '🚚 배차정보' }, { k: 'excel', l: '⬇ 엑셀' }];
+  bar.innerHTML = tabs.map(t => {
+    const on = (t.k === cur && t.k !== 'excel');
+    return `<button onclick="setDispatchTab('${t.k}')" style="padding:7px 16px; margin-right:4px; border:1px solid ${on ? '#1F4E79' : '#c9973a'}; border-bottom:${on ? '3px solid #1F4E79' : '1px solid #c9973a'}; background:${on ? '#1F4E79' : '#f3ece0'}; color:${on ? '#fff' : '#5a4a2a'}; border-radius:6px 6px 0 0; cursor:pointer; font-weight:${on ? '800' : '600'}; font-size:13px;">${t.l}</button>`;
+  }).join('');
+}
 // 컬럼 설정배열 — 추가 시 한 줄. get(r)=표시값. 계산컬럼(마킹·박스당평균·납세의무자·송장대표)은 렌더 시 산출(저장 X).
 //   Phase 2(주석 자리): { key:'포워딩원가', ... } / { key:'고객청구', ... } / { key:'마진', ... }
 const DISPATCH_COLUMNS = [
@@ -17057,14 +17076,48 @@ const FULLVIEW_COLUMNS = [
   { key: 'delivRev',  label: '22.배송비매출',  get: r => (r.배차견적액 === '' || r.배차견적액 == null) ? '' : Number(r.배차견적액).toLocaleString() },
   { key: 'driver',    label: '23.기사정보&택배', get: r => [r.차량번호, r.기사전화번호, r.송장대표].filter(Boolean).join(' / ') },
 ];
+// [v3.2.192] ★배차정보 탭 — 17열 순서 고정. (전체보기 FULLVIEW_COLUMNS와 별개)
+const DISPATCH_INFO_COLUMNS = [
+  { key: 'shipDate',      label: '선적일',        get: r => r.shipDate || '' },
+  { key: 'box',           label: '사서함',        get: r => r.고객사서함 || '' },
+  { key: 'member',        label: '고객명',        get: r => r.member || '' },
+  { key: 'company',       label: '회사',          get: r => r.회사 || '' },
+  { key: 'bonded',        label: '보세창고',      get: r => r.보세창고 || '' },
+  { key: 'customsDay',    label: '통관일시',      get: r => r.통관일 || '' },
+  { key: 'blNo',          label: 'BL번호',        get: r => r.blNo || '' },
+  { key: 'cbmSum',        label: '전체CBM',       get: r => Number(r.cbmSum || 0).toFixed(3) },
+  { key: 'kgSum',         label: '전체중량(kg)',  get: r => Number(r.kgSum || 0).toFixed(1) },
+  { key: 'boxCount',      label: '박스수',        get: r => r.boxCount || 0 },
+  { key: 'cbmPer',        label: '박스당CBM',     get: r => r.boxCount ? (r.cbmSum / r.boxCount).toFixed(2) : '' },
+  { key: 'kgPer',         label: '박스당중량(kg)', get: r => r.boxCount ? (r.kgSum / r.boxCount).toFixed(1) : '' },
+  { key: 'bigBox',        label: '가장큰박스',    get: r => r.가장큰박스 || '' },
+  { key: 'shipMethodSel', label: '배송방법',      get: r => r.shipMethod || '' },   // ★드롭다운 — renderDispatchMaster 특수분기
+  { key: 'dest',          label: '배송지',        get: r => r.배송지 || '' },
+  { key: 'phone',         label: '수취인연락처',  get: r => r.수취인연락처 || '' },
+  { key: 'request',       label: '요청사항',      get: r => r.요청사항 || '' },
+];
 // 활성 칼럼 집합 — 전체보기 토글
-function _dispatchCols() { return dispatchState.fullView ? FULLVIEW_COLUMNS : DISPATCH_COLUMNS; }
+function _dispatchCols() {
+  // [v3.2.192] 3-way: full→23열 / dispatch(또는 excel)→배차정보 17열 / (기존 fullView 폴백 호환)
+  const t = dispatchState.viewTab || (dispatchState.fullView ? 'full' : 'dispatch');
+  if (t === 'full') return FULLVIEW_COLUMNS;
+  return DISPATCH_INFO_COLUMNS;   // dispatch·excel 공통(엑셀은 현재 보기 = 배차정보)
+}
 
 function openDispatchMaster() {
   const pat = (document.getElementById('pat') || {}).value || sessionStorage.getItem('kanghago_airtable_pat') || '';
   if (!pat) { (toastWarn || alert)('§1에서 PAT를 먼저 입력하세요'); return; }
   document.getElementById('dispatchMasterModal').style.display = 'block';
   const s = document.getElementById('dmStart'); if (s && !s.value) s.value = new Date().toISOString().slice(0, 10);
+  if (typeof _renderDispatchTabs === 'function') _renderDispatchTabs();   // [v3.2.192] 3탭 렌더
+}
+// [v3.2.192] 배송방법 드롭다운 → Shipments.배차방식(독차/합차) 저장. 화물 사서함만 노출.
+async function saveDispatchMethod(shipId, val) {
+  try {
+    await api('PATCH', `/${TABLES.Shipments}/${shipId}`, { fields: { '배차방식': val }, typecast: true });
+    const r = (dispatchState.rows || []).find(x => x.id === shipId); if (r) r.배차방식 = val;
+    if (typeof toastSuccess === 'function') toastSuccess('배차방식 저장: ' + (val || '(비움)'), { title: '🚚 배차' });
+  } catch (e) { if (typeof toastError === 'function') toastError('배차방식 저장 실패: ' + (e.message || e)); }
 }
 
 // [v3.2.165] ★월별 조회 — 선적일(Orders.실제출고요청일) 기준 그 달 전체. 'this'/'last'/'YYYY-MM'.
@@ -17096,9 +17149,9 @@ async function fetchDispatchMaster(daysOverride) {
     }
     // (1) Orders — 배송방법·대행종류·수취인주소·연락처 포함
     const oF = `OR(${days.map(d => `IS_SAME({실제출고요청일},'${d}','day')`).join(',')})`;
-    const orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&fields[]=Shipment&fields[]=실제출고요청일&fields[]=회원명&fields[]=배송방법&fields[]=대행종류&fields[]=수취인주소&fields[]=연락처`);
+    const orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&fields[]=Shipment&fields[]=실제출고요청일&fields[]=회원명&fields[]=배송방법&fields[]=대행종류&fields[]=수취인주소&fields[]=연락처&fields[]=배송요청사항`);   // [v3.2.192] 배송요청사항 추가
     if (!orders.length) { dispatchState.rows = []; if (loading) loading.textContent = ''; box.innerHTML = `<div style="padding:18px; text-align:center; color:#999;">📭 ${dispatchState.dateLabel} 선적 Orders 0건</div>`; return; }
-    const shipDateMap = {}, memberByShip = {}, methodByShip = {}, agentByShip = {}, destByShip = {}, telByShip = {};
+    const shipDateMap = {}, memberByShip = {}, methodByShip = {}, agentByShip = {}, destByShip = {}, telByShip = {}, requestByShip = {};   // [v3.2.192] requestByShip=배송요청사항(주문별 합산)
     orders.forEach(o => { const f = o.fields || {}; const d = f['실제출고요청일']; (f.Shipment || []).forEach(sid => {
       if (d && (!shipDateMap[sid] || d < shipDateMap[sid])) shipDateMap[sid] = d;
       if (!memberByShip[sid] && (f['회원명'] || '').trim()) memberByShip[sid] = f['회원명'].trim();
@@ -17106,10 +17159,11 @@ async function fetchDispatchMaster(daysOverride) {
       if (!agentByShip[sid] && (f['대행종류'] || '').trim()) agentByShip[sid] = f['대행종류'].trim();
       if (!destByShip[sid] && (f['수취인주소'] || '').trim()) destByShip[sid] = f['수취인주소'].trim();
       if (!telByShip[sid] && (f['연락처'] || '').trim()) telByShip[sid] = f['연락처'].trim();
+      { const rq = String(f['배송요청사항'] || '').trim(); if (rq && !(requestByShip[sid] || '').split('\n').includes(rq)) requestByShip[sid] = (requestByShip[sid] ? requestByShip[sid] + '\n' : '') + rq; }   // [v3.2.192] 주문별 요청사항 중복없이 줄바꿈 합산
     }); });
     const shipIds = Object.keys(shipDateMap);
     // (2) Shipments — 배차/통관/포워딩/수취/테이프/메모 필드(try/fallback)
-    const _dispQ = ['배송방식','포워딩사','보세창고','입항일','한국포워딩사','배차견적액','실제배차비','세관창고료','차량번호','기사전화번호','배차완료일','배차상태'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');
+    const _dispQ = ['배송방식','배차방식','포워딩사','보세창고','입항일','한국포워딩사','배차견적액','실제배차비','세관창고료','차량번호','기사전화번호','배차완료일','배차상태','통관일'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');   // [v3.2.192] 배차방식·통관일 추가
     const baseQ = ['사서함','고객사서함','상태','BL번호','테이프색상','메모','수취_주소','수취_전화','도착지주소'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');
     const ships = (await Promise.all(chunkArray(shipIds, 50).map(async chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
@@ -17120,9 +17174,10 @@ async function fetchDispatchMaster(daysOverride) {
     const rows = await Promise.all(ships.map(async s => {
       const sf = s.fields || {}, mailbox = sf['사서함'] || '';
       let boxes = [];
-      try { boxes = await apiPaged(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=박스순번&fields[]=무게KG&fields[]=부피CBM&fields[]=송장번호`); } catch (e) {}
-      let kgSum = 0, cbmSum = 0; const seqs = [], trks = [];
-      boxes.forEach(b => { const bf = b.fields || {}; kgSum += parseFloat(bf['무게KG']) || 0; cbmSum += parseFloat(bf['부피CBM']) || 0; const sq = parseInt(bf['박스순번'], 10); if (!isNaN(sq)) seqs.push(sq); const t = String(bf['송장번호'] || '').trim(); if (t) trks.push(t); });
+      try { boxes = await apiPaged(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=박스순번&fields[]=무게KG&fields[]=부피CBM&fields[]=송장번호&fields[]=가로cm&fields[]=세로cm&fields[]=높이cm`); } catch (e) {}   // [v3.2.192] 치수 추가(가장큰박스)
+      let kgSum = 0, cbmSum = 0; const seqs = [], trks = []; let _maxCbm = -1, _bigBox = '';   // [v3.2.192] 가장큰박스=부피CBM 최대 박스의 w×h×d
+      boxes.forEach(b => { const bf = b.fields || {}; kgSum += parseFloat(bf['무게KG']) || 0; const _cb = parseFloat(bf['부피CBM']) || 0; cbmSum += _cb; const sq = parseInt(bf['박스순번'], 10); if (!isNaN(sq)) seqs.push(sq); const t = String(bf['송장번호'] || '').trim(); if (t) trks.push(t);
+        if (_cb > _maxCbm) { _maxCbm = _cb; const w = parseFloat(bf['가로cm'])||0, h = parseFloat(bf['세로cm'])||0, d = parseFloat(bf['높이cm'])||0; _bigBox = (w||h||d) ? `${w}×${h}×${d}` : ''; } });
       seqs.sort((a, b) => a - b);
       const base = baseMailbox(mailbox);
       const cust = (state.customerByPost && state.customerByPost[base]) || {};
@@ -17143,6 +17198,7 @@ async function fetchDispatchMaster(daysOverride) {
         포워딩사: sf['포워딩사'] || '', 한국포워딩사: sf['한국포워딩사'] || '', blNo: String(sf['BL번호'] || '').trim(),
         테이프색상: sf['테이프색상'] || '', 마킹: _transportMarkRange(base, seqs),
         boxCount: boxes.length, cbmSum, kgSum,
+        회사: cust.회사명 || '', 요청사항: requestByShip[s.id] || '', 가장큰박스: _bigBox, 배차방식: sf['배차방식'] || '',   // [v3.2.192] 배차정보 탭
         보세창고: sf['보세창고'] || '', 입항일: sf['입항일'] || '', 통관일: sf['통관일'] || '',
         배송지: sf['수취_주소'] || destByShip[s.id] || sf['도착지주소'] || '', 수취인연락처: sf['수취_전화'] || telByShip[s.id] || '',
         배송방법: methodByShip[s.id] || '', shipMethod: sf['배송방식'] || '',
@@ -17178,7 +17234,7 @@ function renderDispatchMaster() {
   // [v3.2.166] ★단일 테이블 + 선적일 구분행 + table-layout:fixed + colgroup 고정 너비 →
   //   모든 선적일 그룹의 같은 칼럼이 같은 세로 위치(라인 정렬). 긴 텍스트는 너비 내 말줄임(ellipsis)+title 호버.
   const cols = _dispatchCols();
-  const W = { shipDate:80, cnFwd:60, krFwd:60, bonded:92, taxpayer:120, member:88, blNo:112, tape:52, mark:108, boxCount:48, cbmSum:62, kgSum:62, cbmPer:64, kgPer:64, seaCost:82, seaRev:82, customsWh:74, method:62, phone:104, dest:170, delivCost:78, delivRev:78, driver:150, box:112, etpr:72, customsDay:72, estCost:82, realCost:82, dispStat:52, dispDone:74, carNo:84, driverTel:92, tracking:112, memo:130 };
+  const W = { shipDate:80, cnFwd:60, krFwd:60, bonded:92, taxpayer:120, member:88, blNo:112, tape:52, mark:108, boxCount:48, cbmSum:62, kgSum:62, cbmPer:64, kgPer:64, seaCost:82, seaRev:82, customsWh:74, method:62, phone:104, dest:170, delivCost:78, delivRev:78, driver:150, box:112, etpr:72, customsDay:76, estCost:82, realCost:82, dispStat:52, dispDone:74, carNo:84, driverTel:92, tracking:112, memo:130, company:96, bigBox:96, shipMethodSel:126, request:150 };   // [v3.2.192] 배차정보 신규 키 너비
   const wOf = k => (W[k] || 82);
   const colgroup = `<colgroup>${cols.map(c => `<col style="width:${wOf(c.key)}px;">`).join('')}</colgroup>`;
   const thead = `<tr>${cols.map(c => `<th style="padding:5px 7px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; position:sticky; top:0; background:#5a4a2a; color:#fff; z-index:2;">${c.label}</th>`).join('')}</tr>`;
@@ -17192,6 +17248,19 @@ function renderDispatchMaster() {
       body += '<tr style="border-bottom:1px solid #eee;">' + cols.map(c => {
         const v = c.get(r);
         if (c.key === 'dispStat') return `<td style="padding:4px 7px; text-align:center; overflow:hidden;">${badge(v)}</td>`;
+        // [v3.2.192] 배송방법 드롭다운 — 화물만 독차/합차 활성, 택배·밀크런은 표시만(비활성)
+        if (c.key === 'shipMethodSel') {
+          const m = r.shipMethod || '';
+          if (m === '화물') {
+            const dm = r.배차방식 || '';
+            return `<td style="padding:2px 4px; overflow:hidden;"><select onchange="saveDispatchMethod('${r.id}', this.value)" style="font-size:11px; padding:2px 3px; border:1px solid #c9973a; border-radius:4px; width:100%; background:#fff;">
+              <option value=""${!dm ? ' selected' : ''}>화물 (독차/합차?)</option>
+              <option value="독차"${dm === '독차' ? ' selected' : ''}>화물-독차</option>
+              <option value="합차"${dm === '합차' ? ' selected' : ''}>화물-합차</option>
+            </select></td>`;
+          }
+          return `<td style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#888;" title="${esc(m)}">${esc(m || '—')}</td>`;
+        }
         const mono = (c.key === 'box' || c.key === 'blNo') ? ' font-family:ui-monospace,monospace;' : '';
         return `<td title="${esc(v)}" style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;${mono}">${esc(v)}</td>`;
       }).join('') + '</tr>';
@@ -17297,7 +17366,7 @@ async function fetchBookingSummary(mode) {
     const shipChunks = chunkArray(shipIds, 50);
     // [v3.2.92] 배차 6필드도 함께 조회. 단 미생성 시 fields[]에 넣으면 422(UNKNOWN_FIELD)로 부킹 전체가 깨짐 →
     //   배차 필드 포함 쿼리 먼저 시도, 실패하면 기본 쿼리로 폴백(필드 추가 전까지 배차 입력만 빈칸, 부킹은 정상).
-    const _dispQ = ['배송방식','포워딩사','보세창고','입항일','한국포워딩사','배차견적액','실제배차비','세관창고료','차량번호','기사전화번호','배차완료일','배차상태'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');
+    const _dispQ = ['배송방식','배차방식','포워딩사','보세창고','입항일','한국포워딩사','배차견적액','실제배차비','세관창고료','차량번호','기사전화번호','배차완료일','배차상태','통관일'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');   // [v3.2.192] 배차방식·통관일 추가
     const shipResults = await Promise.all(shipChunks.map(async chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
       const base = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}`
