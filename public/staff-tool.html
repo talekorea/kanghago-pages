@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.195</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.196</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.195</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.196</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -9459,8 +9459,12 @@ async function loadCustomsProgress(opts) {
     resEl.innerHTML = renderBranchpointBanner(d) + renderCustomsTimeline(d, blNo);
     // [v3.2.93] 통관 조회 시 자동 필드 PATCH(같은 응답 재사용) — 한국포워딩사·입항일(항상)·보세창고(빈값일 때만). 새 함수·fetch 0.
     try {
-      if (state.shipment && state.shipment.id) {
-        const sm = d.summary || {}; const f = state.shipment.fields || {}; const fields = {};
+      // [v3.2.196] ★recordId 확정 — 조회 BL과 일치하는 로드 사서함 우선, 없으면 BL번호로 Shipments 조회(사서함 미로드·BL 직접조회여도 저장). 무음 스킵 해소.
+      let _tid = '', _tf = {};
+      if (state.shipment && state.shipment.id && String((state.shipment.fields || {})['BL번호'] || '').trim() === blNo) { _tid = state.shipment.id; _tf = state.shipment.fields || {}; }
+      else { try { const _fnd = await apiPaged(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(`{BL번호}='${String(blNo).replace(/'/g, '')}'`)}&maxRecords=1&fields[]=${encodeURIComponent('BL번호')}&fields[]=${encodeURIComponent('보세창고')}&fields[]=${encodeURIComponent('입항일')}&fields[]=${encodeURIComponent('통관완료일')}&fields[]=${encodeURIComponent('한국포워딩사')}`); if (_fnd.length) { _tid = _fnd[0].id; _tf = _fnd[0].fields || {}; } } catch (le) { console.warn('[통관 recordId 조회]', le.message); } }
+      if (_tid) {
+        const sm = d.summary || {}; const f = _tf; const fields = {};
         const _core6 = (typeof selectCore6 === 'function') ? selectCore6(d.stages || []) : {};   // [v3.2.193] 반입 detail·수입신고수리 처리일시
         if (sm.frwrEntsConm && f['한국포워딩사'] !== sm.frwrEntsConm) fields['한국포워딩사'] = sm.frwrEntsConm;
         if (sm.etprDt) { const e = String(sm.etprDt).replace(/\D/g, ''); if (e.length >= 8) { const dt = `${e.slice(0,4)}-${e.slice(4,6)}-${e.slice(6,8)}`; if (f['입항일'] !== dt) fields['입항일'] = dt; } }
@@ -9473,7 +9477,7 @@ async function loadCustomsProgress(opts) {
         if (_bonded && f['보세창고'] !== _bonded) fields['보세창고'] = _bonded;   // 값 있으면 갱신(다를 때)
         // [v3.2.193] 통관완료일 = 수입신고수리 처리일시(YYYY-MM-DD) 저장(항상 최신·다를 때). ★통관일 필드 없음→통관완료일(실존) 사용.
         if (_core6.수입신고수리 && _core6.수입신고수리.처리일시) { const c = String(_core6.수입신고수리.처리일시).replace(/\D/g, ''); if (c.length >= 8) { const cd = `${c.slice(0,4)}-${c.slice(4,6)}-${c.slice(6,8)}`; if (f['통관완료일'] !== cd) fields['통관완료일'] = cd; } }
-        if (Object.keys(fields).length) { await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields, typecast: true }); Object.assign(state.shipment.fields, fields); }
+        if (Object.keys(fields).length) { await api('PATCH', `/${TABLES.Shipments}/${_tid}`, { fields, typecast: true }); if (state.shipment && state.shipment.id === _tid) Object.assign(state.shipment.fields, fields); }   // [v3.2.196] _tid로 저장 + 로드본이면 in-memory 동기
       }
     } catch (pe) { console.warn('[통관 자동필드 PATCH]', pe.message); }
   } catch (e) {
