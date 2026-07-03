@@ -3329,6 +3329,7 @@ async function ensureSchema() {
             body: JSON.stringify({ options: { choices: choices.concat(_missingFta.map(o => ({ name: o }))) } })
           });
           if (r.ok) log('  ~ Products.적용FTA: 선택지 추가 ' + _missingFta.join(','), 'ok');
+          else if (r.status === 422) { /* [v3.2.197 로그정리] 선택지 이미 존재(메타 캐시 지연·대소문자 차이) → 양성, 로그 억제 */ }
           else log('  적용FTA 선택지 추가 실패(HTTP ' + r.status + ') — 수동 추가 필요', 'warn');
         } catch (e) { log('  적용FTA 선택지 추가 실패: ' + e.message, 'warn'); }
       }
@@ -3742,7 +3743,11 @@ async function addField(tableId, fieldDef) {
   });
   if (!res.ok) {
     const t = await res.text();
-    log(`  ✗ ${fieldDef.name}: ${t.substring(0,200)}`, 'err');
+    // [v3.2.197 로그정리] 이미 존재(중복)로 인한 422는 양성 — ✗ 로그 억제. ensureSchema는 !existing.has일 때만 호출하나
+    //   메타 캐시 지연·직전 addField 후 eventual consistency·race로 배차방식 등에서 첫 시도 422 후 최종 존재하는 경우 발생.
+    if (!(res.status === 422 && /DUPLICATE|already\s*exist|중복|exist/i.test(t))) {
+      log(`  ✗ ${fieldDef.name}: ${t.substring(0,200)}`, 'err');
+    }
   }
   await sleep(200);
 }
