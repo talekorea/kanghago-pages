@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.192</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.193</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.192</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.193</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -9461,9 +9461,14 @@ async function loadCustomsProgress(opts) {
     try {
       if (state.shipment && state.shipment.id) {
         const sm = d.summary || {}; const f = state.shipment.fields || {}; const fields = {};
+        const _core6 = (typeof selectCore6 === 'function') ? selectCore6(d.stages || []) : {};   // [v3.2.193] 반입 detail·수입신고수리 처리일시
         if (sm.frwrEntsConm && f['한국포워딩사'] !== sm.frwrEntsConm) fields['한국포워딩사'] = sm.frwrEntsConm;
         if (sm.etprDt) { const e = String(sm.etprDt).replace(/\D/g, ''); if (e.length >= 8) { const dt = `${e.slice(0,4)}-${e.slice(4,6)}-${e.slice(6,8)}`; if (f['입항일'] !== dt) fields['입항일'] = dt; } }
-        if (sm.shedNm && !String(f['보세창고'] || '').trim()) fields['보세창고'] = sm.shedNm;   // ★빈값일 때만
+        // [v3.2.193] 보세창고 = 반입(보세운송 반입) detail 장치장 우선 → summary.shedNm 폴백. 빈값일 때만(수동 보존).
+        const _bonded = (_core6.반입 && String(_core6.반입.장치장 || '').trim()) || String(sm.shedNm || '').trim();
+        if (_bonded && !String(f['보세창고'] || '').trim()) fields['보세창고'] = _bonded;
+        // [v3.2.193] 통관완료일 = 수입신고수리 처리일시(YYYY-MM-DD) 저장(항상 최신·다를 때). ★통관일 필드 없음→통관완료일(실존) 사용.
+        if (_core6.수입신고수리 && _core6.수입신고수리.처리일시) { const c = String(_core6.수입신고수리.처리일시).replace(/\D/g, ''); if (c.length >= 8) { const cd = `${c.slice(0,4)}-${c.slice(4,6)}-${c.slice(6,8)}`; if (f['통관완료일'] !== cd) fields['통관완료일'] = cd; } }
         if (Object.keys(fields).length) { await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields, typecast: true }); Object.assign(state.shipment.fields, fields); }
       }
     } catch (pe) { console.warn('[통관 자동필드 PATCH]', pe.message); }
@@ -17163,12 +17168,15 @@ async function fetchDispatchMaster(daysOverride) {
     }); });
     const shipIds = Object.keys(shipDateMap);
     // (2) Shipments — 배차/통관/포워딩/수취/테이프/메모 필드(try/fallback)
-    const _dispQ = ['배송방식','배차방식','포워딩사','보세창고','입항일','한국포워딩사','배차견적액','실제배차비','세관창고료','차량번호','기사전화번호','배차완료일','배차상태','통관일'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');   // [v3.2.192] 배차방식·통관일 추가
+    // [v3.2.193] 통관일→통관완료일(실존 필드). 배차방식(신규)은 미생성 시 422 대비 별도 폴백. 통관완료일=수입신고수리 처리일시.
+    const _dispCore = ['배송방식','포워딩사','보세창고','입항일','한국포워딩사','배차견적액','실제배차비','세관창고료','차량번호','기사전화번호','배차완료일','배차상태','통관완료일'];
+    const _dispQ = _dispCore.concat(['배차방식']).map(n => '&fields[]=' + encodeURIComponent(n)).join('');
+    const _dispQCore = _dispCore.map(n => '&fields[]=' + encodeURIComponent(n)).join('');
     const baseQ = ['사서함','고객사서함','상태','BL번호','테이프색상','메모','수취_주소','수취_전화','도착지주소'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');
     const ships = (await Promise.all(chunkArray(shipIds, 50).map(async chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
       const u = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}` + baseQ;
-      try { return await apiPaged(u + _dispQ); } catch (e) { return await apiPaged(u); }
+      try { return await apiPaged(u + _dispQ); } catch (e) { try { return await apiPaged(u + _dispQCore); } catch (e2) { return await apiPaged(u); } }   // [v3.2.193] 배차방식 미생성 시 core만(422 폴백)
     }))).flat();
     // (3) Boxes per ship + rows
     const rows = await Promise.all(ships.map(async s => {
@@ -17199,7 +17207,7 @@ async function fetchDispatchMaster(daysOverride) {
         테이프색상: sf['테이프색상'] || '', 마킹: _transportMarkRange(base, seqs),
         boxCount: boxes.length, cbmSum, kgSum,
         회사: cust.회사명 || '', 요청사항: requestByShip[s.id] || '', 가장큰박스: _bigBox, 배차방식: sf['배차방식'] || '',   // [v3.2.192] 배차정보 탭
-        보세창고: sf['보세창고'] || '', 입항일: sf['입항일'] || '', 통관일: sf['통관일'] || '',
+        보세창고: sf['보세창고'] || '', 입항일: sf['입항일'] || '', 통관일: sf['통관완료일'] || sf['통관일'] || '',   // [v3.2.193] 통관일시=통관완료일(수입신고수리) 우선
         배송지: sf['수취_주소'] || destByShip[s.id] || sf['도착지주소'] || '', 수취인연락처: sf['수취_전화'] || telByShip[s.id] || '',
         배송방법: methodByShip[s.id] || '', shipMethod: sf['배송방식'] || '',
         배차견적액: sf['배차견적액'] ?? '', 실제배차비: sf['실제배차비'] ?? '', 배차상태: sf['배차상태'] || '대기', 배차완료일: sf['배차완료일'] || '',
@@ -17366,7 +17374,10 @@ async function fetchBookingSummary(mode) {
     const shipChunks = chunkArray(shipIds, 50);
     // [v3.2.92] 배차 6필드도 함께 조회. 단 미생성 시 fields[]에 넣으면 422(UNKNOWN_FIELD)로 부킹 전체가 깨짐 →
     //   배차 필드 포함 쿼리 먼저 시도, 실패하면 기본 쿼리로 폴백(필드 추가 전까지 배차 입력만 빈칸, 부킹은 정상).
-    const _dispQ = ['배송방식','배차방식','포워딩사','보세창고','입항일','한국포워딩사','배차견적액','실제배차비','세관창고료','차량번호','기사전화번호','배차완료일','배차상태','통관일'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');   // [v3.2.192] 배차방식·통관일 추가
+    // [v3.2.193] 통관일→통관완료일(실존 필드). 배차방식(신규)은 미생성 시 422 대비 별도 폴백. 통관완료일=수입신고수리 처리일시.
+    const _dispCore = ['배송방식','포워딩사','보세창고','입항일','한국포워딩사','배차견적액','실제배차비','세관창고료','차량번호','기사전화번호','배차완료일','배차상태','통관완료일'];
+    const _dispQ = _dispCore.concat(['배차방식']).map(n => '&fields[]=' + encodeURIComponent(n)).join('');
+    const _dispQCore = _dispCore.map(n => '&fields[]=' + encodeURIComponent(n)).join('');
     const shipResults = await Promise.all(shipChunks.map(async chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
       const base = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}`
@@ -17714,6 +17725,9 @@ async function fetchCustomsAutoFields(shipId, blNo, shipDate, inputId, statusElI
     if (sm.etprDt) { const e = String(sm.etprDt).replace(/\D/g, ''); if (e.length >= 8) fields['입항일'] = `${e.slice(0,4)}-${e.slice(4,6)}-${e.slice(6,8)}`; }   // 항상 최신
     const curBonded = (row && String(row.보세창고 || '').trim()) || (inp && String(inp.value || '').trim());
     if (shed && !curBonded) fields['보세창고'] = shed;                            // ★빈값일 때만(수동 보존)
+    // [v3.2.193] 통관완료일 = 수입신고수리 처리일시(항상 최신). 통관일 필드 없음→통관완료일(실존) 사용.
+    const _accept = stages.find(s => /수입신고\s*수리|수입신고수리/.test(s.진행상태 || ''));
+    if (_accept && _accept.처리일시) { const c = String(_accept.처리일시).replace(/\D/g, ''); if (c.length >= 8) fields['통관완료일'] = `${c.slice(0,4)}-${c.slice(4,6)}-${c.slice(6,8)}`; }
     if (!Object.keys(fields).length) { if (st) { st.textContent = '갱신값 없음(통관 진행 전?)'; st.style.color = '#a14a00'; } return; }
     await api('PATCH', `/${TABLES.Shipments}/${shipId}`, { fields, typecast: true });
     if (row) Object.assign(row, fields);
