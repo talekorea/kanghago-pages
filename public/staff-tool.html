@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.199</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.200</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.199</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.200</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1493,10 +1493,10 @@
     </div>
     <div>
       <label style="font-size:11px; color:#666; display:block;">
-        해상운임 (영세율) <span id="seaFreightStatus" style="color:#0a7b40; font-size:10px; font-weight:700;">✓ 자동</span>
+        해운비 <span style="color:#1B5E9A; font-weight:700;">(알리코인 CNY·프리페이드)</span> <span id="seaFreightStatus" style="color:#888; font-size:10px; font-weight:700;">KRW 청구 아님 · 참고</span>
       </label>
       <div style="display:flex; gap:4px;">
-        <input id="invSeaFreight" type="number" placeholder="박스 CBM 입력 후 자동" oninput="onSeaFreightManual()" style="width:140px; padding:6px 9px; border:1px solid #ccc; border-radius:5px; text-align:right;" />
+        <input id="invSeaFreight" type="number" placeholder="박스 CBM 입력 후 자동(참고 KRW)" oninput="onSeaFreightManual()" title="[v3.2.200] 해운비는 알리코인(CNY)에서 차감 — 이 KRW는 참고용, 국내 결제금액에 미포함" style="width:140px; padding:6px 9px; border:1px solid #ccc; border-radius:5px; text-align:right;" />
         <button class="secondary" onclick="restoreSeaFreightAuto()" title="자동 계산으로 복원" style="padding:6px 9px; font-size:11px;">🔄</button>
       </div>
     </div>
@@ -3119,51 +3119,89 @@ function buildPresetGroups() {
 //   - 해상운임: 선적요일별 단가 + 0.3CBM 기본 + 0.1단위 절상 + KRW 100원 절상 + 고시환율
 //   - CO: FTA그룹당 → 인보이스 총액(USD) 700달러 기준 30,000/50,000 단일 청구
 const OVERHEAD_PRESETS = [
-  { key: 'bl',       i18n: 'oh.bl',              amount: 25000, type: 'fixed' },
-  { key: 'sea',      i18n: 'oh.sea',             amount: 0,     type: 'sea' },   // 금액은 calcSeaFreightKRW로 동적
+  { key: 'bl',       i18n: 'oh.bl',              amount: 0,     type: 'cny_info' },   // [v3.2.200] BL ¥100 CNY(알리코인 차감) — KRW 청구 아님(구 ₩25,000 폐지)
+  { key: 'sea',      i18n: 'oh.sea',             amount: 0,     type: 'sea' },   // [v3.2.200] 해운비 CNY(알리코인) — KRW 청구 아님
   { key: 'domestic_freight', i18n: 'oh.domestic_freight', amount: 0,    type: 'manual' },
   { key: 'domestic_parcel',  i18n: 'oh.domestic_parcel',  amount: 9000, type: 'per_box' },   // v3.2.105: amount(9000)은 미사용(dead) — 실제 택배요금은 PARCEL_RATES_MATRIX(getParcelRate)로 부피·무게 반영. flat 9,000 폴백 폐기.
   // v3.2.38·v3.2.39: 밀크런 — §11이 ⌈CBM/1.5⌉×30,000으로 state.overheadAmounts.milkrun 채움. manual로 단일 소스.
   { key: 'milkrun',          i18n: 'oh.milkrun',          amount: 0,    type: 'manual' }
 ];
 
-// v3.0.6 원산지증명(CO): 인보이스 총액(USD) 기준 단일 청구
-const CO_FEE_UNDER = 30000;   // 700달러 이하
-const CO_FEE_OVER  = 50000;   // 700달러 초과
-const CO_THRESHOLD_USD = 700;
-const CO_FEE_KRW = 50000;     // (구버전 호환용 — 일부 잔여 참조 대비)
+// [v3.2.200] 원산지증명(CO): ¥200 정액(알리코인) — 절세>0 자동판정만 유지. 구 ₩30k/50k·$700분기·13건룰 폐지.
+const CO_FEE_CNY = 200;       // CO ¥200 단일 정액(절세>0일 때만)
+const CO_FEE_UNDER = 30000;   // (구버전 호환 잔여참조 대비 — 미사용)
+const CO_FEE_OVER  = 50000;   // (구버전 호환 잔여참조 대비 — 미사용)
+const CO_THRESHOLD_USD = 700; // (구버전 호환)
+const CO_FEE_KRW = 50000;     // (구버전 호환)
+// [v3.2.200] 알리코인(CNY) 차감 항목 상수 — 전부 CNY, KRW 청구 아님.
+const BL_FEE_CNY = 100;              // BL 발급료 ¥100 정액
+const HANDLING_BASE_CNY = 50;        // 핸들링: 1CBM까지 ¥50
+const HANDLING_STEP_CNY = 5;         // + 초과 0.1CBM당 ¥5 (0.1 절상)
+const DOC_FREE_SKU = 10;             // 도큐먼트피: SKU 10개까지 무료
+const DOC_PER_SKU_CNY = 5;           // + 초과 1품목당 ¥5 (SKU=선적분 Products 행수) ※2개월 후 단가 재검토(2026-09 예정)
 // 작업5: 아태협정(APTA) 재추가 — 일반/한중FTA(FCN1)/아태협정(E1) 3옵션
 const FTA_OPTIONS = ['한중', 'RCEP', '아태', 'WTO', '없음'];
 const FTA_LABEL = { '한중': 'fta.kc', 'RCEP': 'fta.rcep', '아태': 'fta.apta', 'WTO': 'fta.wto', '없음': 'fta.none' };
 
 // ========== 부대비용 계산 ==========
-// [v3.2.96] 해상운임 청구 산식 재정의 — CBM단가(요일) × 청구부피(0.1절상·0.5미니멈) × 마진(1.23).
-//   ★옛 base+step($28+$7 / $30+$7.5) 폐기. ★고객 청구 직결 — calcSeaFreightKRW만 교체, ×1.10은 §9 한 번(불변).
-//   청구부피 = max(ceil(실제CBM/0.1)×0.1, 0.5) · 포워딩원가USD = 청구부피×요일단가 · 청구USD = 원가×1.23 · 청구KRW = round(청구USD×환율) pre-VAT.
-const SEA_COST_RATE = { '월수금': 60, '화목일': 65 };   // USD/CBM (조정 자유)
-const SEA_MARGIN = 0.23;                                  // 해운비 마진 (×1.23)
-const SEA_MIN_CBM = 0.5;                                  // 청구부피 최소
+// [v3.2.200] 해운비 프리페이드(CNY/알리코인) 재정의 — ★구 산식($60/CBM·마진23%·0.1절상·청구부피) 완전 폐기.
+//   청구CBM = MAX(실제CBM, 중량kg÷300, 0.45)   ← R/ton + 0.45 바닥. 절상·마진 없음(단가에 마진 포함).
+//   USD = 청구CBM × 요일단가(월수금 $68 / 화목일 $74)
+//   CNY = USD × (USD/CNY = 1/rateCnyUsd)  ← 알리코인 차감 기준
+//   KRW = round(USD × rateUsdKrw)  ← ★참고/과세용, 고객 KRW 청구 아님(FREIGHT PREPAID)
+const SEA_RATE_USD = { '월수금': 68, '화목일': 74 };    // USD/CBM (프리페이드, 마진 포함)
+const SEA_MIN_CBM = 0.45;                               // 청구CBM 바닥
 function seaRateGroup(shipDateStr) {
   // 선적요일 0일~6토. 월(1)·수(3)·금(5)=월수금, 화(2)·목(4)·일(0)=화목일. 토(6)는 선적 없음→화목일 폴백(경고 유지).
   const d = shipDateStr ? new Date(shipDateStr + 'T00:00:00') : null;
   const wd = (d && !isNaN(d)) ? d.getDay() : -1;
   const name = (wd === 1 || wd === 3 || wd === 5) ? '월수금' : '화목일';
-  return { name, unit: SEA_COST_RATE[name] };
+  return { name, unit: SEA_RATE_USD[name] };
 }
-// 청구부피(CBM) — 0.1 절상 후 0.5 미니멈. float-safe(-1e-9).
-function seaBillCbm(totalCbm) {
-  const cbm = parseFloat(totalCbm) || 0;
-  const ceiled = Math.ceil(cbm / 0.1 - 1e-9) * 0.1;
-  return Math.max(Math.round(ceiled * 100) / 100, SEA_MIN_CBM);
+// [v3.2.200] 청구CBM = MAX(실제CBM, kg/300, 0.45). 절상 없음(raw). float-safe(음수/NaN→0).
+function seaBillCbm(totalCbm, totalKg) {
+  const cbm = Math.max(0, parseFloat(totalCbm) || 0);
+  const kg = Math.max(0, parseFloat(totalKg) || 0);
+  return Math.max(cbm, kg / 300, SEA_MIN_CBM);
 }
-// 최종 해상운임 청구(KRW, pre-VAT). 반환 { usd:청구USD, krw, rate:{name,unit}, billCbm, costUsd, marginRate }.
-function calcSeaFreightKRW(totalCbm, shipDateStr, rateUsdKrw) {
+// [v3.2.200] 해운비 프리페이드. 반환 { usd, cny, krw, rate:{name,unit}, billCbm, costUsd, marginRate }.
+//   totalKg·rateCnyUsd는 선택 인자(미전달 시 kg=0, rateCnyUsd는 DOM에서 읽음).
+function calcSeaFreightKRW(totalCbm, shipDateStr, rateUsdKrw, totalKg, rateCnyUsd) {
   const rate = seaRateGroup(shipDateStr);
-  const billCbm = seaBillCbm(totalCbm);
-  const costUsd = billCbm * rate.unit;             // 포워딩원가
-  const usd = costUsd * (1 + SEA_MARGIN);          // 청구 USD (×1.23)
-  const krw = Math.round(usd * (parseFloat(rateUsdKrw) || 0));   // pre-VAT, round
-  return { usd, krw, rate, billCbm, costUsd, marginRate: SEA_MARGIN };
+  const billCbm = seaBillCbm(totalCbm, totalKg);
+  const usd = billCbm * rate.unit;                 // 프리페이드 USD (마진 포함, ×1.23 폐기)
+  const _rcu = (rateCnyUsd != null && rateCnyUsd !== '') ? (parseFloat(rateCnyUsd) || 0)
+             : (parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0);   // CNY→USD
+  const cny = _rcu > 0 ? usd / _rcu : 0;           // USD → CNY (USD/CNY = 1/rateCnyUsd)
+  const krw = Math.round(usd * (parseFloat(rateUsdKrw) || 0));   // 참고/과세용(청구 아님)
+  return { usd, cny, krw, rate, billCbm, costUsd: usd, marginRate: 0 };   // costUsd=usd(마진 폐기) — 배차마스터 원가 호환
+}
+// [v3.2.200] 핸들링(CNY) = 1CBM까지 ¥50 + 초과 0.1CBM당 ¥5(0.1 절상). CBM≤1 → ¥50.
+function calcHandlingCny(totalCbm) {
+  const cbm = Math.max(0, parseFloat(totalCbm) || 0);
+  if (cbm <= 1) return HANDLING_BASE_CNY;
+  const extra = Math.ceil((cbm - 1) / 0.1 - 1e-9);   // 초과분 0.1CBM 단위 절상
+  return HANDLING_BASE_CNY + extra * HANDLING_STEP_CNY;
+}
+// [v3.2.200] 도큐먼트피(CNY) = SKU 10개까지 무료 + 초과 1품목당 ¥5. SKU=선적분 Products 행수.
+function calcDocumentCny(skuCount) {
+  const n = Math.max(0, parseInt(skuCount, 10) || 0);
+  return Math.max(0, n - DOC_FREE_SKU) * DOC_PER_SKU_CNY;
+}
+// [v3.2.200] SKU 수 = 현재 로드된 선적분 Products 행수.
+function getShipmentSkuCount() {
+  return (state.products || []).length;
+}
+// [v3.2.200] 총중량(kg) — state.boxes 합산(해운비 R/ton용).
+function getTotalKg() {
+  let total = 0;
+  Object.values(state.boxes || {}).forEach(b => { total += parseFloat(b.kg) || 0; });
+  return total;
+}
+// [v3.2.200] CO(CNY) = 절세>0이면 ¥200 정액, 아니면 0. 절세 자동판정(calcFtaSavingKrw)은 기존 유지.
+function calcCoCny() {
+  const saving = (typeof calcFtaSavingKrw === 'function') ? calcFtaSavingKrw() : 0;
+  return saving > 0 ? CO_FEE_CNY : 0;
 }
 // 도구 현재 상태에서 선적일·환율 읽어 해상운임 KRW 반환 (수정값 우선)
 function getSeaFreightKRW() {
@@ -3629,6 +3667,13 @@ async function ensureSchema() {
       { name: '청구_쿠팡밀크런_금액',  type: 'number', options: { precision: 0 } },
       { name: '청구_밀크런_금액',      type: 'number', options: { precision: 0 } },   // v3.2.38: ⌈CBM/1.5⌉×30,000 (pre-VAT)
       { name: '청구_preVAT',          type: 'number', options: { precision: 0 } },
+      // [v3.2.200] 알리코인(CNY) 차감 항목 — 분리 저장(핸들링·도큐먼트피 분리, 표시는 "작업수수료" 합산). number 실패 시 addField가 처리(실 저장은 typecast).
+      { name: '청구_BL_CNY',           type: 'number', options: { precision: 2 } },
+      { name: '청구_해운비_CNY',       type: 'number', options: { precision: 2 } },
+      { name: '청구_CO_CNY',           type: 'number', options: { precision: 2 } },
+      { name: '핸들링CNY',             type: 'number', options: { precision: 2 } },
+      { name: '도큐먼트피CNY',         type: 'number', options: { precision: 2 } },
+      { name: '청구_알리코인_CNY',     type: 'number', options: { precision: 2 } },
       // 발행 주체 (v1.0 TALE_KOREA → v2.0 KANGHAGO_KR/TALELOR_HK)
       { name: '발행주체', type: 'singleSelect', options: { choices: [
         { name: 'TALE_KOREA', color: 'blueLight2' },
@@ -3706,8 +3751,8 @@ async function ensureSchema() {
     ];
     for (const f of shipNewFields) {
       if (!existingShip.has(f.name)) {
-        await addField(TABLES.Shipments, f);
-        log(`  + Shipments.${f.name}`, 'ok');
+        const _ok = await addField(TABLES.Shipments, f);   // [v3.2.200][H] 판정 후 출력 — 성공일 때만 ✓(실패 ✗는 addField 내부). "✗ 다음 ✓" 쌍 제거.
+        if (_ok) log(`  + Shipments.${f.name}`, 'ok');
       }
     }
   }
@@ -3756,8 +3801,11 @@ async function addField(tableId, fieldDef) {
     if (!_existsNow) {
       log(`  ✗ ${fieldDef.name}: ${t.substring(0,200)}`, 'err');
     }
+    await sleep(200);
+    return _existsNow;   // [v3.2.200] 최종 존재 여부 반환 — 호출부가 성공일 때만 ✓ 로깅(선(先) ✓ 방지, [H])
   }
   await sleep(200);
+  return true;   // [v3.2.200] POST 성공
 }
 
 // 기존 함수명 alias (호환)
@@ -8494,7 +8542,7 @@ function renderOverhead() {
         <div style="background:#fff; border:1px solid #c4d5ea; border-radius:6px; padding:10px 14px;">
           <div style="font-size:11px; color:var(--text-dim); font-weight:600; letter-spacing:0.05em; margin-bottom:4px;">🌊 해상운임</div>
           <div style="font-size:13px; font-weight:600; color:var(--navy);">${seaInfo.rate.name}</div>
-          <div style="font-size:11px; color:#666; margin-top:2px;">$${seaInfo.rate.unit}/CBM · 청구부피 ${seaInfo.billCbm}CBM · 마진 ${Math.round(seaInfo.marginRate*100)}%</div>
+          <div style="font-size:11px; color:#666; margin-top:2px;">$${seaInfo.rate.unit}/CBM · 청구CBM ${seaInfo.billCbm.toFixed(2)} · <span style="color:#1B5E9A; font-weight:700;">알리코인 ¥${(seaInfo.cny||0).toFixed(2)}</span> (프리페이드·KRW 청구 아님)</div>
           ${rwChk.warn ? `<div style="margin-top:6px; padding:4px 8px; background:#ffebe9; color:#c0392b; border-radius:4px; font-size:10px; font-weight:700;">${rwChk.msg}</div>` : ''}
         </div>
       </div>
@@ -8529,8 +8577,8 @@ function renderOverhead() {
       amount = overridden ? (parseFloat(state.overheadAmounts.sea) || 0) : auto;
       editable = true;
       editVal = overridden ? state.overheadAmounts.sea : auto;
-      const cbmShow = `${fmtCBM(totalCbm)} → 청구부피 ${seaInfo.billCbm}CBM`;
-      desc = `${seaInfo.rate.name} · CBM ${cbmShow} × $${seaInfo.rate.unit} = 원가 $${seaInfo.costUsd.toFixed(2)} ×1.23 → 청구 $${seaInfo.usd.toFixed(2)} × 환율 → ₩${auto.toLocaleString()} (pre-VAT)`
+      const cbmShow = `${fmtCBM(totalCbm)} → 청구CBM ${seaInfo.billCbm.toFixed(2)}`;
+      desc = `${seaInfo.rate.name} · CBM ${cbmShow} × $${seaInfo.rate.unit} = $${seaInfo.usd.toFixed(2)} → <span style="color:#1B5E9A; font-weight:700;">알리코인 ¥${(seaInfo.cny||0).toFixed(2)}</span> <span style="color:#888;">(FREIGHT PREPAID · KRW 청구 아님, 아래 ₩는 참고환산)</span>`
            + (overridden ? ` · <span style="color:#c0392b;">수정됨</span>` : '');
     } else if (p.type === 'per_box') {
       // v3.2.105: 택배는 ★항상 매트릭스(getParcelRate, 부피·무게 반영) 단일 소스.
@@ -10541,7 +10589,7 @@ function renderTariffEstimate() {
       <!-- v3.2.13 #60: 관부가세 = FTA 절세 안내 패널 (결제금액 미포함 — 관세사 직접 청구) -->
       <div style="margin-top:12px; padding:12px 16px; background:#FAF6EE; border-left:4px solid #C9973A; border-radius:6px; font-size:12px; color:#666;">
         <div style="font-weight:700; color:var(--navy); margin-bottom:6px;">💡 FTA 절세 안내 (결제금액 미포함 — 관세사 직접 청구)</div>
-        <div>· 과세가격 (신고가 + 해상운임 KRW): <strong>₩${Math.round(current.totalInvoiceKrw).toLocaleString()}</strong> <span style="font-size:10px; color:#888;">(해상운임 IV 정액 포함)</span></div>
+        <div>· 과세가격 (신고가 + 해상운임 KRW): <strong>₩${Math.round(current.totalInvoiceKrw).toLocaleString()}</strong> <span style="font-size:10px; color:#888;">(해상운임 CIF 안분 포함 — 신고가 불변)</span></div>
         <div>· 관세 (예상): ₩${Math.round(current.totalDutyKrw).toLocaleString()}</div>
         <div>· 수입 부가세 (예상): ₩${Math.round(current.totalVatKrw).toLocaleString()}</div>
         <div style="margin-top:4px; color:#0a7b40;">→ 관세사가 화주에게 별도 청구. 강하고 청구서엔 미포함.</div>
@@ -14684,8 +14732,10 @@ function buildInvoiceData() {
     paymentMethod,
     blNo: f['BL번호'] || '',
     selectedFta, appliedFtaDisplay, appliedFtaCode, tariffCompare,
-    // v3.2.18 P0 → v3.2.38: invoice-view 물류비 청구서용 breakdown — 7항목 + pre-VAT + 최종
+    // v3.2.18 P0 → v3.2.38: invoice-view 물류비 청구서용 breakdown — 국내분(결제금액). [v3.2.200] bl/sea/co=0(CNY 이관)
     breakdown: { bl: bd.bl, sea: bd.sea, co: bd.co, parcel: bd.parcel, freight: bd.freight, milkrun: bd.milkrun, coupang: bd.coupang, preVat: bd.preVat, vat: bd.vat, total: bd.totalKrw, shipMethod: bd.shipMethod },
+    // [v3.2.200] 알리코인(CNY) 차감 내역 — ★한국 결제 아님. 청구서·invoice-view에 정보 섹션으로 표기.
+    alicoin: { blCny: bd.blCny, seaCny: bd.seaCny, coCny: bd.coCny, handlingCny: bd.handlingCny, documentCny: bd.documentCny, workfeeCny: bd.workfeeCny, totalCny: bd.alicoinCny, krwRef: bd.alicoinKrw, seaBillCbm: bd.seaBillCbm, seaRate: bd.seaRate },
     // v3.2.31: CO 절세 안내 — 절세 > 0이면 "FTA 적용 관세 ₩XXX 절감", 0이면 "CO 발급 불필요"
     ftaSavingKrw: (typeof calcFtaSavingKrw === 'function') ? calcFtaSavingKrw() : 0,
   };
@@ -14889,12 +14939,24 @@ function renderInvoiceHTML(d) {
       </thead>
       <tbody>
         ${d.items.map(itemRow).join('')}
-        <tr style="background:#FAF6EE;"><td colspan="2" style="padding:8px; text-align:right; font-size:11px;">영세율 합계</td><td style="padding:8px; text-align:right; font-family:monospace;">${formatKrw(d.zeroRateTotal)}</td></tr>
-        <tr style="background:#FAF6EE;"><td colspan="2" style="padding:8px; text-align:right; font-size:11px;">10% 과세 합계 (세전)</td><td style="padding:8px; text-align:right; font-family:monospace;">${formatKrw(d.tax10Subtotal)}</td></tr>
+        <tr style="background:#FAF6EE;"><td colspan="2" style="padding:8px; text-align:right; font-size:11px;">국내운임 합계 (세전)</td><td style="padding:8px; text-align:right; font-family:monospace;">${formatKrw(d.tax10Subtotal)}</td></tr>
         <tr style="background:#FAF6EE;"><td colspan="2" style="padding:8px; text-align:right; font-size:11px;">VAT 10%</td><td style="padding:8px; text-align:right; font-family:monospace;">${formatKrw(d.vat)}</td></tr>
-        <tr style="background:#C9973A; color:#fff; font-weight:700;"><td colspan="2" style="padding:11px; text-align:right; font-size:14px;">총 청구 금액 (세후)</td><td style="padding:11px; text-align:right; font-family:monospace; font-size:16px;">${formatKrw(d.total)}</td></tr>
+        <tr style="background:#C9973A; color:#fff; font-weight:700;"><td colspan="2" style="padding:11px; text-align:right; font-size:14px;">국내 결제금액 (계좌이체·세금계산서)</td><td style="padding:11px; text-align:right; font-family:monospace; font-size:16px;">${formatKrw(d.total)}</td></tr>
       </tbody>
     </table>
+
+    ${(d.alicoin && d.alicoin.totalCny > 0) ? `
+    <div style="background:#eef4fb; border:1.5px solid #1B5E9A; border-radius:6px; padding:13px 15px; margin-bottom:18px; font-size:12px;">
+      <div style="font-weight:700; color:#1B5E9A; margin-bottom:8px; font-size:13px;">🪙 알리코인(예치금) 차감 내역 <span style="font-weight:400; font-size:11px; color:#666;">— 위 국내 결제와 별도 · 계좌이체 금액 아님</span></div>
+      <table style="width:100%; font-size:12px;">
+        <tr><td style="padding:3px 0;">BL 발급료</td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.blCny||0).toFixed(2)}</td></tr>
+        <tr><td style="padding:3px 0;">해운비 <span style="font-size:10px; color:#888;">(${(d.alicoin.seaRate&&d.alicoin.seaRate.name)||''} · 청구CBM ${(d.alicoin.seaBillCbm||0).toFixed(2)})</span></td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.seaCny||0).toFixed(2)}</td></tr>
+        ${(d.alicoin.coCny||0) > 0 ? `<tr><td style="padding:3px 0;">원산지증명(CO)</td><td style="text-align:right; font-family:monospace;">¥${d.alicoin.coCny.toFixed(2)}</td></tr>` : ''}
+        <tr><td style="padding:3px 0;">작업수수료 <span style="font-size:10px; color:#888;">(핸들링+도큐먼트피)</span></td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.workfeeCny||0).toFixed(2)}</td></tr>
+        <tr style="font-weight:700; border-top:1px solid #1B5E9A;"><td style="padding:6px 0;">합계 (알리코인 차감)</td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.totalCny||0).toFixed(2)} <span style="font-size:10px; color:#888;">(≈₩${(d.alicoin.krwRef||0).toLocaleString()})</span></td></tr>
+      </table>
+      <div style="margin-top:7px; font-size:11px; color:#1B5E9A;">위 금액은 <strong>알리코인(예치금)에서 차감</strong>되었습니다 · FREIGHT PREPAID</div>
+    </div>` : ''}
 
     ${d.depositItems.length ? `
     <div style="background:#FFF8E1; border:1px solid #C9973A; border-radius:4px; padding:11px 13px; margin-bottom:18px; font-size:11px;">
@@ -14998,6 +15060,13 @@ async function downloadInvoicePdf() {
         '청구_쿠팡밀크런_금액': bd.coupang || 0,
         '청구_밀크런_금액':   bd.milkrun || 0,   // v3.2.38: 자동 ⌈CBM/1.5⌉×30,000
         '청구_preVAT':       bd.preVat  || 0,
+        // [v3.2.200] 알리코인(CNY) 차감 항목 — invoice-view 알리코인 섹션용. bl/sea/co(KRW)는 0(청구 아님).
+        '청구_BL_CNY':       bd.blCny       || 0,
+        '청구_해운비_CNY':    bd.seaCny      || 0,
+        '청구_CO_CNY':       bd.coCny       || 0,
+        '핸들링CNY':         bd.handlingCny || 0,
+        '도큐먼트피CNY':      bd.documentCny || 0,
+        '청구_알리코인_CNY':  bd.alicoinCny  || 0,
         // v3.2.31: CO 절세 안내 — invoice-view에서 "관세 ₩XXX 절감 (CO 발급 기준)" 표시
         '청구_FTA_절세_KRW': data.ftaSavingKrw || 0,
       };
@@ -15165,30 +15234,33 @@ async function shareInvoiceViewUrl() {
 //   - CO: FTA 절세 = 0이면 자동 제외 (관세 절감 없는 제품에 CO 청구 X)
 function calcInvoiceBreakdownKrw() {
   const oh = state.overheadAmounts || {};
-  // v3.2.39: 단일 소스 = state.overheadAmounts (§11 recalcShippingMatrix이 채움).
-  //   §6·§9·청구서 모두 이 값만 읽는다. 독자 재계산·9,000 폴백·shipMethod 의존 폐지.
-  //   3택1 강제는 §11이 다른 슬롯을 0으로 비워주므로 §9는 단순 합산.
   const shipMethod = (typeof getShipMethod === 'function') ? getShipMethod() : '';
 
-  // 1. BL료 — state.overheadAmounts.bl 우선 → PRESET 25000
-  const bl = (oh.bl != null && oh.bl !== '') ? (parseFloat(oh.bl) || 0) : 25000;
-  // 2. 해상운임 — calcSeaFreightKRW (USD 산식 × 환율)
-  const sea = (typeof getSeaFreightKRW === 'function') ? getSeaFreightKRW() : 0;
-  // 3. CO 원산지증명 — pre-VAT. v3.2.31: 절세 0이면 0 (calcTotalCoFee 내부 처리)
-  const co = (typeof calcTotalCoFee === 'function') ? calcTotalCoFee() : 0;
+  // ═══════════ [v3.2.200] 알리코인(CNY) 차감 항목 — ★한국 청구 아님, totalKrw 절대 미포함 ═══════════
+  //   BL ¥100 / 해운비(프리페이드) / CO ¥200(절세>0) / 작업수수료(핸들링+도큐먼트피). 정보 표기 전용.
+  const rateCnyUsd = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;   // CNY→USD
+  const rateCnyKrw = parseFloat((document.getElementById('rateCnyKrw') || {}).value) || 0;   // CNY→KRW(고시·프리즈)
+  const rateUsdKrw = parseFloat((document.getElementById('rateUsdKrw') || {}).value) || 0;
+  const _totCbm = (typeof getTotalCbm === 'function') ? getTotalCbm() : 0;
+  const _totKg  = (typeof getTotalKg === 'function') ? getTotalKg() : 0;
+  const _shipDate = (typeof getShipDate === 'function') ? getShipDate() : '';
+  const _sea = (typeof calcSeaFreightKRW === 'function') ? calcSeaFreightKRW(_totCbm, _shipDate, rateUsdKrw, _totKg, rateCnyUsd) : { usd:0, cny:0, krw:0, billCbm:0, rate:{} };
+  const blCny       = BL_FEE_CNY;                                           // ¥100
+  const seaCny      = _sea.cny;                                             // 해운비 CNY
+  const coCny       = (typeof calcCoCny === 'function') ? calcCoCny() : 0;  // ¥200(절세>0) or 0
+  const handlingCny = (typeof calcHandlingCny === 'function') ? calcHandlingCny(_totCbm) : 0;
+  const documentCny = (typeof calcDocumentCny === 'function') ? calcDocumentCny(getShipmentSkuCount()) : 0;
+  const workfeeCny  = handlingCny + documentCny;                            // "작업수수료" 합산(표시 한 줄)
+  const alicoinCny  = blCny + seaCny + coCny + workfeeCny;                  // 알리코인 차감 총액(CNY)
+  const alicoinKrw  = Math.round(alicoinCny * rateCnyKrw);                  // 참고 KRW 환산(청구 아님·§12 프리즈)
 
-  // v3.2.39: §11 단일 소스. state.overheadAmounts.{domestic_parcel|domestic_freight|milkrun}.
-  //   §11이 안 돌았으면 폴백으로 직접 산정 — 그러나 §11이 돌았다면 그 값이 정답.
+  // ═══════════ 국내 결제금액(계좌이체+세금계산서) — ★택배 or 화물 or 밀크런만 × 1.10 ═══════════
   const ohParcel  = parseFloat(oh.domestic_parcel)  || 0;
   const ohFreight = parseFloat(oh.domestic_freight) || 0;
   const ohMilkrun = parseFloat(oh.milkrun)          || 0;
-
-  // 4. 택배 — §11이 채운 값 우선, 0/빈값이면 calcParcelTotalKrwPreVat 폴백
   let parcel = ohParcel > 0 ? ohParcel : (typeof calcParcelTotalKrwPreVat === 'function' ? calcParcelTotalKrwPreVat() : 0);
-  // 5. 화물 — §11 + §12 수동 추가
   const freightManual = parseFloat((document.getElementById('invFreightKrw') || {}).value) || 0;
   let freight = ohFreight + freightManual;
-  // 6. 밀크런 — §11이 채운 값 우선, 폴백 ⌈CBM/1.5⌉×30,000
   let milkrun = ohMilkrun > 0 ? ohMilkrun : 0;
   if (milkrun === 0 && shipMethod === '밀크런' && typeof calcMilkrunFee === 'function' && typeof getShipmentTotalCbm === 'function') {
     milkrun = calcMilkrunFee(getShipmentTotalCbm()).total;
@@ -15197,17 +15269,19 @@ function calcInvoiceBreakdownKrw() {
   if (shipMethod === '택배')   { freight = 0; milkrun = 0; }
   if (shipMethod === '화물')   { parcel = 0;  milkrun = 0; }
   if (shipMethod === '밀크런') { parcel = 0;  freight = 0; }
-
-  // 7. 쿠팡밀크런(레거시 수동) — 배송방식 무관 보조. 3택1 슬롯 X.
   const coupang = parseFloat((document.getElementById('invCoupangKrw') || {}).value) || 0;
 
-  // [v3.2.72] 청구 라운딩 정책: 항목 raw 합산(preVat) → ×1.10 한 번 → ★최종 1원 올림(Math.ceil). 항목별 라운딩 금지(이중 라운딩·이중 VAT 방지).
-  //   ★이 한 곳만 = §9·청구서·페이앱·invoice-view 4곳 자동 일괄. vat = total − round(preVat)로 정합(subtotal+vat=total).
-  const preVat = bl + sea + co + parcel + freight + milkrun + coupang;
-  // ★float-safe 올림: preVat×1.10을 전(錢, cents)단위로 먼저 반올림(부동소수점 노이즈 제거) → 원단위 ceil. (55000×1.1=60500.0000007 → 60500, 60501 오청구 방지)
-  const totalKrw = Math.ceil(Math.round(preVat * 110) / 100);   // ★1원 단위 올림(절상) — 청구 최종 결제금액
-  const vat = totalKrw - Math.round(preVat);            // 표시 정합: round(preVat) + vat = totalKrw (이중 VAT 0)
-  return { bl, sea, co, parcel, freight, milkrun, coupang, preVat, vat, totalKrw, shipMethod };
+  // ★국내운임만 preVat → ×1.10 한 번 → 1원 올림. (BL·해운비·CO·작업수수료 = CNY라 여기 미포함 = 이중청구 차단)
+  const preVat = parcel + freight + milkrun + coupang;
+  const totalKrw = Math.ceil(Math.round(preVat * 110) / 100);   // 계좌이체 결제금액(국내분만)
+  const vat = totalKrw - Math.round(preVat);
+  // 하위호환: bl/sea/co는 이제 KRW 청구 아님 → 0 반환(구 렌더의 >0 가드가 자동 스킵). CNY는 별도 필드.
+  return {
+    parcel, freight, milkrun, coupang, preVat, vat, totalKrw, shipMethod,
+    bl: 0, sea: 0, co: 0,   // ★KRW 청구 아님(구 필드 하위호환 — 0)
+    blCny, seaCny, coCny, handlingCny, documentCny, workfeeCny, alicoinCny, alicoinKrw,
+    seaUsd: _sea.usd, seaBillCbm: _sea.billCbm, seaRate: _sea.rate
+  };
 }
 
 function calcFinalInvoiceTotalKrw() {

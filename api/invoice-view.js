@@ -103,6 +103,18 @@ module.exports = async (req, res) => {
       coupang:  parseFloat(f['청구_쿠팡밀크런_금액']) || 0,
       shipMethod: f['배송방식'] || '',
     };
+    // [v3.2.200] 알리코인(CNY) 차감 내역 — 도구 §12 발행 시 저장. 한국 결제 아님(정보 표기용).
+    const _bl = parseFloat(f['청구_BL_CNY']) || 0;
+    const _sea = parseFloat(f['청구_해운비_CNY']) || 0;
+    const _co = parseFloat(f['청구_CO_CNY']) || 0;
+    const _hd = parseFloat(f['핸들링CNY']) || 0;
+    const _dc = parseFloat(f['도큐먼트피CNY']) || 0;
+    const _totalCny = parseFloat(f['청구_알리코인_CNY']) || (_bl + _sea + _co + _hd + _dc);
+    const _rateCnyKrw = parseFloat(f['환율CNY_KRW']) || (rateCnyUsd * rateUsdKrw);
+    const alicoin = {
+      blCny: _bl, seaCny: _sea, coCny: _co, handlingCny: _hd, documentCny: _dc,
+      workfeeCny: _hd + _dc, totalCny: _totalCny, krwRef: Math.round(_totalCny * _rateCnyKrw),
+    };
     // [v3.2.139] 발행주체 = 주식회사 테일코리아(단일 진실원). 통합 청구 URL(invoice-view)의 발행주체·입금계좌.
     const issuer = {
       name: '주식회사 테일코리아',
@@ -138,6 +150,7 @@ module.exports = async (req, res) => {
       products: [],
       totals,
       breakdown,
+      alicoin,   // [v3.2.200] 알리코인(CNY) 차감 내역 — 정보 표기(한국 결제 아님)
       issuer,   // [v3.2.139] 발행주체 = 주식회사 테일코리아 + 하나은행 계좌
       // [v3.2.141] 페이앱 영구 거절 → 결제수단 = 계좌이체 + 세금계산서. payappUrl/Status/Amount 제거.
       //   입금 확인 = Shipments.입금완료일시(§13 입금 매칭에서 기록) → 페이지 "입금 확인 완료" 표시.
