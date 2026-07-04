@@ -55,6 +55,10 @@ module.exports = async (req, res) => {
       });
     }
 
+    // [v3.2.203] 4.5 CostItems (현지 작업비 — 알리코인 사용내역 참고. 청구 합계 미포함)
+    let costItems = [];
+    try { costItems = await atListAll(`/${TABLES.CostItems || 'CostItems'}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}`); } catch (e) { costItems = []; }
+
     // 5. 합계 계산
     const f = ship.fields || {};
     const cf = (customer && customer.fields) || {};
@@ -111,9 +115,27 @@ module.exports = async (req, res) => {
     const _dc = parseFloat(f['도큐먼트피CNY']) || 0;
     const _totalCny = parseFloat(f['청구_알리코인_CNY']) || (_bl + _sea + _co + _hd + _dc);
     const _rateCnyKrw = parseFloat(f['환율CNY_KRW']) || (rateCnyUsd * rateUsdKrw);
+    // [v3.2.203] 중국 현지 작업비 — CostItems(부대비용·원산지증명 제외). ★신고가 반영분, 청구 합계 미포함(참고).
+    const _workItems = []; let _workTotal = 0;
+    costItems.forEach(c => {
+      const cf2 = c.fields || {}; const memo = cf2['메모'] || ''; const cat = cf2['카테고리'] || '';
+      if (memo.includes('[부대비용:') || memo.includes('[원산지증명:') || cat === '부대비용' || cat === '원산지증명') return;
+      const isCny = /CNY|위안|¥/i.test(memo);
+      const mm = memo.match(/수량\s*(\d+(?:\.\d+)?)\s*[×x*]\s*[¥₩\\]?\s*(\d+(?:\.\d+)?)/);
+      let cny = 0;
+      if (isCny && mm) cny = parseFloat(mm[1]) * parseFloat(mm[2]);
+      else { const krw = parseFloat(cf2['금액KRW']) || 0; cny = _rateCnyKrw > 0 ? krw / _rateCnyKrw : 0; }
+      if (!(cny > 0)) return;
+      let label = memo.replace(/\[[^\]]*\]/g, '').replace(/수량[\s\S]*$/, '').trim() || '작업';
+      if (label.length > 26) label = label.slice(0, 26) + '…';
+      _workItems.push({ label, cny: Math.round(cny * 100) / 100 }); _workTotal += cny;
+    });
+    _workTotal = Math.round(_workTotal * 100) / 100;
     const alicoin = {
       blCny: _bl, seaCny: _sea, coCny: _co, handlingCny: _hd, documentCny: _dc,
       workfeeCny: _hd + _dc, totalCny: _totalCny, krwRef: Math.round(_totalCny * _rateCnyKrw),
+      localWorkCny: _workTotal, localWorkItems: _workItems,   // [v3.2.203] 현지 작업비(참고)
+      grandUseCny: Math.round((_totalCny + _workTotal) * 100) / 100,   // 알리코인 총 사용(서비스+현지작업비)
     };
     // [v3.2.139] 발행주체 = 주식회사 테일코리아(단일 진실원). 통합 청구 URL(invoice-view)의 발행주체·입금계좌.
     const issuer = {

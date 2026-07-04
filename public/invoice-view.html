@@ -274,16 +274,26 @@ function render(d) {
       <div class="amt">${fmtKrw(claimAmount)}</div>
     </div>
 
-    ${(al.totalCny > 0) ? `
+    ${(al.totalCny > 0 || al.localWorkCny > 0) ? `
     <div style="background:#eef4fb; border:1.5px solid #1B5E9A; border-radius:12px; padding:18px 20px; margin-top:16px;">
-      <div style="font-weight:700; color:#1B5E9A; font-size:14px; margin-bottom:10px;">🪙 알리코인(예치금) 차감 내역 <span style="font-weight:400; font-size:11px; color:#888;">— 위 국내 결제와 별도 · 계좌이체 금액 아님</span></div>
+      <div style="font-weight:700; color:#1B5E9A; font-size:14px; margin-bottom:10px;">🪙 알리코인(예치금) 사용내역 <span style="font-weight:400; font-size:11px; color:#888;">— 위 국내 결제와 별도 · 계좌이체 금액 아님</span></div>
+      <div style="font-size:12px; color:#888; font-weight:600; margin-bottom:4px;">［강하고 서비스 수수료］</div>
       <table style="width:100%; font-size:13px; border-collapse:collapse;">
         <tr><td style="padding:4px 0;">BL 발급료</td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.blCny||0).toFixed(2)}</td></tr>
         <tr><td style="padding:4px 0;">해운비 <span style="font-size:11px; color:#888;">(FREIGHT PREPAID)</span></td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.seaCny||0).toFixed(2)}</td></tr>
         ${(al.coCny||0) > 0 ? `<tr><td style="padding:4px 0;">원산지증명(CO)</td><td class="num" style="text-align:right; font-family:monospace;">¥${al.coCny.toFixed(2)}</td></tr>` : ''}
         <tr><td style="padding:4px 0;">작업수수료 <span style="font-size:11px; color:#888;">(핸들링+도큐먼트피)</span></td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.workfeeCny||0).toFixed(2)}</td></tr>
-        <tr style="border-top:1.5px solid #1B5E9A; font-weight:700;"><td style="padding:7px 0;">합계 (알리코인 차감)</td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.totalCny||0).toFixed(2)} <span style="font-size:11px; color:#888;">(≈₩${(al.krwRef||0).toLocaleString()})</span></td></tr>
+        <tr style="border-top:1px dashed #1B5E9A; font-weight:600;"><td style="padding:5px 0; font-size:12px;">└ 서비스 수수료 소계</td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.totalCny||0).toFixed(2)} <span style="font-size:11px; color:#888;">(≈₩${(al.krwRef||0).toLocaleString()})</span></td></tr>
       </table>
+      ${(al.localWorkCny > 0) ? `
+      <div style="font-size:12px; color:#888; font-weight:600; margin:10px 0 4px 0;">［중국 현지 작업비］ <span style="font-weight:400; color:#c0392b;">제품 신고가에 이미 반영 · 사용내역 참고</span></div>
+      <table style="width:100%; font-size:13px; border-collapse:collapse;">
+        <tr><td style="padding:4px 0;">🏭 중국 현지 작업비</td><td class="num" style="text-align:right; font-family:monospace; font-weight:700;">¥${(al.localWorkCny||0).toFixed(2)}</td></tr>
+      </table>
+      <details style="margin-top:4px;"><summary style="cursor:pointer; font-size:12px; color:#1B5E9A;">세부보기 ▼ (${(al.localWorkItems||[]).length}항목)</summary>
+        <div style="margin-top:5px; font-size:12px; color:#555;">${(al.localWorkItems||[]).map(it => `<div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dashed #e0e8f2;"><span>${esc(it.label)}</span><span style="font-family:monospace;">¥${(it.cny||0).toFixed(2)}</span></div>`).join('')}</div>
+      </details>` : ''}
+      <div style="border-top:1.5px solid #1B5E9A; margin-top:8px; padding-top:6px; display:flex; justify-content:space-between; font-weight:700; color:#1B5E9A;"><span>🪙 알리코인 총 사용 (참고)</span><span style="font-family:monospace;">¥${(al.grandUseCny != null ? al.grandUseCny : ((al.totalCny||0)+(al.localWorkCny||0))).toFixed(2)}</span></div>
       <div style="margin-top:9px; font-size:12px; color:#1B5E9A;">위 금액은 <strong>알리코인(예치금)에서 이미 차감</strong>되었습니다. 계좌이체로 추가 청구하지 않습니다.</div>
     </div>` : ''}
 
