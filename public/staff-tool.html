@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.198</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.199</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.198</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.199</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3668,7 +3668,7 @@ async function ensureSchema() {
       ]}},
       // [v3.2.93] 마스터 배차표 오른쪽 절반 — 배차 운영 데이터(부킹 요약 모달). 마진·청구 연동은 Phase 2.
       { name: '보세창고', type: 'singleLineText' },                                  // UNIPASS shedNm 자동(빈값일 때만) + 수동 수정
-      { name: '배차방식', type: 'singleSelect', options: { choices: [{ name: '독차', color: 'blueLight2' }, { name: '합차', color: 'greenLight2' }] } },   // [v3.2.194] 화물 독차/합차 — ★choices에 color 추가(다른 singleSelect와 동일, color 없으면 addField 422 가능)
+      { name: '배차방식', type: 'singleLineText' },   // [v3.2.199] 화물 독차/합차 인라인 저장 — singleLineText(구 singleSelect+choices는 미생성/422 반복 → 단순 텍스트. 값 '독차'/'합차')
 
       { name: '입항일', type: 'date', options: { dateFormat: { name: 'iso' } } },     // UNIPASS etprDt 자동(항상 최신)
       { name: '한국포워딩사', type: 'singleLineText' },                              // UNIPASS frwrEntsConm 자동(항상 최신)
@@ -17145,8 +17145,15 @@ async function saveDispatchMethod(shipId, val) {
   try {
     await api('PATCH', `/${TABLES.Shipments}/${shipId}`, { fields: { '배차방식': val }, typecast: true });
     const r = (dispatchState.rows || []).find(x => x.id === shipId); if (r) r.배차방식 = val;
+    if (dispatchState._editMethod) dispatchState._editMethod.delete(shipId);   // [v3.2.199] 저장 후 편집상태 해제
     if (typeof toastSuccess === 'function') toastSuccess('배차방식 저장: ' + (val || '(비움)'), { title: '🚚 배차' });
+    if (typeof renderDispatchMaster === 'function') renderDispatchMaster();     // [v3.2.199] 드롭다운→텍스트 전환 리렌더
   } catch (e) { if (typeof toastError === 'function') toastError('배차방식 저장 실패: ' + (e.message || e)); }
+}
+// [v3.2.199] 화물-독차/합차 텍스트 옆 [변경] → 해당 행만 드롭다운 재노출
+function dispatchEditMethod(shipId) {
+  (dispatchState._editMethod = dispatchState._editMethod || new Set()).add(shipId);
+  if (typeof renderDispatchMaster === 'function') renderDispatchMaster();
 }
 
 // [v3.2.165] ★월별 조회 — 선적일(Orders.실제출고요청일) 기준 그 달 전체. 'this'/'last'/'YYYY-MM'.
@@ -17206,11 +17213,16 @@ async function fetchDispatchMaster(daysOverride) {
     const rows = await Promise.all(ships.map(async s => {
       const sf = s.fields || {}, mailbox = sf['사서함'] || '';
       let boxes = [];
-      try { boxes = await apiPaged(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=박스순번&fields[]=무게KG&fields[]=부피CBM&fields[]=송장번호&fields[]=가로cm&fields[]=세로cm&fields[]=높이cm`); } catch (e) {}   // [v3.2.192] 치수 추가(가장큰박스)
+      try { boxes = await apiPaged(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=박스순번&fields[]=배송방식&fields[]=무게KG&fields[]=부피CBM&fields[]=송장번호&fields[]=가로cm&fields[]=세로cm&fields[]=높이cm`); } catch (e) {}   // [v3.2.192] 치수 [v3.2.199] 배송방식(집계)
       let kgSum = 0, cbmSum = 0; const seqs = [], trks = []; let _maxCbm = -1, _bigBox = '';   // [v3.2.192] 가장큰박스=부피CBM 최대 박스의 w×h×d
       boxes.forEach(b => { const bf = b.fields || {}; kgSum += parseFloat(bf['무게KG']) || 0; const _cb = parseFloat(bf['부피CBM']) || 0; cbmSum += _cb; const sq = parseInt(bf['박스순번'], 10); if (!isNaN(sq)) seqs.push(sq); const t = String(bf['송장번호'] || '').trim(); if (t) trks.push(t);
         if (_cb > _maxCbm) { _maxCbm = _cb; const w = parseFloat(bf['가로cm'])||0, h = parseFloat(bf['세로cm'])||0, d = parseFloat(bf['높이cm'])||0; _bigBox = (w||h||d) ? `${w}×${h}×${d}` : ''; } });
       seqs.sort((a, b) => a - b);
+      // [v3.2.199] 배송방법 집계 = Boxes.배송방식 + Shipments.배송방식. 화물+택배→혼재 / 화물→화물 / 밀크런→밀크런 / 택배→택배 / 없음→''(—)
+      const _mSet = new Set(boxes.map(b => String((b.fields || {})['배송방식'] || '').trim()).filter(Boolean));
+      if (String(sf['배송방식'] || '').trim()) _mSet.add(String(sf['배송방식']).trim());
+      const _hasCargo = _mSet.has('화물') || _mSet.has('cargo'), _hasParcel = _mSet.has('택배') || _mSet.has('parcel'), _hasMilk = _mSet.has('밀크런');
+      const _methodAgg = (_hasCargo && _hasParcel) ? '혼재' : (_hasCargo ? '화물' : (_hasMilk ? '밀크런' : (_hasParcel ? '택배' : '')));
       const base = baseMailbox(mailbox);
       const cust = (state.customerByPost && state.customerByPost[base]) || {};
       // 송장 대표값: 전부 같으면 그 번호 / 다르면 "첫 외N" / 없으면 ''
@@ -17233,7 +17245,7 @@ async function fetchDispatchMaster(daysOverride) {
         회사: cust.회사명 || '', 요청사항: requestByShip[s.id] || '', 가장큰박스: _bigBox, 배차방식: sf['배차방식'] || '',   // [v3.2.192] 배차정보 탭
         보세창고: sf['보세창고'] || '', 입항일: sf['입항일'] || '', 통관일: sf['통관완료일'] || sf['통관일'] || '',   // [v3.2.193] 통관일시=통관완료일(수입신고수리) 우선
         배송지: sf['수취_주소'] || destByShip[s.id] || sf['도착지주소'] || '', 수취인연락처: sf['수취_전화'] || telByShip[s.id] || '',
-        배송방법: methodByShip[s.id] || '', shipMethod: sf['배송방식'] || '',
+        배송방법: methodByShip[s.id] || '', shipMethod: sf['배송방식'] || '', methodAgg: _methodAgg,   // [v3.2.199] Boxes 집계 배송방법
         배차견적액: sf['배차견적액'] ?? '', 실제배차비: sf['실제배차비'] ?? '', 배차상태: sf['배차상태'] || '대기', 배차완료일: sf['배차완료일'] || '',
         차량번호: sf['차량번호'] || '', 기사전화번호: sf['기사전화번호'] || '', 송장대표: trkRep, 메모: sf['메모'] || '',
       };
@@ -17280,13 +17292,24 @@ function renderDispatchMaster() {
       body += '<tr style="border-bottom:1px solid #eee;">' + cols.map(c => {
         const v = c.get(r);
         if (c.key === 'dispStat') return `<td style="padding:4px 7px; text-align:center; overflow:hidden;">${badge(v)}</td>`;
-        // [v3.2.198] 배송방법 = 읽기전용 텍스트(드롭다운 폐지). 입력은 §5(박스)/§11에서만. 배차마스터는 조회·확인 전용.
-        //   화물+독차/합차 → "화물-독차"/"화물-합차" / 화물만 → "화물" / 택배·밀크런 → 그대로 / 없음 → "—". ("화물 (독차/합차?)" 미확정 표기 제거.)
+        // [v3.2.199] 배송방법 = Boxes.배송방식 집계 자동표시. 화물만 독차/합차 인라인 선택(배차 시점 결정). 택배·밀크런·혼재·없음은 텍스트.
+        //   화물: 배차방식 있으면 "화물-독차/합차" + [변경], 없으면 드롭다운([선택]/독차/합차) → 선택 즉시 PATCH → 텍스트 전환.
         if (c.key === 'shipMethodSel') {
-          const m = r.shipMethod || '';
+          const agg = r.methodAgg || '';
           const dm = r.배차방식 || '';
-          const disp = (m === '화물') ? (dm ? `화물-${dm}` : '화물') : (m || '—');
-          return `<td style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#555;" title="${esc(disp)}">${esc(disp)}</td>`;
+          if (agg === '화물') {
+            const editing = dispatchState._editMethod && dispatchState._editMethod.has(r.id);
+            if (dm && !editing) {
+              return `<td style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#333;" title="화물-${esc(dm)}">화물-${esc(dm)} <a href="#" onclick="dispatchEditMethod('${r.id}');return false;" style="font-size:10px; color:#1B5E9A; text-decoration:underline;">변경</a></td>`;
+            }
+            return `<td style="padding:2px 4px; overflow:hidden;"><select onchange="saveDispatchMethod('${r.id}', this.value)" style="font-size:11px; padding:2px 3px; border:1px solid #c9973a; border-radius:4px; width:100%; background:#fff;">
+              <option value=""${!dm ? ' selected' : ''}>선택</option>
+              <option value="독차"${dm === '독차' ? ' selected' : ''}>독차</option>
+              <option value="합차"${dm === '합차' ? ' selected' : ''}>합차</option>
+            </select></td>`;
+          }
+          const txt = agg || '—';
+          return `<td style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#555;" title="${esc(txt)}">${esc(txt)}</td>`;
         }
         const mono = (c.key === 'box' || c.key === 'blNo') ? ' font-family:ui-monospace,monospace;' : '';
         return `<td title="${esc(v)}" style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;${mono}">${esc(v)}</td>`;
