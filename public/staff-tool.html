@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.203</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.204</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.203</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.204</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -7319,6 +7319,8 @@ async function handleBlCoFileUpload(kind, fileInput) {
     if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();
     // [v3.2.163] ★BL∧CO 둘 다 업로드된 순간 = 확정 IP 자동등록(BL번호·선적항·특혜세율 반영). 다운로드 없이 최종IP파일에 등록.
     try { await _autoRegisterFinalIp(); } catch (e) { console.warn('[확정 IP 자동등록]', e && e.message); }
+    // [v3.2.204] 트리거 — BL업로드=트리거1(5필드 프리즈, 이미 있으면 스킵) / CO업로드=트리거2(CO 갱신+알리코인 재계산). 계산 코어 불변.
+    try { await saveFrozenCnyCharges(kind === 'co' ? { trigger: 'co', withCo: true } : { trigger: 'bl' }); } catch (e) { console.warn('[트리거 CNY 저장]', e && e.message); }
   } catch (e) {
     console.error(e);
     if (typeof toastError === 'function') toastError('첨부 업로드 실패: ' + (e.message || e));
@@ -12935,6 +12937,8 @@ async function downloadInvoiceExcel(opts) {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toastSuccess('인보이스/패킹 엑셀 다운로드 완료', { title: '📊 발행', subtitle: a.download });
+    // [v3.2.204] 트리거1 — 1차 IP 다운 시 CNY 5필드+환율 프리즈(최초 1회 고정, 이미 있으면 스킵). 계산 코어 불변.
+    if (stage === 'first') { try { await saveFrozenCnyCharges({ trigger: 'ip1' }); } catch (e) { console.warn('[트리거1 IP1 CNY]', e && e.message); } }
     // [v3.2.173] ★거짓성공 근절 — 다운로드는 됐어도 관세사 대시보드 저장(_snapshotIp)이 실패면 명확히 경고.
     if (_snap && !_snap.ok) toastWarn && toastWarn('⚠ 단, 관세사 대시보드 저장 실패 — ' + (_snap.error || '저장 오류') + '\n(사진 많은 사서함은 5MB 초과 — 압축 후에도 초과면 사진 축소 필요)', { title: '⚠ 대시보드 미저장', duration: 9000 });
   } catch (e) {
@@ -15079,13 +15083,7 @@ async function downloadInvoicePdf() {
         '청구_쿠팡밀크런_금액': bd.coupang || 0,
         '청구_밀크런_금액':   bd.milkrun || 0,   // v3.2.38: 자동 ⌈CBM/1.5⌉×30,000
         '청구_preVAT':       bd.preVat  || 0,
-        // [v3.2.200] 알리코인(CNY) 차감 항목 — invoice-view 알리코인 섹션용. bl/sea/co(KRW)는 0(청구 아님).
-        '청구_BL_CNY':       bd.blCny       || 0,
-        '청구_해운비_CNY':    bd.seaCny      || 0,
-        '청구_CO_CNY':       bd.coCny       || 0,
-        '핸들링CNY':         bd.handlingCny || 0,
-        '도큐먼트피CNY':      bd.documentCny || 0,
-        '청구_알리코인_CNY':  bd.alicoinCny  || 0,
+        // [v3.2.204] CNY 6필드 저장은 §9 발행에서 제거 → 트리거(1차 IP다운/BL업로드/CO업로드)로 이설(saveFrozenCnyCharges). §9는 §8 확정분 URL 내보내기만.
         // v3.2.31: CO 절세 안내 — invoice-view에서 "관세 ₩XXX 절감 (CO 발급 기준)" 표시
         '청구_FTA_절세_KRW': data.ftaSavingKrw || 0,
       };
@@ -15305,6 +15303,57 @@ function calcInvoiceBreakdownKrw() {
 
 function calcFinalInvoiceTotalKrw() {
   return calcInvoiceBreakdownKrw().totalKrw;
+}
+
+// [v3.2.204] CNY 프리즈 계산 — ★요일·환율 기준 = Shipments.선적일(전 CNY 공통). calcSeaFreightKRW 내부 불변(선적일을 인자로 전달만).
+function computeFrozenCnyCharges() {
+  const f = (state.shipment && state.shipment.fields) || {};
+  const shipDate = String(f['선적일'] || '').trim() || ((typeof getShipDate === 'function') ? getShipDate() : '');
+  const cbm = (typeof getTotalCbm === 'function') ? getTotalCbm() : 0;
+  const kg = (typeof getTotalKg === 'function') ? getTotalKg() : 0;
+  const rateUsdKrw = parseFloat((document.getElementById('rateUsdKrw') || {}).value) || 0;
+  const rateCnyUsd = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
+  const sea = (typeof calcSeaFreightKRW === 'function') ? calcSeaFreightKRW(cbm, shipDate, rateUsdKrw, kg, rateCnyUsd) : { cny: 0, billCbm: 0, rate: {} };
+  return {
+    shipDate,
+    blCny: BL_FEE_CNY,
+    seaCny: sea.cny,
+    handlingCny: (typeof calcHandlingCny === 'function') ? calcHandlingCny(cbm) : 0,
+    documentCny: (typeof calcDocumentCny === 'function') ? calcDocumentCny(getShipmentSkuCount()) : 0,
+    coCny: (typeof calcCoCny === 'function') ? calcCoCny() : 0,
+    billCbm: sea.billCbm, rate: sea.rate,
+  };
+}
+
+// [v3.2.204] 트리거 자동저장 — 트리거1(1차 IP다운/BL업로드): 5필드+환율 최초 1회 고정. 트리거2(CO업로드): CO 갱신 + 알리코인 재계산.
+//   opts.withCo=true → CO(트리거2). 프리즈 플래그 = 청구_BL_CNY>0(5필드 이미 고정).
+async function saveFrozenCnyCharges(opts) {
+  opts = opts || {};
+  if (!(state.shipment && state.shipment.id)) return { skip: '사서함 미로드' };
+  const f = state.shipment.fields || {};
+  const alreadyFrozen = parseFloat(f['청구_BL_CNY']) > 0;   // 5필드 프리즈 완료 여부
+  if (alreadyFrozen && !opts.withCo) return { skip: '이미 프리즈(스킵)' };   // ★중복 트리거 방지(값 불변)
+  const c = computeFrozenCnyCharges();
+  // ★적대검수: 환율/선적일 미확정 시 0 프리즈 금지 — 유효값 갖춰질 때까지 스킵(다음 트리거 재시도).
+  const _rcu = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
+  if (!alreadyFrozen && (!(c.seaCny > 0) || _rcu <= 0 || !c.shipDate)) return { skip: '환율/선적일 미확정 — 프리즈 보류(재시도)' };
+  const fields = {};
+  if (!alreadyFrozen) {   // 트리거1: 5필드 최초 고정
+    fields['청구_BL_CNY'] = c.blCny;
+    fields['청구_해운비_CNY'] = c.seaCny;
+    fields['핸들링CNY'] = c.handlingCny;
+    fields['도큐먼트피CNY'] = c.documentCny;
+  }
+  if (opts.withCo) fields['청구_CO_CNY'] = c.coCny;   // 트리거2: CO(절세>0이면 200, 아니면 0)
+  // 알리코인 = 프리즈된 5필드(이번 저장분 우선, 없으면 기존 f) + CO
+  const pick = (k) => (fields[k] != null) ? fields[k] : (parseFloat(f[k]) || 0);
+  fields['청구_알리코인_CNY'] = pick('청구_BL_CNY') + pick('청구_해운비_CNY') + pick('청구_CO_CNY') + pick('핸들링CNY') + pick('도큐먼트피CNY');
+  try {
+    await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields, typecast: true });
+    Object.assign(state.shipment.fields, fields);
+    if (typeof toastSuccess === 'function') toastSuccess(`🪙 알리코인 ¥${fields['청구_알리코인_CNY'].toFixed(2)} 저장(${opts.withCo ? 'CO 포함' : '프리즈'})`, { title: 'CNY 자동저장' });
+    return { ok: true, alicoinCny: fields['청구_알리코인_CNY'] };
+  } catch (e) { console.warn('[CNY 프리즈 저장]', e.message); return { skip: e.message }; }
 }
 
 // v3.2.18 §9: 택배 박스별 단가 detail — sub-row 표시용 ({label, amount} 배열)
