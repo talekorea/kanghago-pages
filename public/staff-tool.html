@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.201</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.202</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.201</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.202</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1135,8 +1135,8 @@
     <tbody id="overheadBody"></tbody>
     <tfoot>
       <tr style="background:linear-gradient(135deg,#FAF6EE 0%,#F4EFE6 100%); font-weight:700; border-top:2px solid #C9973A;">
-        <td colspan="2" style="text-align:right; padding:14px 16px; font-size:14px;" data-i18n="oh.total_label">부대비용 합계 (CO 포함):</td>
-        <td class="num" id="totalOverheadKrw" style="padding:14px 16px; font-size:16px; color:#C9973A; font-family:ui-monospace,monospace;">₩0</td>
+        <td style="text-align:right; padding:14px 16px; font-size:13px; color:#888; vertical-align:top;">합계</td>
+        <td colspan="2" class="num" id="totalOverheadKrw" style="padding:12px 16px; font-family:ui-monospace,monospace; text-align:right;">₩0</td>
         <td></td>
       </tr>
     </tfoot>
@@ -8574,19 +8574,24 @@ function renderOverhead() {
 
   // ── 🪙 알리코인(CNY) 차감 그룹 — 프리페이드, KRW 청구 아님 ──
   const g1 = document.createElement('tr');
-  g1.innerHTML = `<td colspan="4" style="padding:8px 12px; background:#eef4fb; color:#1B5E9A; font-weight:700; font-size:12px; border-left:3px solid #1B5E9A;">🪙 알리코인(예치금) 차감 — 프리페이드 · <span style="color:#c0392b;">KRW 청구 아님</span> (₩는 참고환산)</td>`;
+  g1.innerHTML = `<td colspan="4" style="padding:9px 12px; background:#eef4fb; color:#1B5E9A; font-weight:700; font-size:13px; border-left:4px solid #1B5E9A;">🪙 알리코인(예치금) 차감 (프리페이드) — <span style="color:#c0392b;">KRW 청구 아님 · 참고용</span> <span style="font-size:10px; font-weight:400; color:#888;">(₩는 참고환산)</span></td>`;
   tbody.appendChild(g1);
   _mkRow('BL 발급료', _cnyCell(bd.blCny), '¥100 정액');
   _mkRow('해상운임', _cnyCell(bd.seaCny), `${seaInfo.rate.name} · 청구CBM ${(seaInfo.billCbm||0).toFixed(2)} × $${seaInfo.rate.unit} = $${(seaInfo.usd||0).toFixed(2)} → ¥ (USD/CNY)`);
   _mkRow('원산지증명 (CO)', _cnyCell(bd.coCny), (bd.coCny > 0) ? '¥200 정액 (FTA 절세 있음 — 자동판정)' : '절세 없음 → CO 미청구');
   _mkRow('작업수수료', _cnyCell(bd.workfeeCny), `핸들링 ¥${(bd.handlingCny||0).toFixed(2)} + 도큐먼트피 ¥${(bd.documentCny||0).toFixed(2)} (SKU ${getShipmentSkuCount()}개)`);
-  const alSum = document.createElement('tr'); alSum.style.background = '#f4f8ff';
-  alSum.innerHTML = `<td colspan="2" style="text-align:right; font-weight:700; color:#1B5E9A;">알리코인 차감 합계</td><td class="num" style="font-weight:700; color:#1B5E9A;">¥${(bd.alicoinCny||0).toFixed(2)}</td><td style="font-size:11px; color:#999;">≈₩${(bd.alicoinKrw||0).toLocaleString()} (참고)</td>`;
+  const alSum = document.createElement('tr'); alSum.style.background = '#e3eef9';
+  alSum.innerHTML = `<td colspan="2" style="text-align:right; font-weight:700; color:#1B5E9A; border-bottom:2px solid #1B5E9A;">알리코인 차감 합계 <span style="font-size:10px; font-weight:400; color:#888;">(청구 아님)</span></td><td class="num" style="font-weight:700; color:#1B5E9A; border-bottom:2px solid #1B5E9A;">¥${(bd.alicoinCny||0).toFixed(2)}</td><td style="font-size:11px; color:#999; border-bottom:2px solid #1B5E9A;">≈₩${(bd.alicoinKrw||0).toLocaleString()} (참고)</td>`;
   tbody.appendChild(alSum);
+
+  // [v3.2.202] 두 그룹 사이 여백 — "청구 아님 / 실제 결제" 시각 분리 강화
+  const spacer = document.createElement('tr');
+  spacer.innerHTML = `<td colspan="4" style="height:14px; background:#fff; border:0;"></td>`;
+  tbody.appendChild(spacer);
 
   // ── 💳 국내 결제(KRW) 그룹 — 국내운임만 ×1.10 ──
   const g2 = document.createElement('tr');
-  g2.innerHTML = `<td colspan="4" style="padding:8px 12px; background:#f3ece0; color:#5a4a2a; font-weight:700; font-size:12px; border-left:3px solid var(--gold);">💳 국내 결제 (계좌이체 + 세금계산서) — 국내운임만 × 1.10</td>`;
+  g2.innerHTML = `<td colspan="4" style="padding:9px 12px; background:#f3ece0; color:#5a4a2a; font-weight:700; font-size:13px; border-left:4px solid var(--gold); border-top:1px solid var(--gold);">💳 국내 결제 (계좌이체 + 세금계산서) — <span style="color:#0a7b40;">실제 청구</span> · 국내운임만 × 1.10</td>`;
   tbody.appendChild(g2);
   const _domRows = [];
   if (bd.parcel > 0)  { const _pd = (typeof getParcelDetailByBox === 'function') ? getParcelDetailByBox() : []; const _basis = _pd.length ? '박스별 ' + _pd.map(d => d && d.exceeded ? '수동' : ('₩' + (parseFloat(d.amount)||0).toLocaleString())).join('+') : '택배 매트릭스(부피·무게)'; _domRows.push(['국내운임 (택배)', bd.parcel, _basis + ' · pre-VAT']); }
@@ -8602,9 +8607,11 @@ function renderOverhead() {
   payTr.innerHTML = `<td colspan="2" style="text-align:right; font-weight:700; color:#5a4a2a;">국내 결제금액 (VAT 포함)</td><td class="num" style="font-weight:700; color:#5a4a2a; font-size:14px;">₩${(bd.totalKrw||0).toLocaleString()}</td><td></td>`;
   tbody.appendChild(payTr);
 
-  // 하단 합계 라벨 — ★혼합합계 폐기, 두 통화 분리 표시
+  // [v3.2.202] 하단 합계 — ★혼합합계 폐기, 두 줄 분리(실제 청구 vs 참고). 통화별 명확 구분.
   const _tot = document.getElementById('totalOverheadKrw');
-  if (_tot) _tot.innerHTML = `국내 결제 ₩${(bd.totalKrw||0).toLocaleString()} <span style="color:#1B5E9A;">· 알리코인 ¥${(bd.alicoinCny||0).toFixed(2)}</span>`;
+  if (_tot) _tot.innerHTML =
+    `<div style="font-size:16px; color:#5a4a2a; font-weight:700;">💳 국내 결제금액(실제 청구): ₩${(bd.totalKrw||0).toLocaleString()}</div>`
+    + `<div style="font-size:12px; color:#1B5E9A; font-weight:600; margin-top:4px;">🪙 알리코인 차감(참고): ¥${(bd.alicoinCny||0).toFixed(2)}${rateCnyKrw > 0 ? ` <span style="color:#999; font-weight:400;">≈₩${(bd.alicoinKrw||0).toLocaleString()}</span>` : ''}</div>`;
 }
 
 function calcTotalOverhead() {
