@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.207</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.208</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.207</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.208</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1475,6 +1475,11 @@
       </tr>
     </tfoot>
   </table>
+  <!-- [v3.2.208] 국내운임 확정 — 견적 계산 그 자리에서 확정(§9 왕복 제거). 확정 후 §9에서 [통합 청구서 URL] 발송. -->
+  <div style="margin-top:10px; padding:9px 12px; background:#f3faf5; border:1px solid #1b7a44; border-radius:8px;">
+    <div style="font-size:11px; color:#5a4a2a; margin-bottom:2px;">💡 <strong>국내운임(택배/화물/밀크런)을 여기서 [확정]</strong>하면 계좌이체 청구액이 저장됩니다. 해운비·BL·CO·작업수수료는 알리코인(트리거) 자동저장이라 §9 무관. 확정 후 <strong>§9 [통합 청구서 URL]</strong>로 발송.</div>
+    <div id="domesticConfirmStatus"></div>
+  </div>
 </div>
 
 <!-- v3.2.0: ═══ 6. 청구서 발행 ═══ (★ 트리거 2 — 인보이스 종합 끝 → 청구서 + 페이앱 URL → 카톡/이메일) -->
@@ -1492,15 +1497,7 @@
       <label style="font-size:11px; color:#666; display:block;">발행일 (Invoice Date) <span style="color:#999; font-size:10px;">커머셜·청구서 공통 · 기본 오늘</span></label>
       <input type="date" id="docIssueDate" onchange="onDocIssueDateChange()" title="커머셜 인보이스·청구서 Date·번호(YYMMDD)에 반영 · 과거 선택 가능 · CO 발급 후 변경 주의" style="padding:6px 9px; border:1px solid #ccc; border-radius:5px; font-size:12px;" />
     </div>
-    <div>
-      <label style="font-size:11px; color:#666; display:block;">
-        해운비 <span style="color:#1B5E9A; font-weight:700;">(알리코인 CNY·프리페이드)</span> <span id="seaFreightStatus" style="color:#888; font-size:10px; font-weight:700;">KRW 청구 아님 · 참고</span>
-      </label>
-      <div style="display:flex; gap:4px;">
-        <input id="invSeaFreight" type="number" placeholder="박스 CBM 입력 후 자동(참고 KRW)" oninput="onSeaFreightManual()" title="[v3.2.200] 해운비는 알리코인(CNY)에서 차감 — 이 KRW는 참고용, 국내 결제금액에 미포함" style="width:140px; padding:6px 9px; border:1px solid #ccc; border-radius:5px; text-align:right;" />
-        <button class="secondary" onclick="restoreSeaFreightAuto()" title="자동 계산으로 복원" style="padding:6px 9px; font-size:11px;">🔄</button>
-      </div>
-    </div>
+    <!-- [v3.2.208] §9 해운비(알리코인) 표시 줄 제거 — §8에 이미 알리코인 차감 내역 있음. 해운비는 트리거 저장, §9 무관. -->
     <div>
       <label style="font-size:11px; color:#666; display:block;">출고 요일 <span style="color:#999; font-size:10px;">(출고요청일 기반 자동)</span></label>
       <select id="invDepartureDay" onchange="onDepartureDayManual()" style="padding:6px 9px; border:1px solid #ccc; border-radius:5px;">
@@ -1530,18 +1527,9 @@
         <option value="DEPOSIT">DEPOSIT (예치금)</option>
       </select>
     </div>
-    <!-- v3.2.13 (2026-05-30): 청구금액 = 물류비만. 마진/예치금 폐기.
-         항목: BL + 해상운임 + CO + 택배 + 화물 + 쿠팡밀크런 → ×1.10. -->
-    <div>
-      <label style="font-size:11px; color:#666; display:block;">화물 (KRW) <span style="color:#999; font-size:10px;">수동</span></label>
-      <input id="invFreightKrw" type="number" value="0" oninput="recalcInvoiceTotals()" placeholder="0" style="width:110px; padding:6px 9px; border:1px solid #ccc; border-radius:5px; text-align:right;" />
-      <!-- TODO v3.3+: 화물 자동단가 (CBM·무게 매트릭스 또는 거래선 견적 API) -->
-    </div>
-    <div>
-      <label style="font-size:11px; color:#666; display:block;">쿠팡밀크런 (KRW) <span style="color:#999; font-size:10px;">수동</span></label>
-      <input id="invCoupangKrw" type="number" value="0" oninput="recalcInvoiceTotals()" placeholder="0" style="width:120px; padding:6px 9px; border:1px solid #ccc; border-radius:5px; text-align:right;" />
-      <!-- TODO v3.3+: 쿠팡 밀크런 자동단가 (위탁사 단가표 연동) -->
-    </div>
+    <!-- [v3.2.208] 화물(KRW)·쿠팡밀크런(KRW) 수동칸 제거 — 국내운임은 §5 운임계산기에서 확정. §9는 내보내기 창구. -->
+    <input id="invFreightKrw" type="hidden" value="0" />
+    <input id="invCoupangKrw" type="hidden" value="0" />
     <button class="secondary small" onclick="openInvoicePreview()" style="padding:8px 16px;">👁 미리보기</button>
     <!-- v3.2.36: PDF 다운로드 버튼 제거 (통합 청구서 URL로 대체). 함수는 미리보기 모달에서 사용 가능 — 보존 -->
     <!-- v3.2.141 (2026-06-24): 페이앱 영구 거절 → [💳 페이앱 결제 요청 생성] 버튼 제거.
@@ -1552,11 +1540,8 @@
       📄 통합 청구서 URL (계좌이체)
     </button>
   </div>
-  <!-- [v3.2.207] §9 = 국내운임 확정 + URL 내보내기. 해운비·BL·CO·작업수수료는 이미 알리코인(트리거) 저장 — §9는 국내운임(계좌이체분)만 확정. -->
-  <div style="margin:8px 0; padding:8px 12px; background:#f3faf5; border:1px solid #1b7a44; border-radius:8px;">
-    <div style="font-size:11px; color:#5a4a2a; margin-bottom:2px;">💡 <strong>국내운임만 여기서 확정</strong>합니다(해운비·BL·CO·작업수수료 = 알리코인 트리거 자동저장). [확정] → 청구서 URL 발송 가능(0원도 확정하면 가능).</div>
-    <div id="domesticConfirmStatus"></div>
-  </div>
+  <!-- [v3.2.208] §9 = 내보내기 창구. 국내운임 확정은 §5, 해운비·BL·CO·작업수수료는 알리코인(트리거). §9는 URL 발송만. -->
+  <div id="invoiceExportHint" style="margin:8px 0; font-size:12px; color:#666;"></div>
   <div id="invoiceSummary" style="font-size:12px; color:#666;"></div>
 
   <!-- [Feature N] 결제용 인보이스 (QINGDAO TALELOR HK → 고객 · USD · Proforma). 통관 신고가(§8)·물류비 청구서(KRW)와 완전 별개 -->
@@ -14882,7 +14867,16 @@ function restoreSeaFreightAuto() {
 
 function recalcInvoiceTotals() {
   if (!state.shipment) return;
-  if (typeof renderDomesticConfirmStatus === 'function') renderDomesticConfirmStatus();   // [v3.2.207] §9 국내운임 확정 상태 갱신
+  if (typeof renderDomesticConfirmStatus === 'function') renderDomesticConfirmStatus();   // [v3.2.207] §5 국내운임 확정 상태 갱신
+  // [v3.2.208] §9 내보내기 안내 — 확정 여부에 따라 URL 가능/§5 확정 유도
+  const _hint = document.getElementById('invoiceExportHint');
+  if (_hint) {
+    const _f = state.shipment.fields || {};
+    _hint.innerHTML = _f['청구서발행일시']
+      ? `✓ 국내운임 확정됨 (₩${(parseFloat(_f['청구금액_KRW'])||0).toLocaleString()}) — 아래 [통합 청구서 URL]로 발송하세요.`
+      : `⛔ <strong>§5 운임계산기에서 국내운임을 먼저 [확정]</strong>하세요. (해운비·BL·CO·작업수수료는 알리코인 자동저장 — §9 무관)`;
+    _hint.style.color = _f['청구서발행일시'] ? '#0a7b40' : '#c0392b';
+  }
   const data = buildInvoiceData();
   const el = document.getElementById('invoiceSummary');
   if (!el) return;
@@ -15159,8 +15153,9 @@ async function confirmDomesticFreight() {
   try {
     await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields, typecast: true });
     Object.assign(state.shipment.fields, fields);
-    toastSuccess && toastSuccess(`✓ 국내운임 확정: ₩${(bd.totalKrw || 0).toLocaleString()} (${method}, VAT 포함)`, { title: '💳 국내운임 확정' });
+    toastSuccess && toastSuccess(`✓ 국내운임 확정 ₩${(bd.totalKrw || 0).toLocaleString()} (${method}, VAT 포함) — §9에서 [통합 청구서 URL]로 발송하세요`, { title: '💳 국내운임 확정', duration: 5000 });
     renderDomesticConfirmStatus();
+    if (typeof recalcInvoiceTotals === 'function') recalcInvoiceTotals();   // §9 안내 갱신
   } catch (e) { toastError && toastError('확정 저장 실패: ' + (e.message || e)); }
 }
 // [v3.2.207] §9 국내운임 확정 상태 표시 + [확정] 버튼(배송방식 선택 AND 화물이면 견적 계산 시만 활성).
@@ -15180,8 +15175,8 @@ function renderDomesticConfirmStatus() {
     + `<span>💳 국내운임(${method || '미선택'}): <strong style="color:#1B2A3B;">₩${liveKrw.toLocaleString()}</strong> <span style="font-size:10px; color:#888;">(VAT 포함 · 국내운임×1.10)</span></span>`
     + `<button onclick="confirmDomesticFreight()" ${disabled ? 'disabled' : ''} style="padding:6px 14px; background:${disabled ? '#ccc' : '#1b7a44'}; color:#fff; border:none; border-radius:6px; font-weight:700; cursor:${disabled ? 'not-allowed' : 'pointer'};" title="${reason || '국내운임 확정 → 청구서 URL 가능'}">${confirmed ? '✓ 재확정' : '국내운임 확정'}</button>`
     + (confirmed
-        ? `<span style="color:#0a7b40; font-size:11px;">✓ 확정 ₩${savedKrw.toLocaleString()} · ${String(f['청구서발행일시']).slice(0, 10)}${Math.abs(savedKrw - liveKrw) > 1 ? ` <span style="color:#c0392b;">(현재 ₩${liveKrw.toLocaleString()} — 재확정 권장)</span>` : ''}</span>`
-        : (reason ? `<span style="color:#c0392b; font-size:11px;">⛔ ${reason}</span>` : `<span style="color:#888; font-size:11px;">확정하면 청구서 URL 발송 가능</span>`))
+        ? `<span style="color:#0a7b40; font-size:11px;">✓ 확정 ₩${savedKrw.toLocaleString()} · ${String(f['청구서발행일시']).slice(0, 10)} → <strong>§9에서 URL 발송</strong>${Math.abs(savedKrw - liveKrw) > 1 ? ` <span style="color:#c0392b;">(현재 ₩${liveKrw.toLocaleString()} — 재확정 권장)</span>` : ''}</span>`
+        : (reason ? `<span style="color:#c0392b; font-size:11px;">⛔ ${reason}</span>` : `<span style="color:#888; font-size:11px;">확정하면 §9에서 청구서 URL 발송 가능</span>`))
     + `</div>`;
 }
 
