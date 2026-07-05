@@ -3211,7 +3211,7 @@ function getSeaFreightKRW() {
     return parseFloat(state.overheadAmounts.sea) || 0;
   }
   const totalCbm = getTotalCbm();
-  const shipDate = getShipDate();
+  const shipDate = getSeaShipDate();   // [v3.2.204] 해운비 요일 = 선적일
   const rateUsdKrw = parseFloat(document.getElementById('rateUsdKrw')?.value) || 0;
   return calcSeaFreightKRW(totalCbm, shipDate, rateUsdKrw).krw;
 }
@@ -3232,6 +3232,13 @@ function getShipDate() {
   if (actual) return actual;
   const f = (state.shipment && state.shipment.fields) || {};
   return f['출고요청일'] || '';   // Orders에 실제출고요청일 없을 때만 (최후 폴백)
+}
+// [v3.2.204] 해운비(CNY) 요일·환율 기준 = Shipments.선적일 (BL·CO 선적일 발행 → 한 건 한 환율, 전 CNY 공통).
+//   ★calcSeaFreightKRW 요일 소스 전용. 과세 환율 주차(getArrivalDate=getShipDate+1)는 getShipDate 유지(별개·과세 불변).
+//   선적일 없으면 getShipDate() 폴백(실제출고요청일). 정상 데이터에선 선적일=실제출고요청일(추출기 동일 세팅).
+function getSeaShipDate() {
+  const sj = String(((state.shipment && state.shipment.fields) || {})['선적일'] || '').trim();
+  return sj || ((typeof getShipDate === 'function') ? getShipDate() : '');
 }
 
 // v3.0.6: 환율 주차 안전장치 — 입항일(선적+1)이 현재 적용 환율의 주차 범위 밖이면 경고.
@@ -8532,7 +8539,7 @@ function renderOverhead() {
   const multiShipDate = actualInfo.dates.length > 1;
   const rateUsdKrw = parseFloat(document.getElementById('rateUsdKrw')?.value) || 0;
   const _rateCnyUsdOv = parseFloat(document.getElementById('rateCnyUsd')?.value) || 0;   // [v3.2.201] CNY 정합 — bd.seaCny와 동일 입력(kg·rateCnyUsd)
-  const seaInfo = calcSeaFreightKRW(totalCbm, shipDate, rateUsdKrw, getTotalKg(), _rateCnyUsdOv);
+  const seaInfo = calcSeaFreightKRW(totalCbm, (typeof getSeaShipDate === 'function' ? getSeaShipDate() : shipDate), rateUsdKrw, getTotalKg(), _rateCnyUsdOv);   // [v3.2.204] 해운비 요일=선적일
   const rwChk = checkRateWeek();
   const arrival = getArrivalDate();
   // v3.2.15: 요일 한글 라벨 함수
@@ -14826,7 +14833,7 @@ function autoFillSeaFreight() {
     recalcInvoiceTotals();
     return;
   }
-  const shipDate = getShipDate();
+  const shipDate = getSeaShipDate();   // [v3.2.204] 해운비 요일=선적일
   const _kg = (typeof getTotalKg === 'function') ? getTotalKg() : 0;
   const _rcu = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
   const sea = calcSeaFreightKRW(totalCbm, shipDate, rateUsdKrw, _kg, _rcu);   // [v3.2.203] {usd, cny, krw, rate, billCbm}
@@ -15260,7 +15267,7 @@ function calcInvoiceBreakdownKrw() {
   const rateUsdKrw = parseFloat((document.getElementById('rateUsdKrw') || {}).value) || 0;
   const _totCbm = (typeof getTotalCbm === 'function') ? getTotalCbm() : 0;
   const _totKg  = (typeof getTotalKg === 'function') ? getTotalKg() : 0;
-  const _shipDate = (typeof getShipDate === 'function') ? getShipDate() : '';
+  const _shipDate = (typeof getSeaShipDate === 'function') ? getSeaShipDate() : '';   // [v3.2.204] 해운비 요일=선적일(입력소스만)
   const _sea = (typeof calcSeaFreightKRW === 'function') ? calcSeaFreightKRW(_totCbm, _shipDate, rateUsdKrw, _totKg, rateCnyUsd) : { usd:0, cny:0, krw:0, billCbm:0, rate:{} };
   const blCny       = BL_FEE_CNY;                                           // ¥100
   const seaCny      = _sea.cny;                                             // 해운비 CNY
@@ -15308,7 +15315,7 @@ function calcFinalInvoiceTotalKrw() {
 // [v3.2.204] CNY 프리즈 계산 — ★요일·환율 기준 = Shipments.선적일(전 CNY 공통). calcSeaFreightKRW 내부 불변(선적일을 인자로 전달만).
 function computeFrozenCnyCharges() {
   const f = (state.shipment && state.shipment.fields) || {};
-  const shipDate = String(f['선적일'] || '').trim() || ((typeof getShipDate === 'function') ? getShipDate() : '');
+  const shipDate = (typeof getSeaShipDate === 'function') ? getSeaShipDate() : String(f['선적일'] || '').trim();   // [v3.2.204] 선적일 단일 소스(getSeaShipDate)
   const cbm = (typeof getTotalCbm === 'function') ? getTotalCbm() : 0;
   const kg = (typeof getTotalKg === 'function') ? getTotalKg() : 0;
   const rateUsdKrw = parseFloat((document.getElementById('rateUsdKrw') || {}).value) || 0;
