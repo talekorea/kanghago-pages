@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.214</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.215</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.214</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.215</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3047,13 +3047,13 @@ const TABLES = {
 const COST_PRESETS = [
   // 원산지표기 (개당)
   { group: 'cost_group.origin', i18n: 'cost.sticker', price: 0.3, unit: 'unit.pcs' },
-  { group: 'cost_group.origin', i18n: 'cost.sewing', price: 1, unit: 'unit.pcs' },     // 0.6→1
+  { group: 'cost_group.origin', i18n: 'cost.sewing', price: 0.6, unit: 'unit.pcs' },   // [v3.2.214] 1→0.6 원복(파렛트 외 인상분 원복)
   { group: 'cost_group.origin', i18n: 'cost.stamp', price: 0.6, unit: 'unit.pcs' },
-  { group: 'cost_group.origin', i18n: 'cost.hangtag', price: 1, unit: 'unit.pcs' },    // 0.5→1
+  { group: 'cost_group.origin', i18n: 'cost.hangtag', price: 0.5, unit: 'unit.pcs' },  // [v3.2.214] 1→0.5 원복
   // 판매라벨 (개당)
   { group: 'cost_group.sale_label', i18n: 'cost.label_main', price: 0.5, unit: 'unit.pcs' },
-  { group: 'cost_group.sale_label', i18n: 'cost.label_age', price: 0.5, unit: 'unit.pcs' },      // 0.3→0.5
-  { group: 'cost_group.sale_label', i18n: 'cost.label_custom', price: 0.5, unit: 'unit.pcs' },   // 0.3→0.5
+  { group: 'cost_group.sale_label', i18n: 'cost.label_age', price: 0.3, unit: 'unit.pcs' },      // [v3.2.214] 0.5→0.3 원복
+  { group: 'cost_group.sale_label', i18n: 'cost.label_custom', price: 0.3, unit: 'unit.pcs' },   // [v3.2.214] 0.5→0.3 원복
   // 검수 (정밀 개당/시간당 2항목)
   { group: 'cost_group.inspection', i18n: 'cost.inspect_normal', price: 0, unit: 'unit.free' },
   { group: 'cost_group.inspection', i18n: 'cost.inspect_piece', price: 1.5, unit: 'unit.pcs' },
@@ -3062,7 +3062,7 @@ const COST_PRESETS = [
   // 포장
   { group: 'cost_group.packing', i18n: 'cost.wood_dismantle', price: 100, unit: 'unit.case' },   // 나무파레트 해체(건당) NEW
   { group: 'cost_group.packing', i18n: 'cost.remove_pack', price: 0.3, unit: 'unit.pcs' },       // 재포장
-  { group: 'cost_group.packing', i18n: 'cost.remove_tag', price: 0.3, unit: 'unit.pcs' },        // 태그제거 0.2→0.3
+  { group: 'cost_group.packing', i18n: 'cost.remove_tag', price: 0.2, unit: 'unit.pcs' },        // [v3.2.214] 태그제거 0.3→0.2 원복
   { group: 'cost_group.packing', i18n: 'cost.bundle_sku', price: 0.3, unit: 'unit.sku' },        // SKU분류
   { group: 'cost_group.packing', i18n: 'cost.bundle_pack', price: 1, unit: 'unit.set' },         // 묶음포장
   { group: 'cost_group.packing', i18n: 'cost.opp_low', price: 1.5, unit: 'unit.pcs' },           // OPP 하 NEW
