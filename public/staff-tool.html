@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.211</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.212</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.211</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.212</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3676,6 +3676,10 @@ async function ensureSchema() {
       { name: '청구_쿠팡밀크런_금액',  type: 'number', options: { precision: 0 } },
       { name: '청구_밀크런_금액',      type: 'number', options: { precision: 0 } },   // v3.2.38: ⌈CBM/1.5⌉×30,000 (pre-VAT)
       { name: '국내운임_원본견적',      type: 'number', options: { precision: 0 } },   // [v3.2.209] 화물 직원 수정 시 자동견적 원본(pre-VAT, 투명성)
+      // [v3.2.212] 배송/배차 2차 플로우용(delivery-request 2차 — 통관 후 희망일시·배차요청). ★기타요청은 특이사항 재사용(중복 미신설).
+      { name: '배차요청',    type: 'checkbox', options: { icon: 'check', color: 'greenBright' } },   // 고객 배차요청 여부
+      { name: '배차요청일시', type: 'date', options: { dateFormat: { name: 'iso' } } },              // 배차요청 클릭 시각
+      { name: '배송희망일시', type: 'singleLineText' },                                              // 희망 일시(시각 포함 text)
       { name: '청구_preVAT',          type: 'number', options: { precision: 0 } },
       // [v3.2.200] 알리코인(CNY) 차감 항목 — 분리 저장(핸들링·도큐먼트피 분리, 표시는 "작업수수료" 합산). number 실패 시 addField가 처리(실 저장은 typecast).
       { name: '청구_BL_CNY',           type: 'number', options: { precision: 2 } },

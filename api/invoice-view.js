@@ -150,6 +150,18 @@ module.exports = async (req, res) => {
       bankHolder: '예금주 주식회사 테일코리아',
     };
 
+    // [v3.2.212] 배차요청서(배송정보) 링크 — delivery-request는 ship+t(고객토큰) 필수. 토큰 raw 노출 대신 ★완성 URL만 서버 생성(고객 본인 링크).
+    //   고객토큰 없음/만료면 null(버튼 숨김). 만료일 지난 토큰은 delivery-request가 재차단하므로 여기서도 만료 체크.
+    let deliveryUrl = null;
+    try {
+      const _tok = String(f['고객토큰'] || '').trim();
+      const _exp = f['고객토큰만료일'];
+      const _notExpired = !_exp || (new Date(_exp) >= new Date(new Date().toISOString().slice(0, 10)));
+      if (_tok && _tok.length >= 16 && _notExpired) {
+        deliveryUrl = `https://kanghago-pages.vercel.app/delivery-request.html?ship=${ship.id}&t=${encodeURIComponent(_tok)}`;
+      }
+    } catch (e) { deliveryUrl = null; }
+
     return res.status(200).json({
       ok: true,
       shipment: {
@@ -160,6 +172,7 @@ module.exports = async (req, res) => {
         blNo: f['BL번호'] || '',
         forwarder: f['포워딩사'] || '',
         issueDate: f['청구서발행일시'] || '',
+        deliveryUrl,   // [v3.2.212] 배차요청서 링크(토큰 임베드·완성 URL) or null
         rateCnyUsd, rateUsdKrw,
       },
       customer: cf ? {

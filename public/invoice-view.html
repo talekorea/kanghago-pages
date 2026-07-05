@@ -308,6 +308,12 @@ function render(d) {
       </div>
     ` : ''}
 
+    ${(s.deliveryUrl) ? `
+    <div style="text-align:center; margin:18px 0 6px;">
+      <a href="${s.deliveryUrl}" target="_blank" rel="noopener" style="display:inline-block; padding:15px 40px; background:#1B5E9A; color:#fff; border-radius:10px; font-size:16px; font-weight:800; text-decoration:none; box-shadow:0 4px 12px rgba(27,94,154,0.25);">🚚 배차요청서 작성</a>
+      <div style="font-size:12px; color:#666; margin-top:8px; line-height:1.5;">통관 완료 전에 <strong>배송 정보(받는분·주소·배송유형)</strong>를 미리 등록해 주세요.<br>수입신고 수리 완료 시 다시 안내드리고, 그때 배송 희망 일시를 선택·배차 요청하시면 됩니다.</div>
+    </div>` : ''}
+
     <div class="pay-btn-wrap">
       ${paidIn
         ? `<button class="pay-btn disabled" disabled>✅ 입금 확인 완료 — 통관 진행 중</button>`
