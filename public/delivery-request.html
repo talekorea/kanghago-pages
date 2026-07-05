@@ -60,7 +60,7 @@
 
 <script>
   var qs = new URLSearchParams(location.search);
-  var SHIP = qs.get('ship') || '';
+  var SHIP = qs.get('ship') || qs.get('s') || '';   // [v3.2.212] ?ship= 또는 ?s= 둘 다 허용(토큰 t는 여전히 필수)
   var TOKEN = qs.get('t') || '';
   var esc = function (x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); };
   var $ = function (id) { return document.getElementById(id); };
