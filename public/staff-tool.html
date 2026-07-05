@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.210</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.211</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.210</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.211</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1161,6 +1161,9 @@
   <div class="warn-banner" data-i18n="tip.preview" data-i18n-html>
     💡 <strong>인보이스 단가 USD</strong> = 단가CNY × CNY→USD + 제품별 작업비 분배. 세율/부대비용/CO는 별도 (예상 관부가세 섹션 참조).
   </div>
+  <!-- [v3.2.211] 인보이스 미리보기 = 기본 접힘 + 버튼 펼침 (화면 점유 완화) -->
+  <button type="button" id="invoicePreviewToggleBtn" onclick="toggleInvoicePreview(this)" style="padding:6px 14px; background:#eef4fb; border:1px solid #1B5E9A; border-radius:6px; color:#1B5E9A; cursor:pointer; font-size:12px; font-weight:700; margin-bottom:10px;">📄 인보이스 미리보기 펼치기 ▼</button>
+  <div id="invoicePreviewWrap" style="display:none;">
   <div class="table-wrap">
     <table id="invoicePreviewTable">
       <thead>
@@ -1185,6 +1188,7 @@
       </tfoot>
     </table>
   </div>
+  </div><!-- /invoicePreviewWrap [v3.2.211] -->
   <!-- v2.9.14: 환율 정보 블록 (인보이스/패킹리스트 출력 시 표기) -->
   <div id="invoiceRateInfo" style="margin-top:14px; padding:12px 16px; background:#f8f5ee; border:1px solid #e8d8b8; border-radius:6px; font-size:12px; color:#1B2A3B; line-height:1.7;">
     <div style="font-weight:700; margin-bottom:6px;">📋 환율 정보 (인보이스 출력용)</div>
@@ -14319,7 +14323,7 @@ function recalcShippingMatrix() {
     const mrSummary = '<tr style="background:#fffae0; font-weight:700;"><td colspan="4" style="padding:7px 9px;">🥛 밀크런 합산 '+fmtCBM(totalCbm)+' CBM ('+totalKg.toFixed(1)+' KG)</td>'
       + '<td style="text-align:right;">₩'+mr.total.toLocaleString()+'</td>'
       + '<td style="font-size:11px; color:#666;">⌈'+fmtCBM(totalCbm)+'÷1.5⌉='+mr.units+'구간 × ₩30,000 (pre-VAT)</td></tr>';
-    const mrToggle = boxNums.length ? '<tr><td colspan="6" style="padding:4px 9px; background:#fafafa;"><button type="button" onclick="toggleShippingBoxDetail(this)" style="background:none; border:none; color:#1B5E9A; cursor:pointer; font-size:11px; font-weight:700;">📦 박스 상세 ▼ ('+boxNums.length+'박스)</button></td></tr>' : '';
+    const mrToggle = boxNums.length ? '<tr><td colspan="6" style="padding:4px 9px; background:#fafafa;"><button type="button" onclick="toggleShippingBoxDetail(this)" style="padding:4px 12px; background:#eef4fb; border:1px solid #1B5E9A; border-radius:6px; color:#1B5E9A; cursor:pointer; font-size:11px; font-weight:700;">📦 박스 상세 ▼ ('+boxNums.length+'박스)</button></td></tr>' : '';
     tbody.innerHTML = mrSummary + mrToggle + boxRows.join('');
     const preVatSum = mr.total;
     const vat = Math.round(preVatSum * 0.10);
@@ -14413,7 +14417,7 @@ function recalcShippingMatrix() {
     }
   }
   const toggleRow = boxNums.length
-    ? '<tr><td colspan="6" style="padding:4px 9px; background:#fafafa;"><button type="button" onclick="toggleShippingBoxDetail(this)" style="background:none; border:none; color:#1B5E9A; cursor:pointer; font-size:11px; font-weight:700;">📦 박스 상세 ▼ ('+boxNums.length+'박스)</button></td></tr>'
+    ? '<tr><td colspan="6" style="padding:4px 9px; background:#fafafa;"><button type="button" onclick="toggleShippingBoxDetail(this)" style="padding:4px 12px; background:#eef4fb; border:1px solid #1B5E9A; border-radius:6px; color:#1B5E9A; cursor:pointer; font-size:11px; font-weight:700;">📦 박스 상세 ▼ ('+boxNums.length+'박스)</button></td></tr>'
     : '';
   tbody.innerHTML = summaryRows.join('') + toggleRow + detailRows.join('');
   // v3.2.37: pre-VAT 합계 + VAT × 1.10 한 번 (이중과세 방지)
@@ -14454,6 +14458,13 @@ function recalcShippingMatrix() {
   if (typeof renderParcelInfoSection === 'function') renderParcelInfoSection();
 }
 
+// [v3.2.211] §7 인보이스 미리보기 접힘 토글 — 기본 접힘, 버튼 클릭 시 펼침.
+function toggleInvoicePreview(btn) {
+  const wrap = document.getElementById('invoicePreviewWrap'); if (!wrap) return;
+  const show = wrap.style.display === 'none';
+  wrap.style.display = show ? '' : 'none';
+  if (btn) btn.innerHTML = show ? '📄 인보이스 미리보기 접기 ▲' : '📄 인보이스 미리보기 펼치기 ▼';
+}
 // [v3.2.210] §5 박스 상세 접힘 토글 — 합산 행은 항상 표시, 개별 박스(.smx-detail)만 show/hide.
 function toggleShippingBoxDetail(btn) {
   const rows = document.querySelectorAll('#shippingMatrixBody .smx-detail');
@@ -15020,7 +15031,7 @@ function renderInvoiceHTML(d) {
         <tr><td style="padding:3px 0;">해운비 <span style="font-size:10px; color:#888;">(${(d.alicoin.seaRate&&d.alicoin.seaRate.name)||''} · 청구CBM ${(d.alicoin.seaBillCbm||0).toFixed(2)})</span></td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.seaCny||0).toFixed(2)}</td></tr>
         ${(d.alicoin.coCny||0) > 0 ? `<tr><td style="padding:3px 0;">원산지증명(CO)</td><td style="text-align:right; font-family:monospace;">¥${d.alicoin.coCny.toFixed(2)}</td></tr>` : ''}
         <tr><td style="padding:3px 0;">작업수수료 <span style="font-size:10px; color:#888;">(핸들링+DOCUMENT FEE)</span></td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.workfeeCny||0).toFixed(2)}</td></tr>
-        <tr style="font-weight:700; border-top:1px solid #1B5E9A;"><td style="padding:6px 0;">합계 (알리코인 차감)</td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.totalCny||0).toFixed(2)} <span style="font-size:10px; color:#888;">(≈₩${(d.alicoin.krwRef||0).toLocaleString()})</span></td></tr>
+        <tr style="font-weight:700; border-top:1px solid #1B5E9A;"><td style="padding:6px 0;">합계 (알리코인 차감)</td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.totalCny||0).toFixed(2)}</td></tr>
       </table>
       <div style="margin-top:7px; font-size:11px; color:#1B5E9A;">위 금액은 <strong>알리코인(예치금)에서 차감</strong>되었습니다 · FREIGHT PREPAID</div>
     </div>` : ''}
