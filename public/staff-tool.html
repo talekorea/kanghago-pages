@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.209</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.210</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.209</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.210</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -14309,16 +14309,18 @@ function recalcShippingMatrix() {
     const totalCbm = getShipmentTotalCbm();
     const totalKg = boxNums.reduce((s, bn) => s + (parseFloat(state.boxes[bn].kg)||0), 0);
     const mr = calcMilkrunFee(totalCbm);
+    // [v3.2.210] 개별 박스 접힘(smx-detail) — 합산 행만 기본 표시.
     const boxRows = boxNums.map(bn => {
       const b = state.boxes[bn] || {};
-      return '<tr><td>'+bn+'</td><td>밀크런</td><td>'+fmtCBM(parseFloat(b.cbm)||0)+'</td><td>'+(parseFloat(b.kg)||0).toFixed(1)+'</td>'
+      return '<tr class="smx-detail" style="display:none;"><td>'+bn+'</td><td>밀크런</td><td>'+fmtCBM(parseFloat(b.cbm)||0)+'</td><td>'+(parseFloat(b.kg)||0).toFixed(1)+'</td>'
         + '<td style="text-align:right; color:#888;">합산 후 계산</td>'
         + '<td style="font-size:11px; color:#666;">밀크런 합산</td></tr>';
     });
-    boxRows.push('<tr style="background:#fffae0;"><td colspan="4" style="padding:7px 9px; font-weight:700;">밀크런 합산 '+fmtCBM(totalCbm)+' CBM ('+totalKg.toFixed(1)+' KG)</td>'
-      + '<td style="text-align:right; font-weight:700;">₩'+mr.total.toLocaleString()+'</td>'
-      + '<td style="font-size:11px; color:#666;">⌈'+fmtCBM(totalCbm)+'÷1.5⌉='+mr.units+'구간 × ₩30,000 (pre-VAT)</td></tr>');
-    tbody.innerHTML = boxRows.join('');
+    const mrSummary = '<tr style="background:#fffae0; font-weight:700;"><td colspan="4" style="padding:7px 9px;">🥛 밀크런 합산 '+fmtCBM(totalCbm)+' CBM ('+totalKg.toFixed(1)+' KG)</td>'
+      + '<td style="text-align:right;">₩'+mr.total.toLocaleString()+'</td>'
+      + '<td style="font-size:11px; color:#666;">⌈'+fmtCBM(totalCbm)+'÷1.5⌉='+mr.units+'구간 × ₩30,000 (pre-VAT)</td></tr>';
+    const mrToggle = boxNums.length ? '<tr><td colspan="6" style="padding:4px 9px; background:#fafafa;"><button type="button" onclick="toggleShippingBoxDetail(this)" style="background:none; border:none; color:#1B5E9A; cursor:pointer; font-size:11px; font-weight:700;">📦 박스 상세 ▼ ('+boxNums.length+'박스)</button></td></tr>' : '';
+    tbody.innerHTML = mrSummary + mrToggle + boxRows.join('');
     const preVatSum = mr.total;
     const vat = Math.round(preVatSum * 0.10);
     const grandTotal = preVatSum + vat;
@@ -14353,44 +14355,56 @@ function recalcShippingMatrix() {
   const destHand = document.getElementById('shipDestHand').checked;
   let parcelTotal = 0;
   let freightTotalCbm = 0;
-  const rows = boxNums.map(bn => {
+  let parcelCbm = 0, parcelKg = 0, parcelCnt = 0, freightKg = 0;
+  // [v3.2.210] 개별 박스 행 = 접힘(smx-detail·display:none). 합산 행만 기본 표시.
+  const detailRows = boxNums.map(bn => {
     const b = state.boxes[bn] || {};
     const ship = b.shipType || '화물';
     const cbm = parseFloat(b.cbm) || 0;
     const kg = parseFloat(b.kg) || 0;
+    const _tr = (html) => '<tr class="smx-detail" style="display:none;">' + html + '</tr>';
     if (ship === '택배') {
       const r = getParcelRate(cbm, kg);
+      parcelCbm += cbm; parcelKg += kg; parcelCnt++;
       if (r.exceeded) {
-        return '<tr><td>'+bn+'</td><td>택배</td><td>'+fmtCBM(cbm)+'</td><td>'+kg.toFixed(1)+'</td>'
+        return _tr('<td>'+bn+'</td><td>택배</td><td>'+fmtCBM(cbm)+'</td><td>'+kg.toFixed(1)+'</td>'
           + '<td style="text-align:right; color:#c0392b; font-weight:700;">수동 입력 필요</td>'
-          + '<td style="color:#c0392b; font-size:11px;">'+r.message+'</td></tr>';
+          + '<td style="color:#c0392b; font-size:11px;">'+r.message+'</td>');
       }
       parcelTotal += r.rate;
-      return '<tr><td>'+bn+'</td><td>택배</td><td>'+fmtCBM(cbm)+'</td><td>'+kg.toFixed(1)+'</td>'
+      return _tr('<td>'+bn+'</td><td>택배</td><td>'+fmtCBM(cbm)+'</td><td>'+kg.toFixed(1)+'</td>'
         + '<td style="text-align:right;">₩'+r.rate.toLocaleString()+'</td>'
-        + '<td style="font-size:11px; color:#666;">매트릭스 ('+r.cbmKey+', '+r.kgKey+'kg)</td></tr>';
+        + '<td style="font-size:11px; color:#666;">매트릭스 ('+r.cbmKey+', '+r.kgKey+'kg)</td>');
     } else if (ship === '화물') {
-      freightTotalCbm += cbm;
-      return '<tr><td>'+bn+'</td><td>화물</td><td>'+fmtCBM(cbm)+'</td><td>'+kg.toFixed(1)+'</td>'
+      freightTotalCbm += cbm; freightKg += kg;
+      return _tr('<td>'+bn+'</td><td>화물</td><td>'+fmtCBM(cbm)+'</td><td>'+kg.toFixed(1)+'</td>'
         + '<td style="text-align:right; color:#888;">합산 후 계산</td>'
-        + '<td style="font-size:11px; color:#666;">화물 합산</td></tr>';
+        + '<td style="font-size:11px; color:#666;">화물 합산</td>');
     } else {
-      return '<tr><td>'+bn+'</td><td>'+ship+'</td><td>'+fmtCBM(cbm)+'</td><td>'+kg.toFixed(1)+'</td>'
+      return _tr('<td>'+bn+'</td><td>'+ship+'</td><td>'+fmtCBM(cbm)+'</td><td>'+kg.toFixed(1)+'</td>'
         + '<td style="text-align:right;">₩0</td>'
-        + '<td style="font-size:11px; color:#666;">'+ship+' — 운임 없음</td></tr>';
+        + '<td style="font-size:11px; color:#666;">'+ship+' — 운임 없음</td>');
     }
   });
+  // 합산 행(기본 표시) — 택배 합산(신설) + 화물 합산
+  const summaryRows = [];
+  if (parcelCnt > 0) {
+    summaryRows.push('<tr style="background:#eef7ff; font-weight:700;"><td colspan="2" style="padding:7px 9px;">📦 택배 합산 ('+parcelCnt+'박스)</td>'
+      + '<td>'+fmtCBM(parcelCbm)+'</td><td>'+parcelKg.toFixed(1)+'</td>'
+      + '<td style="text-align:right;">₩'+parcelTotal.toLocaleString()+'</td>'
+      + '<td style="font-size:11px; color:#666;">매트릭스 합 (pre-VAT)</td></tr>');
+  }
   let freight = null;
   if (freightTotalCbm > 0) {
     if (!km) {
-      rows.push('<tr style="background:#fff8e1;"><td colspan="4" style="padding:7px 9px; font-weight:700;">화물 합산 ('+freightTotalCbm.toFixed(3)+' CBM)</td>'
+      summaryRows.push('<tr style="background:#fff8e1; font-weight:700;"><td colspan="4" style="padding:7px 9px;">🚚 화물 합산 ('+freightTotalCbm.toFixed(3)+' CBM · '+freightKg.toFixed(1)+'kg)</td>'
         + '<td style="text-align:right; color:#9a7b2a;">거리 미입력</td>'
         + '<td style="font-size:11px; color:#9a7b2a;">도착지 주소/km 먼저 입력</td></tr>');
     } else {
       freight = calcDomesticFreight(freightTotalCbm, km, { warehouseHandling: warehouseHand, destinationHandling: destHand });
       // v3.2.37: 행 표시도 pre-VAT (freight.total = subtotal). VAT는 합계 하단에 한 번만.
-      rows.push('<tr style="background:#fff8e1;"><td colspan="4" style="padding:7px 9px; font-weight:700;">화물 합산 '+freightTotalCbm.toFixed(3)+' CBM ('+freight.vehicle.name+' · '+freight.units+'×10km)</td>'
-        + '<td style="text-align:right; font-weight:700;">₩'+freight.total.toLocaleString()+'</td>'
+      summaryRows.push('<tr style="background:#fff8e1; font-weight:700;"><td colspan="4" style="padding:7px 9px;">🚚 화물 합산 '+freightTotalCbm.toFixed(3)+' CBM ('+freight.vehicle.name+' · '+freight.units+'×10km)</td>'
+        + '<td style="text-align:right;">₩'+freight.total.toLocaleString()+'</td>'
         + '<td style="font-size:11px; color:#666;">'
         + '거리비 ₩'+freight.distance_fee.toLocaleString()
         + (freight.warehouse_fee ? ' + 야상비 ₩'+freight.warehouse_fee.toLocaleString() : '')
@@ -14398,7 +14412,10 @@ function recalcShippingMatrix() {
         + ' (pre-VAT)</td></tr>');
     }
   }
-  tbody.innerHTML = rows.join('');
+  const toggleRow = boxNums.length
+    ? '<tr><td colspan="6" style="padding:4px 9px; background:#fafafa;"><button type="button" onclick="toggleShippingBoxDetail(this)" style="background:none; border:none; color:#1B5E9A; cursor:pointer; font-size:11px; font-weight:700;">📦 박스 상세 ▼ ('+boxNums.length+'박스)</button></td></tr>'
+    : '';
+  tbody.innerHTML = summaryRows.join('') + toggleRow + detailRows.join('');
   // v3.2.37: pre-VAT 합계 + VAT × 1.10 한 번 (이중과세 방지)
   const freightSubtotal = freight ? freight.total : 0;  // 이미 pre-VAT (v3.2.37 calcDomesticFreight)
   const preVatSum = parcelTotal + freightSubtotal;
@@ -14435,6 +14452,15 @@ function recalcShippingMatrix() {
   if (typeof recalcInvoiceTotals === 'function') recalcInvoiceTotals();
   // v3.2.30: §11 견적 계산 직후 11-A 재렌더 — 박스 수·CBM·KG·도착지·견적 즉시 반영 (v3.2.15 패턴)
   if (typeof renderParcelInfoSection === 'function') renderParcelInfoSection();
+}
+
+// [v3.2.210] §5 박스 상세 접힘 토글 — 합산 행은 항상 표시, 개별 박스(.smx-detail)만 show/hide.
+function toggleShippingBoxDetail(btn) {
+  const rows = document.querySelectorAll('#shippingMatrixBody .smx-detail');
+  if (!rows.length) return;
+  const show = rows[0].style.display === 'none';
+  rows.forEach(r => { r.style.display = show ? '' : 'none'; });
+  if (btn) btn.innerHTML = '📦 박스 상세 ' + (show ? '▲' : '▼') + ' (' + rows.length + '박스)';
 }
 
 // ===== Phase F §12: 청구서 발행 (PDF — 영세율/10%/예치금 분리, 5원칙 데이터 저장) =====
@@ -15198,7 +15224,17 @@ function renderDomesticConfirmStatus() {
     + (confirmed
         ? `<span style="color:#0a7b40; font-size:11px;">✓ 확정 ₩${savedKrw.toLocaleString()} · ${String(f['청구서발행일시']).slice(0, 10)} → <strong>§9에서 URL 발송</strong>${Math.abs(savedKrw - liveKrw) > 1 ? ` <span style="color:#c0392b;">(현재 ₩${liveKrw.toLocaleString()} — 재확정 권장)</span>` : ''}</span>`
         : (reason ? `<span style="color:#c0392b; font-size:11px;">⛔ ${reason}</span>` : `<span style="color:#888; font-size:11px;">확정하면 §9에서 청구서 URL 발송 가능</span>`))
-    + `</div>`;
+    + `</div>`
+    // [v3.2.210] 견적/확정 히스토리 — 시스템 견적 + 이전 확정(투명성). 재계산 시 input은 시스템견적, 이력은 참고.
+    + (() => {
+        const parts = [];
+        const sysEst = (method === '화물') ? _auto : (method === '택배' ? (bd.parcel || 0) : (bd.milkrun || 0));
+        if (sysEst > 0) parts.push(`시스템 견적 <strong>₩${Math.round(sysEst).toLocaleString()}</strong>`);
+        const _origEst = parseFloat(f['국내운임_원본견적']) || 0;
+        if (_origEst > 0) parts.push(`직전 확정 견적원본 ₩${_origEst.toLocaleString()}`);
+        if (confirmed && savedKrw > 0) parts.push(`이전 확정 <strong>₩${Math.round(savedKrw / 1.1).toLocaleString()}</strong> (pre-VAT · ${String(f['청구서발행일시']).slice(0, 10)})`);
+        return parts.length ? `<div style="font-size:11px; color:#888; padding:2px 0 6px 0;">📋 ${parts.join(' · ')}</div>` : '';
+      })();
 }
 // [v3.2.209] 화물·밀크런 운임 직원 수정 — state.overheadAmounts 갱신(calcInvoiceBreakdownKrw가 읽음, calc 불변). onchange(blur)라 타이핑 중 리렌더 없음.
 function setDomesticFreightEdit(v) {
