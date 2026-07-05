@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.204</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.205</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.204</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.205</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3184,11 +3184,18 @@ function calcHandlingCny(totalCbm) {
   const extra = Math.ceil((cbm - 1) / 0.1 - 1e-9);   // 초과분 0.1CBM 단위 절상
   return HANDLING_BASE_CNY + extra * HANDLING_STEP_CNY;
 }
-// [v3.2.200] 도큐먼트피(CNY) = SKU 10개까지 무료 + 초과 1품목당 ¥5. SKU=선적분 Products 행수.
-function calcDocumentCny(skuCount) {
+// [v3.2.205] DOCUMENT FEE(CNY) 구간체감 — 소량무료·대량완만. ★단일소스(구 max(0,SKU−10)×5 폐기, SKU 259 폭등 개편).
+//   ~20 무료 / 21~50 ¥5 / 51~150 ¥3 / 151+ ¥1. SKU=선적분 Products 행수.
+function calcDocumentFeeCny(skuCount) {
   const n = Math.max(0, parseInt(skuCount, 10) || 0);
-  return Math.max(0, n - DOC_FREE_SKU) * DOC_PER_SKU_CNY;
+  if (n <= 20) return 0;
+  const tier1 = Math.min(Math.max(n - 20, 0), 30) * 5;    // 21~50
+  const tier2 = Math.min(Math.max(n - 50, 0), 100) * 3;   // 51~150
+  const tier3 = Math.max(n - 150, 0) * 1;                 // 151+
+  return tier1 + tier2 + tier3;
 }
+// 구 함수명 alias(호환) — 잔여 참조 대비. 내부는 구간체감으로 통일.
+function calcDocumentCny(skuCount) { return calcDocumentFeeCny(skuCount); }
 // [v3.2.200] SKU 수 = 현재 로드된 선적분 Products 행수.
 function getShipmentSkuCount() {
   return (state.products || []).length;
@@ -8610,25 +8617,21 @@ function renderOverhead() {
   _mkRow('BL 발급료', _cnyCell(bd.blCny), '¥100 정액');
   _mkRow('해상운임', _cnyCell(bd.seaCny), `${seaInfo.rate.name} · 청구CBM ${(seaInfo.billCbm||0).toFixed(2)} × $${seaInfo.rate.unit} = $${(seaInfo.usd||0).toFixed(2)} → ¥ (USD/CNY)`);
   _mkRow('원산지증명 (CO)', _cnyCell(bd.coCny), (bd.coCny > 0) ? '¥200 정액 (FTA 절세 있음 — 자동판정)' : '절세 없음 → CO 미청구');
-  _mkRow('작업수수료', _cnyCell(bd.workfeeCny), `핸들링 ¥${(bd.handlingCny||0).toFixed(2)} + 도큐먼트피 ¥${(bd.documentCny||0).toFixed(2)} (SKU ${getShipmentSkuCount()}개)`);
+  _mkRow('작업수수료', _cnyCell(bd.workfeeCny), `핸들링 ¥${(bd.handlingCny||0).toFixed(2)} + DOCUMENT FEE ¥${(bd.documentCny||0).toFixed(2)} (SKU ${getShipmentSkuCount()}개 · 구간체감)`);
   const alSum = document.createElement('tr'); alSum.style.background = '#eef4fb';
   alSum.innerHTML = `<td colspan="2" style="text-align:right; font-weight:700; color:#1B5E9A;">└ 강하고 서비스 수수료 소계</td><td class="num" style="font-weight:700; color:#1B5E9A;">¥${(bd.alicoinCny||0).toFixed(2)}</td><td style="font-size:11px; color:#999;">≈₩${(bd.alicoinKrw||0).toLocaleString()} (참고)</td>`;
   tbody.appendChild(alSum);
 
-  // [v3.2.203] 중국 현지 작업비 — ★신고가에 이미 반영, 알리코인 사용내역 참고(청구 합계·국내결제 미포함).
+  // [v3.2.205] 중국 현지 작업비 — ★신고가에 이미 반영, 사용내역 참고. 서식 = 서비스수수료 4행과 동일(_mkRow) + 세부보기(항목 렌더·fallback).
   const _work = (typeof getLocalWorkCostCny === 'function') ? getLocalWorkCostCny() : { total: 0, items: [] };
   if (_work.total > 0) {
-    const wRow = document.createElement('tr');
-    const _detail = _work.items.map(it => `<div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dashed #e0e8f2;"><span>${it.label}</span><span style="font-family:monospace;">¥${it.cny.toFixed(2)}</span></div>`).join('');
-    wRow.innerHTML = `<td colspan="4" style="padding:6px 12px; background:#f7fbff;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <strong style="color:#1B5E9A;">🏭 중국 현지 작업비 <span style="font-size:10px; font-weight:400; color:#c0392b;">(제품 신고가에 이미 반영 · 사용내역 참고, 청구 아님)</span></strong>
-        <span style="font-weight:700; color:#1B5E9A; font-family:monospace;">¥${_work.total.toFixed(2)}</span>
-      </div>
-      <details style="margin-top:4px;"><summary style="cursor:pointer; font-size:11px; color:#1B5E9A;">세부보기 ▼ (${_work.items.length}항목)</summary>
-        <div style="margin-top:4px; font-size:11px; color:#555;">${_detail}</div>
-      </details></td>`;
-    tbody.appendChild(wRow);
+    _mkRow('🏭 중국 현지 작업비', _cnyCell(_work.total), '제품 신고가에 이미 반영 · 사용내역 참고(청구 아님)');
+    const wDetail = document.createElement('tr');
+    const _rows = (_work.items && _work.items.length)
+      ? _work.items.map(it => `<div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dashed #e0e8f2;"><span>${it.label}</span><span style="font-family:monospace;">¥${(it.cny||0).toFixed(2)}</span></div>`).join('')
+      : '<div style="color:#999;">세부내역 없음</div>';
+    wDetail.innerHTML = `<td colspan="4" style="padding:2px 12px 8px 12px; background:#f7fbff;"><details><summary style="cursor:pointer; font-size:11px; color:#1B5E9A;">세부보기 ▼ (${(_work.items||[]).length}항목)</summary><div style="margin-top:4px; font-size:11px; color:#555;">${_rows}</div></details></td>`;
+    tbody.appendChild(wDetail);
   }
   // 알리코인 총 사용(참고) = 서비스 수수료 + 현지 작업비
   const _alTotalUse = (bd.alicoinCny || 0) + _work.total;
@@ -14982,7 +14985,7 @@ function renderInvoiceHTML(d) {
         <tr><td style="padding:3px 0;">BL 발급료</td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.blCny||0).toFixed(2)}</td></tr>
         <tr><td style="padding:3px 0;">해운비 <span style="font-size:10px; color:#888;">(${(d.alicoin.seaRate&&d.alicoin.seaRate.name)||''} · 청구CBM ${(d.alicoin.seaBillCbm||0).toFixed(2)})</span></td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.seaCny||0).toFixed(2)}</td></tr>
         ${(d.alicoin.coCny||0) > 0 ? `<tr><td style="padding:3px 0;">원산지증명(CO)</td><td style="text-align:right; font-family:monospace;">¥${d.alicoin.coCny.toFixed(2)}</td></tr>` : ''}
-        <tr><td style="padding:3px 0;">작업수수료 <span style="font-size:10px; color:#888;">(핸들링+도큐먼트피)</span></td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.workfeeCny||0).toFixed(2)}</td></tr>
+        <tr><td style="padding:3px 0;">작업수수료 <span style="font-size:10px; color:#888;">(핸들링+DOCUMENT FEE)</span></td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.workfeeCny||0).toFixed(2)}</td></tr>
         <tr style="font-weight:700; border-top:1px solid #1B5E9A;"><td style="padding:6px 0;">합계 (알리코인 차감)</td><td style="text-align:right; font-family:monospace;">¥${(d.alicoin.totalCny||0).toFixed(2)} <span style="font-size:10px; color:#888;">(≈₩${(d.alicoin.krwRef||0).toLocaleString()})</span></td></tr>
       </table>
       <div style="margin-top:7px; font-size:11px; color:#1B5E9A;">위 금액은 <strong>알리코인(예치금)에서 차감</strong>되었습니다 · FREIGHT PREPAID</div>
@@ -15273,7 +15276,7 @@ function calcInvoiceBreakdownKrw() {
   const seaCny      = _sea.cny;                                             // 해운비 CNY
   const coCny       = (typeof calcCoCny === 'function') ? calcCoCny() : 0;  // ¥200(절세>0) or 0
   const handlingCny = (typeof calcHandlingCny === 'function') ? calcHandlingCny(_totCbm) : 0;
-  const documentCny = (typeof calcDocumentCny === 'function') ? calcDocumentCny(getShipmentSkuCount()) : 0;
+  const documentCny = (typeof calcDocumentFeeCny === 'function') ? calcDocumentFeeCny(getShipmentSkuCount()) : 0;
   const workfeeCny  = handlingCny + documentCny;                            // "작업수수료" 합산(표시 한 줄)
   const alicoinCny  = blCny + seaCny + coCny + workfeeCny;                  // 알리코인 차감 총액(CNY)
   const alicoinKrw  = Math.round(alicoinCny * rateCnyKrw);                  // 참고 KRW 환산(청구 아님·§12 프리즈)
@@ -15326,7 +15329,7 @@ function computeFrozenCnyCharges() {
     blCny: BL_FEE_CNY,
     seaCny: sea.cny,
     handlingCny: (typeof calcHandlingCny === 'function') ? calcHandlingCny(cbm) : 0,
-    documentCny: (typeof calcDocumentCny === 'function') ? calcDocumentCny(getShipmentSkuCount()) : 0,
+    documentCny: (typeof calcDocumentFeeCny === 'function') ? calcDocumentFeeCny(getShipmentSkuCount()) : 0,
     coCny: (typeof calcCoCny === 'function') ? calcCoCny() : 0,
     billCbm: sea.billCbm, rate: sea.rate,
   };

@@ -282,7 +282,7 @@ function render(d) {
         <tr><td style="padding:4px 0;">BL 발급료</td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.blCny||0).toFixed(2)}</td></tr>
         <tr><td style="padding:4px 0;">해운비 <span style="font-size:11px; color:#888;">(FREIGHT PREPAID)</span></td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.seaCny||0).toFixed(2)}</td></tr>
         ${(al.coCny||0) > 0 ? `<tr><td style="padding:4px 0;">원산지증명(CO)</td><td class="num" style="text-align:right; font-family:monospace;">¥${al.coCny.toFixed(2)}</td></tr>` : ''}
-        <tr><td style="padding:4px 0;">작업수수료 <span style="font-size:11px; color:#888;">(핸들링+도큐먼트피)</span></td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.workfeeCny||0).toFixed(2)}</td></tr>
+        <tr><td style="padding:4px 0;">작업수수료 <span style="font-size:11px; color:#888;">(핸들링+DOCUMENT FEE)</span></td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.workfeeCny||0).toFixed(2)}</td></tr>
         <tr style="border-top:1px dashed #1B5E9A; font-weight:600;"><td style="padding:5px 0; font-size:12px;">└ 서비스 수수료 소계</td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.totalCny||0).toFixed(2)} <span style="font-size:11px; color:#888;">(≈₩${(al.krwRef||0).toLocaleString()})</span></td></tr>
       </table>
       ${(al.localWorkCny > 0) ? `
