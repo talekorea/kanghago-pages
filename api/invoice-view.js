@@ -120,15 +120,17 @@ module.exports = async (req, res) => {
     costItems.forEach(c => {
       const cf2 = c.fields || {}; const memo = cf2['메모'] || ''; const cat = cf2['카테고리'] || '';
       if (memo.includes('[부대비용:') || memo.includes('[원산지증명:') || cat === '부대비용' || cat === '원산지증명') return;
-      const isCny = /CNY|위안|¥/i.test(memo);
       const mm = memo.match(/수량\s*(\d+(?:\.\d+)?)\s*[×x*]\s*[¥₩\\]?\s*(\d+(?:\.\d+)?)/);
+      const qty = mm ? parseFloat(mm[1]) : null, unit = mm ? parseFloat(mm[2]) : null;
+      const eq = memo.match(/=\s*¥?\s*(\d+(?:\.\d+)?)\s*CNY/i);
       let cny = 0;
-      if (isCny && mm) cny = parseFloat(mm[1]) * parseFloat(mm[2]);
+      if (eq) cny = parseFloat(eq[1]);
+      else if (mm && /CNY|위안|¥/i.test(memo)) cny = qty * unit;
       else { const krw = parseFloat(cf2['금액KRW']) || 0; cny = _rateCnyKrw > 0 ? krw / _rateCnyKrw : 0; }
       if (!(cny > 0)) return;
-      let label = memo.replace(/\[[^\]]*\]/g, '').replace(/수량[\s\S]*$/, '').trim() || '작업';
-      if (label.length > 26) label = label.slice(0, 26) + '…';
-      _workItems.push({ label, cny: Math.round(cny * 100) / 100 }); _workTotal += cny;
+      let label = String(cf2['항목명'] || '').trim() || '기타 작업';   // [v3.2.206] 실제 작업명 = 항목명 필드
+      if (label.length > 30) label = label.slice(0, 30) + '…';
+      _workItems.push({ label, qty, unit, cny: Math.round(cny * 100) / 100 }); _workTotal += cny;
     });
     _workTotal = Math.round(_workTotal * 100) / 100;
     const alicoin = {

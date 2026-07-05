@@ -291,7 +291,7 @@ function render(d) {
         <tr><td style="padding:4px 0;">🏭 중국 현지 작업비</td><td class="num" style="text-align:right; font-family:monospace; font-weight:700;">¥${(al.localWorkCny||0).toFixed(2)}</td></tr>
       </table>
       <details style="margin-top:4px;"><summary style="cursor:pointer; font-size:12px; color:#1B5E9A;">세부보기 ▼ (${(al.localWorkItems||[]).length}항목)</summary>
-        <div style="margin-top:5px; font-size:12px; color:#555;">${(al.localWorkItems||[]).map(it => `<div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dashed #e0e8f2;"><span>${esc(it.label)}</span><span style="font-family:monospace;">¥${(it.cny||0).toFixed(2)}</span></div>`).join('')}</div>
+        <table style="width:100%; border-collapse:collapse; margin-top:5px; font-size:12px; color:#555;">${(al.localWorkItems||[]).map(it => { const qu=(it.qty!=null&&it.unit!=null)?`${it.qty}개 × ¥${it.unit}`:''; return `<tr><td style="padding:3px 6px 3px 0;">${esc(it.label)}</td><td style="padding:3px 8px; color:#888; white-space:nowrap;">${qu}</td><td style="padding:3px 0; text-align:right; font-family:ui-monospace,monospace; white-space:nowrap;">¥${(it.cny||0).toFixed(2)}</td></tr>`; }).join('')}</table>
       </details>` : ''}
       <div style="border-top:1.5px solid #1B5E9A; margin-top:8px; padding-top:6px; display:flex; justify-content:space-between; font-weight:700; color:#1B5E9A;"><span>🪙 알리코인 총 사용 (참고)</span><span style="font-family:monospace;">¥${(al.grandUseCny != null ? al.grandUseCny : ((al.totalCny||0)+(al.localWorkCny||0))).toFixed(2)}</span></div>
       <div style="margin-top:9px; font-size:12px; color:#1B5E9A;">위 금액은 <strong>알리코인(예치금)에서 이미 차감</strong>되었습니다. 계좌이체로 추가 청구하지 않습니다.</div>

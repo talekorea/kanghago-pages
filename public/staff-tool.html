@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.205</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.206</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.205</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.206</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -8505,15 +8505,17 @@ function getLocalWorkCostCny() {
   (state.costItems || []).forEach(c => {
     const f = c.fields || {}; const memo = f['메모'] || ''; const cat = f['카테고리'] || '';
     if (memo.includes('[부대비용:') || memo.includes('[원산지증명:') || cat === '부대비용' || cat === '원산지증명') return;   // 작업비만
-    const isCny = /CNY|위안|¥/i.test(memo);
-    const mm = memo.match(/수량\s*(\d+(?:\.\d+)?)\s*[×x*]\s*[¥₩\\]?\s*(\d+(?:\.\d+)?)/);
+    const mm = memo.match(/수량\s*(\d+(?:\.\d+)?)\s*[×x*]\s*[¥₩\\]?\s*(\d+(?:\.\d+)?)/);   // 수량 · 단가
+    const qty = mm ? parseFloat(mm[1]) : null, unit = mm ? parseFloat(mm[2]) : null;
+    const _eq = memo.match(/=\s*¥?\s*(\d+(?:\.\d+)?)\s*CNY/i);   // "= ¥51 CNY"(메모 내 CNY 총액) 우선
     let cny = 0;
-    if (isCny && mm) cny = parseFloat(mm[1]) * parseFloat(mm[2]);
+    if (_eq) cny = parseFloat(_eq[1]);
+    else if (mm && /CNY|위안|¥/i.test(memo)) cny = qty * unit;
     else { const krw = parseFloat(f['금액KRW']) || 0; cny = rateCnyKrw > 0 ? krw / rateCnyKrw : 0; }
     if (!(cny > 0)) return;
-    let label = memo.replace(/\[[^\]]*\]/g, '').replace(/수량[\s\S]*$/, '').trim() || '작업';
-    if (label.length > 26) label = label.slice(0, 26) + '…';
-    items.push({ label, cny }); total += cny;
+    let label = String(f['항목명'] || '').trim() || '기타 작업';   // [v3.2.206] ★실제 작업명 = 항목명 필드(메모 파싱 폴백 폐기)
+    if (label.length > 30) label = label.slice(0, 30) + '…';
+    items.push({ label, qty, unit, cny }); total += cny;
   });
   return { total, items };
 }
@@ -8627,8 +8629,13 @@ function renderOverhead() {
   if (_work.total > 0) {
     _mkRow('🏭 중국 현지 작업비', _cnyCell(_work.total), '제품 신고가에 이미 반영 · 사용내역 참고(청구 아님)');
     const wDetail = document.createElement('tr');
+    const _rc = parseFloat((document.getElementById('rateCnyKrw') || {}).value) || 0;
     const _rows = (_work.items && _work.items.length)
-      ? _work.items.map(it => `<div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dashed #e0e8f2;"><span>${it.label}</span><span style="font-family:monospace;">¥${(it.cny||0).toFixed(2)}</span></div>`).join('')
+      ? '<table style="width:100%; border-collapse:collapse; font-size:11px;">' + _work.items.map(it => {
+          const qu = (it.qty != null && it.unit != null) ? `${it.qty}개 × ¥${it.unit}` : '';
+          const krw = _rc > 0 ? ` <span style="color:#aaa;">≈₩${Math.round((it.cny||0)*_rc).toLocaleString()}</span>` : '';
+          return `<tr><td style="padding:3px 6px 3px 0; color:#333;">${it.label}</td><td style="padding:3px 8px; color:#888; white-space:nowrap;">${qu}</td><td style="padding:3px 0; text-align:right; font-family:ui-monospace,monospace; white-space:nowrap;">¥${(it.cny||0).toFixed(2)}${krw}</td></tr>`;
+        }).join('') + '</table>'
       : '<div style="color:#999;">세부내역 없음</div>';
     wDetail.innerHTML = `<td colspan="4" style="padding:2px 12px 8px 12px; background:#f7fbff;"><details><summary style="cursor:pointer; font-size:11px; color:#1B5E9A;">세부보기 ▼ (${(_work.items||[]).length}항목)</summary><div style="margin-top:4px; font-size:11px; color:#555;">${_rows}</div></details></td>`;
     tbody.appendChild(wDetail);
