@@ -875,8 +875,10 @@ function jsSelectCore6(stages) {
   const first = pred => { for (const s of stages) if (pred(s)) return s; return null; };
   const last = pred => { for (let i = stages.length - 1; i >= 0; i--) if (pred(stages[i])) return stages[i]; return null; };
   return {
+    입항: first(s => /입항/.test(L(s))),   // [v3.2.213] 입항보고 수리
     수입신고수리: first(s => /수입신고\s*수리|수입신고수리/.test(L(s))),
-    반입: first(s => /보세운송\s*반입/.test(Bb(s))),
+    // [v3.2.213] 반입 = 입항 반입 or 보세운송 반입(반출입내용). 보세창고 반입 완료 시점.
+    반입: first(s => /입항\s*반입|보세운송\s*반입/.test(Bb(s))) || first(s => /반입/.test(s.반출입내용 || '') && !/검사/.test(Bb(s))),
     반출: last(s => /반출/.test(L(s))),
   };
 }
@@ -901,6 +903,15 @@ async function sendChannelByMailbox(base, text) {
 
 const AUTO_DISPATCH_BASE = 'https://kanghago-pages.vercel.app/delivery-request.html';
 const AUTO_DISPATCH_MSG = (link) => `[강하고] 통관이 완료되어 반출 가능합니다. 배송 희망 일시를 선택하고 배차를 요청해 주세요 → ${link}`;
+// [v3.2.213] 통관 단계별 자동안내 6문구(14번 문서 박제). nm=회원명, wh=보세창고, link=배차요청 URL.
+const CUSTOMS_MSG = {
+  입항: (nm, wh) => `[강하고] ${nm}님, 선적하신 제품이 인천항에 무사히 입항했습니다 🚢 ${wh || '보세창고'}로 배정되어 통관 준비 예정, 반입 완료 시 안내드리겠습니다. 강하고 드림.`,
+  반입: (nm, wh) => `[강하고] ${nm}님, ${wh || '보세창고'}에 반입 완료되었습니다 📦 강하고 협력 관세사가 원활한 통관 위해 현장 대응하며 수입신고·통관 진행 중입니다. 통관 완료 시 배차 안내드리겠습니다. 강하고 드림.`,
+  검사A: (nm) => `[강하고] ${nm}님, 세관 검사(즉시검사) 대상 지정 🔍 정상 절차이며 안심하셔도 됩니다. 중국 물류센터에서 원산지 표기 정확히 진행했으므로 문제없을 것으로 예상됩니다. 협력 관세사 현장 대응 중, 완료 시 안내. 강하고 드림.`,
+  검사B: (nm) => `[강하고] ${nm}님, 세관 검사(반입후검사) 대상 지정 🔍 일반 확인 절차로 대부분 빠르게 통과됩니다. 협력 관세사 현장 대응 중, 완료 시 안내. 강하고 드림.`,
+  배차화물: (nm, link) => `[강하고] ${nm}님, 수입신고 수리로 통관 완료 ✅ 반출·배송 가능합니다. 🚚 배차 요청: ${link}\n■요청 전 확인:\n·요청 시 보통 1시간 내 기사 배정, 강하고팀 보세창고 상차 지원\n·오후 4시 30분 이후 기사 보세창고 진입 어려워 당일 배차 제한될 수 있음\n·오늘 늦게 통관됐어도 내일 오전·오후 수령 원하면 오늘 미리 요청 가능\n·서울·수도권 지금 요청 시 퇴근시간 겹쳐 당일 수령 어려우면 익일 오전 권장\n·지방 합배송은 배차 확률 위해 미리 여유있게\n·부재 시 재배차 추가비용. 수령 시점 고려해 요청해주세요. 강하고 드림.`,
+  배차택배: (nm, link) => `[강하고] ${nm}님, 수입신고 수리로 통관 완료 ✅ 화물택배 발송 준비 중, 완료 시 택배사·송장 안내드리겠습니다. 수령정보 수정: ${link} 강하고 드림.`,
+};
 const AUTO_DISPATCH_MAX = 15;   // 1회 스캔 처리 상한(Vercel 타임아웃·중계 부하 가드). 통지분이 빠져 다음 스캔서 소진.
 
 // 중계 cron이 호출(Admin 토큰). 화물·BL·미통지·활성상태 후보 → customs_progress → 수입신고수리면 발송.
@@ -914,6 +925,7 @@ async function handleAutoDispatchScan(req, res) {
   const targetId = String((req.query && req.query.shipmentId) || '').trim();
   const targetMb = String((req.query && req.query.mailbox) || '').trim();
   const isTarget = !!(targetId || targetMb);
+  const custMemberMap = {};   // [v3.2.213] 사서함번호 → 회원명
   let ships = [];
   try {
     if (isTarget) {
@@ -925,10 +937,15 @@ async function handleAutoDispatchScan(req, res) {
         ships = await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(tf)}&${CFIELDS}&maxRecords=1`);
       }
     } else {
-      // 전체 스캔 후보 — 화물 ∧ BL ∧ 배차요청 미통지 ∧ 활성 통관 상태
-      const f = `AND({배송방식}='화물',{BL번호}!='',NOT(FIND('배차요청',{통관알림이력}&'')),OR({상태}='관세사확정완료',{상태}='인보이스완료',{상태}='통관중',{상태}='통관완료',{상태}='배송중'))`;
+      // [v3.2.213] 전체 스캔 후보 — (화물 OR 택배) ∧ BL ∧ 배차가능 미완료 ∧ 활성 통관 상태. 단계별 dedup은 루프에서.
+      const f = `AND(OR({배송방식}='화물',{배송방식}='택배'),{BL번호}!='',NOT(FIND('배차가능',{통관알림이력}&'')),NOT(FIND('배차요청',{통관알림이력}&'')),OR({상태}='관세사확정완료',{상태}='인보이스완료',{상태}='통관중',{상태}='통관완료',{상태}='배송중'))`;
       ships = await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&${CFIELDS}`);
     }
+    // [v3.2.213] 회원명 조인(사서함번호 base → 회원명) — 문구 {회원명}용
+    try {
+      const _cs = await atListAll(`/${TABLES.Customers}?fields%5B%5D=${encodeURIComponent('사서함번호')}&fields%5B%5D=${encodeURIComponent('회원명')}`);
+      _cs.forEach(c => { const k = (c.fields || {})['사서함번호']; if (k) custMemberMap[k] = c.fields['회원명'] || ''; });
+    } catch (e) { /* 이름 생략 */ }
   } catch (e) { return res.status(502).json({ ok: false, error: 'Shipments 후보 조회 실패: ' + e.message }); }
   const todo = isTarget ? ships : ships.slice(0, AUTO_DISPATCH_MAX);
   const results = [];
@@ -936,8 +953,9 @@ async function handleAutoDispatchScan(req, res) {
     const sf = s.fields || {};
     const mailbox = sf['사서함'] || '';
     const bl = String(sf['BL번호'] || '').trim();
-    // ★타깃 모드는 Airtable 필터를 우회하므로 안전 가드를 루프에서 재확인 — 화물·BL 아니면 발송 안 함(택배/무BL 오발송 차단).
-    if (String(sf['배송방식'] || '') !== '화물') { results.push({ mailbox, bl, status: 'skip_not_freight', 배송방식: sf['배송방식'] || '' }); continue; }
+    const method = String(sf['배송방식'] || '');
+    // 안전 가드 — 화물/택배·BL 아니면 발송 안 함(무BL/기타 오발송 차단).
+    if (method !== '화물' && method !== '택배') { results.push({ mailbox, bl, status: 'skip_not_target', 배송방식: method }); continue; }
     if (!bl) { results.push({ mailbox, bl: '', status: 'skip_no_bl' }); continue; }
     let rr;
     try { rr = await callCustomsRelay(RELAY_URL, RELAY_SECRET, JSON.stringify({ blNo: bl })); }
@@ -945,25 +963,49 @@ async function handleAutoDispatchScan(req, res) {
     if (!rr || !rr.ok) { results.push({ mailbox, bl, status: 'no_data' }); continue; }
     const parsed = parseCargoProgress(rr.xml || '');
     const core = jsSelectCore6(parsed.stages || []);
-    if (!core.수입신고수리) { results.push({ mailbox, bl, status: 'not_yet', stages: (parsed.stages || []).length }); continue; }   // 수리 전 = 미발송(구조적 안전)
-    if (histHas(sf['통관알림이력'], '배차요청')) { results.push({ mailbox, bl, status: 'already_sent(dedup)' }); continue; }
-    if (dryRun) { results.push({ mailbox, bl, status: 'WOULD_SEND', 수리처리일시: core.수입신고수리.처리일시, 반입: core.반입 ? '보세운송반입' : '-' }); continue; }
-    // 토큰 생성/재사용(만료 지났으면 갱신)
-    let token = sf['고객토큰'], exp = sf['고객토큰만료일'];
-    const needNew = !token || (exp && new Date(exp + 'T23:59:59') < new Date());
-    if (needNew) {
-      token = genCustomerToken(32);
-      exp = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-      try { await atRequest('PATCH', `/${TABLES.Shipments}/${s.id}`, { fields: { '고객토큰': token, '고객토큰만료일': exp }, typecast: true }); }
-      catch (e) { results.push({ mailbox, bl, status: 'token_fail', detail: e.message.slice(0, 80) }); continue; }
-    }
-    const link = `${AUTO_DISPATCH_BASE}?ship=${s.id}&t=${token}`;
+    const summary = parsed.summary || {};
     const base = String(mailbox).replace(/-\d{6}$/, '');
-    const sent = await sendChannelByMailbox(base, AUTO_DISPATCH_MSG(link));
-    if (!sent.ok) { results.push({ mailbox, bl, status: 'send_fail', detail: sent.error }); continue; }
-    // dedup 기록 — 발송 성공 후에만
-    try { await atRequest('PATCH', `/${TABLES.Shipments}/${s.id}`, { fields: { '통관알림이력': histAppend(sf['통관알림이력'], '배차요청') }, typecast: true }); } catch (e) {}
-    results.push({ mailbox, bl, status: 'SENT', messageId: sent.messageId });
+    const nm = (custMemberMap[base] || '') || '고객';
+    const wh = (core.반입 && String(core.반입.장치장 || '').trim()) || String(summary.shedNm || '').trim();
+    let hist = String(sf['통관알림이력'] || '');
+    const has = (k) => histHas(hist, k) || (k === '배차가능' && histHas(hist, '배차요청'));   // 구키 호환
+    const insp = String(summary.관리대상검사여부 || '').trim();
+    // [v3.2.213] 발송 대상 단계 결정(순서·un-sent·조건). ④ = 반입 AND 수리.
+    const plan = [];
+    if ((core.입항 || summary.etprDt) && !has('입항')) plan.push({ stage: '입항', msg: CUSTOMS_MSG.입항(nm, wh) });
+    if (core.반입 && !has('반입')) plan.push({ stage: '반입', msg: CUSTOMS_MSG.반입(nm, wh) });
+    if (insp && !/^N$|없음|비검사/i.test(insp) && !has('검사')) {
+      if (/즉시/.test(insp)) plan.push({ stage: '검사', msg: CUSTOMS_MSG.검사A(nm), insp });
+      else if (/반입후/.test(insp)) plan.push({ stage: '검사', msg: CUSTOMS_MSG.검사B(nm), insp });
+    }
+    if (core.반입 && core.수입신고수리 && !has('배차가능')) plan.push({ stage: '배차가능', needLink: true });   // 링크는 발송 직전 생성
+    if (!plan.length) { results.push({ mailbox, bl, status: 'nothing_new', 반입: !!core.반입, 수리: !!core.수입신고수리, 검사: insp || '-' }); continue; }
+    if (dryRun) { results.push({ mailbox, bl, method, status: 'WOULD_SEND', stages: plan.map(p => p.stage), 회원명: nm, 보세창고: wh || '-', 검사: insp || '-' }); continue; }
+    // 링크 필요(④)면 토큰 발급/재사용
+    let link = '';
+    if (plan.some(p => p.needLink)) {
+      let token = sf['고객토큰'], exp = sf['고객토큰만료일'];
+      const needNew = !token || (exp && new Date(exp + 'T23:59:59') < new Date());
+      if (needNew) {
+        token = genCustomerToken(32);
+        exp = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+        try { await atRequest('PATCH', `/${TABLES.Shipments}/${s.id}`, { fields: { '고객토큰': token, '고객토큰만료일': exp }, typecast: true }); }
+        catch (e) { results.push({ mailbox, bl, status: 'token_fail', detail: e.message.slice(0, 80) }); continue; }
+      }
+      link = `${AUTO_DISPATCH_BASE}?ship=${s.id}&t=${token}`;
+    }
+    // 단계별 순차 발송 + dedup(발송 성공 후에만 이력 append). 하나 실패해도 다음 계속.
+    const sentStages = [];
+    for (const p of plan) {
+      let msg = p.msg;
+      if (p.needLink) msg = (method === '화물') ? CUSTOMS_MSG.배차화물(nm, link) : CUSTOMS_MSG.배차택배(nm, link);
+      const sent = await sendChannelByMailbox(base, msg);
+      if (!sent.ok) { results.push({ mailbox, bl, stage: p.stage, status: 'send_fail', detail: sent.error }); continue; }
+      hist = histAppend(hist, p.stage);
+      try { await atRequest('PATCH', `/${TABLES.Shipments}/${s.id}`, { fields: { '통관알림이력': hist }, typecast: true }); } catch (e) {}
+      sentStages.push(p.stage);
+    }
+    if (sentStages.length) results.push({ mailbox, bl, method, status: 'SENT', stages: sentStages });
   }
   return res.json({ ok: true, dryRun: !!dryRun, target: isTarget ? (targetId || targetMb) : null, candidates: ships.length, processed: todo.length, results });
 }
