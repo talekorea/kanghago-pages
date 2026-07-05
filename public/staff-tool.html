@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.212</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.213</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.212</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.213</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3200,10 +3200,19 @@ function getTotalKg() {
   Object.values(state.boxes || {}).forEach(b => { total += parseFloat(b.kg) || 0; });
   return total;
 }
-// [v3.2.200] CO(CNY) = 절세>0이면 ¥200 정액, 아니면 0. 절세 자동판정(calcFtaSavingKrw)은 기존 유지.
+// [v3.2.213] CO(CNY) 절세연동 3단계 손익 판정 — 절세CNY = 적용FTA 절감액KRW ÷ 선적일 CNY_KRW.
+//   절세CNY ≥ 200 → ¥200 / ≥ 100 → ¥100(본전이면 발급, ≥) / < 100 → 0(CO 없음, 기본세율 신고·관세사 확인).
+//   ★환율 미로드(rateCnyKrw=0) → 판정 불가로 0. (트리거는 환율 확정 시만 프리즈, 게이트는 rateCnyKrw>0 확인 후 스킵.)
+function calcCoSavingCny() {
+  const savingKrw = (typeof calcFtaSavingKrw === 'function') ? calcFtaSavingKrw() : 0;
+  const rateCnyKrw = parseFloat((document.getElementById('rateCnyKrw') || {}).value) || 0;
+  return rateCnyKrw > 0 ? (savingKrw / rateCnyKrw) : 0;
+}
 function calcCoCny() {
-  const saving = (typeof calcFtaSavingKrw === 'function') ? calcFtaSavingKrw() : 0;
-  return saving > 0 ? CO_FEE_CNY : 0;
+  const cny = calcCoSavingCny();
+  if (cny >= 200) return 200;
+  if (cny >= 100) return 100;
+  return 0;
 }
 // 도구 현재 상태에서 선적일·환율 읽어 해상운임 KRW 반환 (수정값 우선)
 function getSeaFreightKRW() {
@@ -6803,6 +6812,11 @@ function _publishGateReason(kind) {
   //   (이전: payapp만 무조건 대조 요구 → 미선택 사서함이 최종IP는 통과·통합청구서는 차단되는 게이트 불일치. 근본 통일. autoMismatch(위)는 둘 다 항상 차단.)
   const ftaConf = String(f['적용FTA확정'] || '').trim();
   if (['한중FTA', 'RCEP협정', '아태협정'].includes(ftaConf)) {
+    // [v3.2.213] CO 손익 예외(B안) — 절세<¥100(calcCoCny=0)이면 CO 발급 실익 없어 기본세율 신고 OK(관세사 확인) → CO 대조 스킵.
+    //   ★환율 로드(rateCnyKrw>0)로 절세 판정 가능할 때만 스킵. 환율 미로드=판정 불가 → 안전하게 CO 요구 유지. 적용FTA확정 데이터·세율은 불변.
+    const _rateCnyKrw = parseFloat((document.getElementById('rateCnyKrw') || {}).value) || 0;
+    const _coFee = (typeof calcCoCny === 'function') ? calcCoCny() : 200;
+    if (_rateCnyKrw > 0 && _coFee <= 0) return '';   // 절세<¥100 → CO 불요, 게이트 통과(CO 없이 완료 허용)
     const coFileOk = !!(f['CO파일'] && Array.isArray(f['CO파일']) && f['CO파일'].length);
     if (!coFileOk) return kind === 'payapp' ? 'CO 파일 필요(특혜세율 청구) — CO 업로드 후 청구서 발송' : 'CO 파일 필요(특혜세율 제출용 최종 IP) — CO 업로드 후 다시';
     if (!matchOk) return kind === 'payapp' ? 'BL/CO 대조확인 미완(특혜세율) — §10 [대조 확인 완료] 후 청구서 발송' : 'BL/CO 대조확인 미완(특혜세율 제출용) — §10 [대조 확인 완료] 후 다시';
@@ -8617,7 +8631,12 @@ function renderOverhead() {
   tbody.appendChild(g1);
   _mkRow('BL 발급료', _cnyCell(bd.blCny), '¥100 정액');
   _mkRow('해상운임', _cnyCell(bd.seaCny), `${seaInfo.rate.name} · 청구CBM ${(seaInfo.billCbm||0).toFixed(2)} × $${seaInfo.rate.unit} = $${(seaInfo.usd||0).toFixed(2)} → ¥ (USD/CNY)`);
-  _mkRow('원산지증명 (CO)', _cnyCell(bd.coCny), (bd.coCny > 0) ? '¥200 정액 (FTA 절세 있음 — 자동판정)' : '절세 없음 → CO 미청구');
+  // [v3.2.213] CO 판정근거 표시(투명성) — 절세CNY → CO ¥200/¥100/없음(절세<¥100=기본세율 신고)
+  const _coSavCny = (typeof calcCoSavingCny === 'function') ? calcCoSavingCny() : 0;
+  const _coDesc = (bd.coCny >= 200) ? `절세 ¥${_coSavCny.toFixed(0)} ≥ ¥200 → CO ¥200`
+    : (bd.coCny >= 100) ? `절세 ¥${_coSavCny.toFixed(0)} (¥100~200) → CO ¥100`
+    : `절세 ¥${_coSavCny.toFixed(0)} < ¥100 → CO 없음(기본세율 신고·관세사 확인)`;
+  _mkRow('원산지증명 (CO)', _cnyCell(bd.coCny), _coDesc);
   _mkRow('작업수수료', _cnyCell(bd.workfeeCny), `핸들링 ¥${(bd.handlingCny||0).toFixed(2)} + DOCUMENT FEE ¥${(bd.documentCny||0).toFixed(2)} (SKU ${getShipmentSkuCount()}개 · 구간체감)`);
   const alSum = document.createElement('tr'); alSum.style.background = '#eef4fb';
   alSum.innerHTML = `<td colspan="2" style="text-align:right; font-weight:700; color:#1B5E9A;">└ 강하고 서비스 수수료 소계</td><td class="num" style="font-weight:700; color:#1B5E9A;">¥${(bd.alicoinCny||0).toFixed(2)}</td><td style="font-size:11px; color:#999;">≈₩${(bd.alicoinKrw||0).toLocaleString()} (참고)</td>`;
