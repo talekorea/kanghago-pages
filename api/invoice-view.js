@@ -16,14 +16,22 @@ module.exports = async (req, res) => {
   if (handleCors(req, res)) return;
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'GET only' });
 
-  const mailbox = (req.query && req.query.mailbox) || '';
+  let mailbox = (req.query && req.query.mailbox) || '';
   if (!mailbox) return res.status(400).json({ ok: false, error: 'mailbox 필요 (쿼리 파라미터)' });
 
   try {
     // 1. Shipments (사서함명 기준)
     const shipUrl = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(`{사서함}="${mailbox}"`)}&maxRecords=1`;
     const shipResp = await atRequest('GET', shipUrl);
-    const ship = (shipResp.records || [])[0];
+    let ship = (shipResp.records || [])[0];
+    // [v3.2.218] 바레 사서함(날짜접미사 없음) 접두 매칭 폴백 — 정확 매칭 실패 시 "{mailbox}-*" 중 최신 1건(사서함 desc).
+    //   ?s=AP1520 → AP1520-260630 등. 계산 로직 불변(사서함 해석만 확장). 정확명이 있으면 항상 그게 우선.
+    if (!ship && !/-\d{6}$/.test(mailbox)) {
+      const pfx = `${mailbox}-`;
+      const pfxUrl = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(`LEFT({사서함},${pfx.length})="${pfx}"`)}&sort%5B0%5D%5Bfield%5D=${encodeURIComponent('사서함')}&sort%5B0%5D%5Bdirection%5D=desc&maxRecords=1`;
+      try { const pr = await atRequest('GET', pfxUrl); ship = (pr.records || [])[0]; } catch (e) {}
+      if (ship && ship.fields && ship.fields['사서함']) mailbox = ship.fields['사서함'];   // 해석된 전체명으로 갱신
+    }
     if (!ship) return res.status(404).json({ ok: false, error: '사서함 없음: ' + mailbox });
 
     // 2. Customers (사서함번호 기준)
