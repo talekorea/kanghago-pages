@@ -333,7 +333,7 @@
   <h1 style="display:flex; align-items:center; gap:12px;">
     <span style="background:#1B2A3B; color:#F4EFE6; padding:4px 12px; border-radius:6px; font-size:14px;">🏛 관세사 모드</span>
     <span data-i18n="customs.title">제품 정보 확정</span>
-    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.215</span>
+    <span style="font-size:14px;color:var(--gold);font-weight:normal;" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.216</span>
   </h1>
   <p class="intro" data-i18n="customs.intro">제품별 영문명·HS코드·재질·FTA를 확정하여 통관 진행. 이전 데이터와 매칭되면 자동 채워집니다.</p>
 
@@ -3124,6 +3124,9 @@ const OVERHEAD_PRESETS = [
 
 // [v3.2.200] 원산지증명(CO): ¥200 정액(알리코인) — 절세>0 자동판정만 유지. 구 ₩30k/50k·$700분기·13건룰 폐지.
 const CO_FEE_CNY = 200;       // CO ¥200 단일 정액(절세>0일 때만)
+// [v3.2.216] CO 장수 규칙: (영문명,HS10) 고유 종류 13개까지 1장, 초과 시 +1장, 추가 장당 ¥70.
+const CO_SHEET_SIZE = 13;     // 1장당 담기는 CO 종류 수
+const CO_SHEET_ADD_CNY = 70;  // 추가 1장당 가산액(¥)
 const CO_FEE_UNDER = 30000;   // (구버전 호환 잔여참조 대비 — 미사용)
 const CO_FEE_OVER  = 50000;   // (구버전 호환 잔여참조 대비 — 미사용)
 const CO_THRESHOLD_USD = 700; // (구버전 호환)
@@ -3208,11 +3211,34 @@ function calcCoSavingCny() {
   const rateCnyKrw = parseFloat((document.getElementById('rateCnyKrw') || {}).value) || 0;
   return rateCnyKrw > 0 ? (savingKrw / rateCnyKrw) : 0;
 }
+// [v3.2.216] CO 종류 수 = 그 사서함 수량>0 제품의 (영문명, HS10) 고유 조합 수.
+//   영문명 = declItemName(통관품명_영문/Description) trim·대문자 정규화 / HS = 숫자만 추출.
+//   둘 다 같으면 1종, 하나라도 다르면 별도. (신고 대상=수량>0만 = IP CI 시트와 동일 범위)
+function calcCoTypeCount() {
+  const set = new Set();
+  (state.products || []).forEach(p => {
+    const pf = p.fields || {};
+    if ((parseFloat(pf['수량']) || 0) <= 0) return;
+    const name = String((typeof declItemName === 'function') ? declItemName(pf) : (pf['통관품명_영문'] || pf['Description'] || '')).trim().toUpperCase();
+    const hs = String(pf['HS코드'] || '').replace(/[^0-9]/g, '');
+    if (!name && !hs) return;   // 완전 빈 제품 제외(게이트가 영문명+HS 강제 → CO 시점엔 채워짐)
+    set.add(name + '' + hs);
+  });
+  return set.size;
+}
+// [v3.2.216] CO 손익 + 장수 단일 소스.
+//   base = 절세연동(≥200→200 / ≥100→100 / else 0). base>0이면 장수=ceil(종류/13), co=base+(장수-1)×70.
+//   절세<¥100(base=0) → 미발급, 장수 무관 co=0.
+function calcCoDetail() {
+  const savCny = calcCoSavingCny();
+  const base = (savCny >= 200) ? 200 : (savCny >= 100) ? 100 : 0;
+  const types = calcCoTypeCount();
+  const sheets = base > 0 ? Math.max(1, Math.ceil(types / CO_SHEET_SIZE)) : 0;
+  const addCny = base > 0 ? (sheets - 1) * CO_SHEET_ADD_CNY : 0;
+  return { savCny, base, types, sheets, addCny, co: base + addCny };
+}
 function calcCoCny() {
-  const cny = calcCoSavingCny();
-  if (cny >= 200) return 200;
-  if (cny >= 100) return 100;
-  return 0;
+  return calcCoDetail().co;
 }
 // 도구 현재 상태에서 선적일·환율 읽어 해상운임 KRW 반환 (수정값 우선)
 function getSeaFreightKRW() {
@@ -8631,11 +8657,11 @@ function renderOverhead() {
   tbody.appendChild(g1);
   _mkRow('BL 발급료', _cnyCell(bd.blCny), '¥100 정액');
   _mkRow('해상운임', _cnyCell(bd.seaCny), `${seaInfo.rate.name} · 청구CBM ${(seaInfo.billCbm||0).toFixed(2)} × $${seaInfo.rate.unit} = $${(seaInfo.usd||0).toFixed(2)} → ¥ (USD/CNY)`);
-  // [v3.2.213] CO 판정근거 표시(투명성) — 절세CNY → CO ¥200/¥100/없음(절세<¥100=기본세율 신고)
-  const _coSavCny = (typeof calcCoSavingCny === 'function') ? calcCoSavingCny() : 0;
-  const _coDesc = (bd.coCny >= 200) ? `절세 ¥${_coSavCny.toFixed(0)} ≥ ¥200 → CO ¥200`
-    : (bd.coCny >= 100) ? `절세 ¥${_coSavCny.toFixed(0)} (¥100~200) → CO ¥100`
-    : `절세 ¥${_coSavCny.toFixed(0)} < ¥100 → CO 없음(기본세율 신고·관세사 확인)`;
+  // [v3.2.216] CO 판정근거 표시(투명성) — 절세CNY → 기본(¥200/¥100/없음) + 장수 가산(종류>13 → +¥70/장)
+  const _cd = (typeof calcCoDetail === 'function') ? calcCoDetail() : { savCny: 0, base: 0, types: 0, sheets: 0, addCny: 0, co: bd.coCny };
+  const _coDesc = (_cd.co <= 0)
+    ? `절세 ¥${_cd.savCny.toFixed(0)} < ¥100 → CO 없음(기본세율 신고·관세사 확인)`
+    : `절세 ¥${_cd.savCny.toFixed(0)} → 기본¥${_cd.base}${_cd.sheets > 1 ? ` + 장추가¥${_cd.addCny}` : ''} · ${_cd.sheets}장 · CO종류 ${_cd.types}개`;
   _mkRow('원산지증명 (CO)', _cnyCell(bd.coCny), _coDesc);
   _mkRow('작업수수료', _cnyCell(bd.workfeeCny), `핸들링 ¥${(bd.handlingCny||0).toFixed(2)} + DOCUMENT FEE ¥${(bd.documentCny||0).toFixed(2)} (SKU ${getShipmentSkuCount()}개 · 구간체감)`);
   const alSum = document.createElement('tr'); alSum.style.background = '#eef4fb';
@@ -15432,7 +15458,7 @@ function calcInvoiceBreakdownKrw() {
   const _sea = (typeof calcSeaFreightKRW === 'function') ? calcSeaFreightKRW(_totCbm, _shipDate, rateUsdKrw, _totKg, rateCnyUsd) : { usd:0, cny:0, krw:0, billCbm:0, rate:{} };
   const blCny       = BL_FEE_CNY;                                           // ¥100
   const seaCny      = _sea.cny;                                             // 해운비 CNY
-  const coCny       = (typeof calcCoCny === 'function') ? calcCoCny() : 0;  // ¥200(절세>0) or 0
+  const coCny       = (typeof calcCoCny === 'function') ? calcCoCny() : 0;  // 절세연동 기본 + 장수 가산(v3.2.216)
   const handlingCny = (typeof calcHandlingCny === 'function') ? calcHandlingCny(_totCbm) : 0;
   const documentCny = (typeof calcDocumentFeeCny === 'function') ? calcDocumentFeeCny(getShipmentSkuCount()) : 0;
   const workfeeCny  = handlingCny + documentCny;                            // "작업수수료" 합산(표시 한 줄)
@@ -15512,7 +15538,7 @@ async function saveFrozenCnyCharges(opts) {
     fields['핸들링CNY'] = c.handlingCny;
     fields['도큐먼트피CNY'] = c.documentCny;
   }
-  if (opts.withCo) fields['청구_CO_CNY'] = c.coCny;   // 트리거2: CO(절세>0이면 200, 아니면 0)
+  if (opts.withCo) fields['청구_CO_CNY'] = c.coCny;   // 트리거2: CO(기본 100/200 + 장수 가산 ¥70/장, 절세<100=0) v3.2.216
   // 알리코인 = 프리즈된 5필드(이번 저장분 우선, 없으면 기존 f) + CO
   const pick = (k) => (fields[k] != null) ? fields[k] : (parseFloat(f[k]) || 0);
   fields['청구_알리코인_CNY'] = pick('청구_BL_CNY') + pick('청구_해운비_CNY') + pick('청구_CO_CNY') + pick('핸들링CNY') + pick('도큐먼트피CNY');

@@ -133,8 +133,23 @@ module.exports = async (req, res) => {
       _workItems.push({ label, qty, unit, cny: Math.round(cny * 100) / 100 }); _workTotal += cny;
     });
     _workTotal = Math.round(_workTotal * 100) / 100;
+    // [v3.2.216] CO 종류/장수 근거 — (영문명,HS10) 고유 조합. 금액은 프리즈된 _co가 진실원, 여기선 표시 근거만 역산.
+    const _coTypeSet = new Set();
+    allProducts.forEach(p => {
+      const pf = p.fields || {};
+      if ((parseFloat(pf['수량']) || 0) <= 0) return;
+      const nm = String(pf['통관품명_영문'] || pf['Description'] || '').trim().toUpperCase();
+      const hs = String(pf['HS코드'] || '').replace(/[^0-9]/g, '');
+      if (!nm && !hs) return;
+      _coTypeSet.add(nm + '' + hs);
+    });
+    const _coTypes = _coTypeSet.size;
+    const _coSheets = _co > 0 ? Math.max(1, Math.ceil(_coTypes / 13)) : 0;
+    const _coAddCny = _co > 0 ? (_coSheets - 1) * 70 : 0;
+    const _coBase = _co > 0 ? _co - _coAddCny : 0;
     const alicoin = {
       blCny: _bl, seaCny: _sea, coCny: _co, handlingCny: _hd, documentCny: _dc,
+      coTypes: _coTypes, coSheets: _coSheets, coBase: _coBase, coAddCny: _coAddCny,
       workfeeCny: _hd + _dc, totalCny: _totalCny, krwRef: Math.round(_totalCny * _rateCnyKrw),
       localWorkCny: _workTotal, localWorkItems: _workItems,   // [v3.2.203] 현지 작업비(참고)
       grandUseCny: Math.round((_totalCny + _workTotal) * 100) / 100,   // 알리코인 총 사용(서비스+현지작업비)
