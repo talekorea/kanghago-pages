@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.216</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.220</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1534,7 +1534,8 @@
     <!-- [v3.2.208] 화물(KRW)·쿠팡밀크런(KRW) 수동칸 제거 — 국내운임은 §5 운임계산기에서 확정. §9는 내보내기 창구. -->
     <input id="invFreightKrw" type="hidden" value="0" />
     <input id="invCoupangKrw" type="hidden" value="0" />
-    <button class="secondary small" onclick="openInvoicePreview()" style="padding:8px 16px;">👁 미리보기</button>
+    <button class="secondary small" onclick="openCustomerInvoiceView()" style="padding:8px 16px;">🧾 고객 청구서 열기 (새 탭)</button>
+    <span style="font-size:11px; color:#888; margin-left:8px;">고객이 실제로 받는 청구서를 그대로 확인합니다</span>
     <!-- v3.2.36: PDF 다운로드 버튼 제거 (통합 청구서 URL로 대체). 함수는 미리보기 모달에서 사용 가능 — 보존 -->
     <!-- v3.2.141 (2026-06-24): 페이앱 영구 거절 → [💳 페이앱 결제 요청 생성] 버튼 제거.
          발행 = 통합 청구서 URL(계좌이체 안내 포함) 한 개로 카톡 발송. 결제수단 = 계좌이체(테일코리아 하나은행) + 세금계산서. -->
@@ -1767,20 +1768,7 @@
   </div>
 </div>
 
-<!-- 청구서 미리보기 모달 -->
-<div id="invoicePreviewModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.7); z-index:9999; padding:20px; overflow-y:auto;">
-  <div style="max-width:820px; margin:20px auto; background:#fff; border-radius:8px; padding:16px; box-shadow:0 10px 40px rgba(0,0,0,0.4);">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-      <h3 style="margin:0; font-size:15px;">📄 청구서 미리보기 (A4)</h3>
-      <div>
-        <!-- v3.2.36: 미리보기 모달의 PDF 다운로드 버튼도 제거 — 통합 청구서 URL로 대체 -->
-        <button onclick="document.getElementById('invoicePreviewModal').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer; color:#888; margin-left:6px;">×</button>
-      </div>
-    </div>
-    <!-- 청구서 본문 — A4 사이즈로 캡쳐 -->
-    <div id="invoiceDoc" style="width:780px; min-height:1100px; padding:40px; background:#fff; font-family:'Pretendard Variable','Pretendard','Apple SD Gothic Neo','맑은 고딕',sans-serif; color:#1B2A3B;"></div>
-  </div>
-</div>
+<!-- [v3.2.220] 청구서 미리보기 모달(옛 A4 레이아웃) 제거 — §9는 실제 invoice-view 새 탭으로 대체(openCustomerInvoiceView). renderInvoiceHTML/downloadInvoicePdf는 호출부 0(죽은 코드). -->
 
 <!-- Phase C-C2: 최종 확인 — 5단계 발행 영역 -->
 <div class="section hidden" id="finalConfirmSection" style="border:2px solid #1B2A3B;">
@@ -15107,11 +15095,26 @@ function renderInvoiceHTML(d) {
   `;
 }
 
-function openInvoicePreview() {
+// [v3.2.220] 옛 미리보기(renderInvoiceHTML 옛 레이아웃·모달) 제거 → 실제 배포 invoice-view 새 탭 열기.
+//   ★고객이 받는 것과 동일: §9 [통합 청구서 URL]과 같은 URL(mailbox + FTA 관부가세 비교 tc 파라미터)로 조립.
+function openCustomerInvoiceView() {
   if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
-  const data = buildInvoiceData();
-  document.getElementById('invoiceDoc').innerHTML = renderInvoiceHTML(data);
-  document.getElementById('invoicePreviewModal').style.display = 'block';
+  const mb = (state.shipment.fields || {})['사서함'] || '';
+  if (!mb) { toastWarn && toastWarn('사서함명을 확인할 수 없습니다'); return; }
+  const base = (typeof INVOICE_VIEW_BASE !== 'undefined' && INVOICE_VIEW_BASE) ? INVOICE_VIEW_BASE : 'https://kanghago-pages.vercel.app/invoice-view.html';
+  let url = base + '?mailbox=' + encodeURIComponent(mb);
+  try {
+    const _tc = (buildInvoiceData() || {}).tariffCompare;
+    if (_tc) {
+      const qp = new URLSearchParams({
+        tcbd: _tc.base.duty, tcbv: _tc.base.vat, tcbt: _tc.base.total,
+        tcfd: _tc.fta.duty,  tcfv: _tc.fta.vat,  tcft: _tc.fta.total,
+        tcsv: _tc.saving,    tcfl: _tc.fta.label,
+      });
+      url += '&' + qp.toString();
+    }
+  } catch (e) { console.warn('[v3.2.220 tc param]', e && e.message); }
+  window.open(url, '_blank', 'noopener');
 }
 
 async function downloadInvoicePdf() {
