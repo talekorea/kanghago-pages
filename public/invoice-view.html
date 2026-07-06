@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>강하고 청구서 — 물류비</title>
-<!-- invoice-view v3.2.217 — 우선순위 3단 재구성(①입금 ②FTA ③알리코인) + ④배차 골드 CTA + 로고. 계산 불변(표시만). -->
+<!-- invoice-view v3.2.218 — 우선순위 4블록(①입금 ②FTA ③알리코인 ④배차) — ?s= 지원 + ④배차 항상표시(출발/도착지). 계산 불변(표시만). -->
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
 <style>
   :root { --navy:#1B2A3B; --gold:#C9973A; --bg:#F4EFE6; --ivory:#FAF6EE; --dim:#666; --line:#e8e0d0;
@@ -91,6 +91,12 @@
     box-shadow:0 5px 16px rgba(27,42,59,0.25); }
   .dispatch .dtitle { color:#ffd87a; font-size:13px; font-weight:800; letter-spacing:.04em; }
   .dispatch .ddesc { color:#c6d5e8; font-size:12.5px; margin:8px 0 16px; line-height:1.6; }
+  .dispatch .daddr { margin:12px auto 4px; max-width:340px; text-align:left;
+    background:rgba(255,255,255,0.07); border:1px solid rgba(255,216,122,0.3); border-radius:9px; padding:10px 14px; }
+  .dispatch .darow { display:flex; gap:10px; padding:3px 0; font-size:13px; }
+  .dispatch .darow .dk { color:#ffd87a; font-weight:700; min-width:44px; }
+  .dispatch .darow .dv { color:#eef2f7; }
+  .dispatch .darow .dv em { color:#c6d5e8; font-style:normal; font-size:11px; }
   .dispatch a.dbtn { display:inline-block; padding:16px 44px; background:var(--gold); color:#1B2A3B;
     border-radius:11px; font-size:17px; font-weight:800; text-decoration:none;
     box-shadow:0 4px 14px rgba(201,151,58,0.4); transition:transform .1s, box-shadow .1s; }
@@ -132,7 +138,7 @@
 
 <script>
 const params = new URLSearchParams(location.search);
-const mailbox = params.get('mailbox') || params.get('ship') || '';
+const mailbox = params.get('mailbox') || params.get('ship') || params.get('s') || '';
 
 async function loadInvoice() {
   const root = document.getElementById('root');
@@ -280,13 +286,19 @@ function render(d) {
       </div>
     </details>` : '';
 
-  // ④ 배차요청서 (네이비+골드 CTA · 맨 아래 · 토큰 링크 있을 때만)
-  const dispatchBox = (s.deliveryUrl) ? `
+  // ④ 배차요청서 (네이비+골드 CTA · 맨 아래 · 접기 없음 · ★항상 표시)
+  //   링크: 토큰 있으면 완성 URL(s.deliveryUrl), 없으면 delivery-request.html?s={shipmentId} 폴백.
+  const dispatchHref = s.deliveryUrl || ('/delivery-request.html?s=' + encodeURIComponent(s.id || s.mailbox || ''));
+  const dispatchBox = `
     <div class="dispatch">
-      <div class="dtitle">🚚 ④ 배차요청서</div>
-      <div class="ddesc">빠른 배차를 위해 <strong style="color:#fff;">받는분·주소·배송유형</strong>을 미리 등록해 주세요.<br>통관 완료 후 배송 희망 일시를 선택·배차 요청하시면 됩니다.</div>
-      <a class="dbtn" href="${s.deliveryUrl}" target="_blank" rel="noopener">🚚 배차요청서 작성하기</a>
-    </div>` : '';
+      <div class="dtitle">🚚 ④ 배송정보를 입력해 주세요</div>
+      <div class="daddr">
+        <div class="darow"><span class="dk">출발지</span><span class="dv">인천항 보세창고</span></div>
+        <div class="darow"><span class="dk">도착지</span><span class="dv">고객님 요청 주소 <em>(입력 필요)</em></span></div>
+      </div>
+      <div class="ddesc">통관 완료 후 신속한 배차를 위해, 미리 결제와 배송정보를 등록해 주세요.<br>결제가 확인되면 통관·배차가 바로 진행됩니다.</div>
+      <a class="dbtn" href="${dispatchHref}" target="_blank" rel="noopener">배차요청서 작성하기</a>
+    </div>`;
 
   root.innerHTML = `
     <header>
