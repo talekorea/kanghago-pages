@@ -228,7 +228,10 @@ async function handleDeliveryGet(req, res) {
   const f = v.ship.fields || {};
   const READ_WL = ['배송방식', '수취_수취인', '수취_회사', '수취_전화', '수취_주소', '수취_우편번호', '특이사항', '배송유형', '하차지원', '상태'];
   const out = {}; for (const k of READ_WL) { if (f[k] !== undefined) out[k] = f[k]; }
-  return res.json({ mode: deliveryMode(f), mailbox: f['사서함'] || '', fields: out });
+  // [v3.2.219] 최종 IP(상업 인보이스·패킹) 다운로드 — 토큰 검증 통과한 ★이 사서함 것만. CO·BL·면허·마스터BL 등은 미제공(WL 밖).
+  const _ip = Array.isArray(f['최종IP파일']) ? f['최종IP파일'] : [];
+  const finalIp = _ip.map(a => ({ url: a.url, filename: a.filename || '최종IP.xlsx' })).filter(a => a.url);
+  return res.json({ mode: deliveryMode(f), mailbox: f['사서함'] || '', fields: out, finalIp });
 }
 
 // op=customer_delivery_save — 토큰 재검증 → 모드별 쓰기 WL만 PATCH. 응답도 saved/rejected로 큐레이트.

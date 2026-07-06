@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>강하고 청구서 — 물류비</title>
-<!-- invoice-view v3.2.218 — 우선순위 4블록(①입금 ②FTA ③알리코인 ④배차) — ?s= 지원 + ④배차 항상표시(출발/도착지). 계산 불변(표시만). -->
+<!-- invoice-view v3.2.219 — 우선순위 4블록(①입금 ②FTA ③알리코인 ④배차) — ?s= 지원 + ④배차 항상표시(출발/도착지). 계산 불변(표시만). -->
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
 <style>
   :root { --navy:#1B2A3B; --gold:#C9973A; --bg:#F4EFE6; --ivory:#FAF6EE; --dim:#666; --line:#e8e0d0;
@@ -163,6 +163,20 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// [v3.2.219] 주소 앞부분만 표시(시·구·도로명까지, 상세번지 가림) — 배차 도착지 프라이버시.
+function maskAddr(addr) {
+  addr = String(addr == null ? '' : addr).trim();
+  if (!addr) return '';
+  var t = addr.split(/\s+/), out = [], found = false;
+  for (var i = 0; i < t.length; i++) {
+    var m = t[i].match(/^(.*?(?:로|길|대로))(?:\d.*)?$/);
+    if (m) { out.push(m[1]); found = true; break; }
+    out.push(t[i]);
+  }
+  if (!found) out = t.slice(0, Math.min(3, t.length));
+  return out.join(' ') + ' ****';
+}
+
 // FTA 비교 2단(기본세율 취소선 vs 적용 FTA) — 도구가 URL 파라미터로 전달한 숫자를 그대로 렌더(서버 재계산 없음).
 //   ② 펼침 내부에 삽입. 파라미터 없음/불완전/절감0 → '' (펼침 시 요약 문구만).
 function renderFtaCompare() {
@@ -293,8 +307,8 @@ function render(d) {
     <div class="dispatch">
       <div class="dtitle">🚚 ④ 배송정보를 입력해 주세요</div>
       <div class="daddr">
-        <div class="darow"><span class="dk">출발지</span><span class="dv">인천항 보세창고</span></div>
-        <div class="darow"><span class="dk">도착지</span><span class="dv">고객님 요청 주소 <em>(입력 필요)</em></span></div>
+        <div class="darow"><span class="dk">출발지</span><span class="dv">${esc(s.bondedWarehouse || '인천항 보세창고')}</span></div>
+        <div class="darow"><span class="dk">도착지</span><span class="dv">${s.deliveryAddr ? esc(maskAddr(s.deliveryAddr)) : '고객님 요청 주소 <em>(입력 필요)</em>'}</span></div>
       </div>
       <div class="ddesc">통관 완료 후 신속한 배차를 위해, 미리 결제와 배송정보를 등록해 주세요.<br>결제가 확인되면 통관·배차가 바로 진행됩니다.</div>
       <a class="dbtn" href="${dispatchHref}" target="_blank" rel="noopener">배차요청서 작성하기</a>

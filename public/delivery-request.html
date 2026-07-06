@@ -47,6 +47,13 @@
   .ind.ok { color:#0a7b40; } .ind.err { color:#c0392b; } .ind.saving { color:#a85a16; }
   .fullmsg { text-align:center; padding:60px 20px; color:#666; }
   .fullmsg .big { font-size:40px; margin-bottom:12px; }
+  .dlbox { margin:16px 0 4px; padding:15px 16px; background:#FAF6EE; border:1.5px solid var(--gold); border-radius:12px; }
+  .dltitle { font-size:14px; font-weight:800; color:var(--navy); margin-bottom:4px; }
+  .dldesc { font-size:12px; color:#666; line-height:1.6; margin-bottom:10px; }
+  .dldesc .dldim { color:#a08a55; }
+  .dlbtn { display:block; text-align:center; padding:12px; margin-top:8px; background:var(--navy); color:#fff;
+    border-radius:9px; font-size:13px; font-weight:700; text-decoration:none; word-break:break-all; }
+  .dlbtn:hover { background:#2c4060; }
   .foot { text-align:center; font-size:11px; color:#999; margin-top:20px; line-height:1.6; }
 </style>
 </head>
@@ -78,7 +85,7 @@
       var r = await fetch('/api/customer?op=customer_delivery_get&ship=' + encodeURIComponent(SHIP) + '&t=' + encodeURIComponent(TOKEN));
       var d = await r.json();
       if (!r.ok) { showError(d.error || ('접근할 수 없습니다 (HTTP ' + r.status + ')')); return; }
-      state.mode = d.mode || '화물'; state.fields = d.fields || {}; state.mailbox = d.mailbox || '';
+      state.mode = d.mode || '화물'; state.fields = d.fields || {}; state.mailbox = d.mailbox || ''; state.finalIp = d.finalIp || [];
       render();
     } catch (e) { showError('네트워크 오류입니다. 잠시 후 다시 시도해 주세요.'); }
   }
@@ -118,6 +125,12 @@
       + (state.mailbox ? '<div class="mailbox">' + esc(fmtMb(state.mailbox)) + '</div>' : '')
       + '<h1>배송 정보를 미리 등록해 주세요</h1>'
       + '<div class="sub">' + esc(sub) + '</div>'
+      + ((state.finalIp && state.finalIp.length)
+          ? '<div class="dlbox"><div class="dltitle">📄 선적 서류 다운로드</div>'
+            + '<div class="dldesc">상업 인보이스 · 패킹리스트(박스별 제품)<br><span class="dldim">CO · BL은 통관 후 순차 제공됩니다.</span></div>'
+            + state.finalIp.map(function(a){ return '<a class="dlbtn" href="' + esc(a.url) + '" download="' + esc(a.filename) + '" target="_blank" rel="noopener">⬇ ' + esc(a.filename) + '</a>'; }).join('')
+            + '</div>'
+          : '')
       + '<div class="notice' + (isParcel ? ' parcel' : '') + '">' + esc(noticeTxt) + '</div>'
       + '<label>수령인 성함</label><input id="iName" type="text" value="' + esc(f['수취_수취인'] || '') + '" placeholder="받으실 분 성함" />'
       + '<label>연락처</label><input id="iPhone" type="tel" inputmode="numeric" value="' + esc(fmtPhone(f['수취_전화'] || '')) + '" placeholder="010-0000-0000" oninput="this.value=fmtPhone(this.value)" />'

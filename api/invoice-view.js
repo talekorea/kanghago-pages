@@ -190,6 +190,8 @@ module.exports = async (req, res) => {
       shipment: {
         id: ship.id,
         mailbox,
+        bondedWarehouse: f['보세창고'] || '',   // [v3.2.219] ④배차 출발지(동적)
+        deliveryAddr: f['수취_주소'] || '',      // [v3.2.219] ④배차 도착지(고객 입력 주소·앞부분만 표시)
         status: f['상태'] || '',
         shipDate: f['출고요청일'] || '',
         blNo: f['BL번호'] || '',
