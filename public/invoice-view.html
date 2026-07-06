@@ -4,74 +4,112 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>강하고 청구서 — 물류비</title>
+<!-- invoice-view v3.2.217 — 우선순위 3단 재구성(①입금 ②FTA ③알리코인) + ④배차 골드 CTA + 로고. 계산 불변(표시만). -->
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
 <style>
-  :root { --navy:#1B2A3B; --gold:#C9973A; --bg:#F4EFE6; --ivory:#FAF6EE; --dim:#666; --line:#e8e0d0; }
+  :root { --navy:#1B2A3B; --gold:#C9973A; --bg:#F4EFE6; --ivory:#FAF6EE; --dim:#666; --line:#e8e0d0;
+    --blue:#1B5E9A; --green:#2BB673; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:#1d1d1f;
     font-family:'Pretendard Variable','Pretendard',-apple-system,system-ui,'Apple SD Gothic Neo',sans-serif; }
   .container { max-width:760px; margin:24px auto; background:#fff; padding:28px 32px; border-radius:14px;
     box-shadow:0 6px 24px rgba(0,0,0,0.08); }
+
+  /* 헤더 — 로고 좌 + 제목 | 우 메타 */
   header { border-bottom:3px solid var(--navy); padding-bottom:16px; margin-bottom:20px;
     display:flex; justify-content:space-between; align-items:flex-start; gap:18px; }
-  header img { height:48px; width:auto; }
-  header h1 { margin:0; font-size:23px; color:var(--navy); }
-  header .sub { font-size:11px; color:var(--dim); margin-top:2px; letter-spacing:.05em; }
-  header .meta { text-align:right; font-size:11px; line-height:1.7; }
+  header img { height:52px; width:auto; }
+  header h1 { margin:0; font-size:24px; color:var(--navy); letter-spacing:-0.01em; }
+  header .sub { font-size:11px; color:var(--dim); margin-top:2px; letter-spacing:.08em; }
+  header .meta { text-align:right; font-size:11.5px; line-height:1.75; color:var(--dim); }
   header .meta strong { color:var(--navy); }
-  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:18px; }
+
+  /* 발행처·수신처 2단 (맨 위) */
+  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; }
   .card { padding:12px 14px; background:var(--ivory); border-radius:8px; }
   .card .label { font-size:10px; color:#888; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; }
-  .card .value { font-size:13px; font-weight:600; color:var(--navy); margin-top:3px; }
+  .card .value { font-size:13px; font-weight:700; color:var(--navy); margin-top:3px; }
   .card .sub { font-size:11px; color:var(--dim); margin-top:2px; }
 
-  /* 물류비 항목 표 — 좁고 정돈된 레이아웃 (사장님 목업) */
-  .items { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:8px; }
-  .items thead { background:var(--navy); color:#fff; }
-  .items th { padding:8px 12px; text-align:left; font-weight:600; font-size:12px; }
-  .items th.num { text-align:right; }
-  .items tbody td { padding:7px 12px; border-bottom:1px solid var(--line); }
-  .items tbody td.num { text-align:right; font-family:ui-monospace,'SF Mono',Consolas,monospace; }
-  .items tbody td.sub-row { padding:4px 12px 4px 28px; font-size:11px; color:var(--dim); border-bottom:1px dashed #f0e8d8; }
-  .items tfoot td { padding:8px 12px; }
-  .items tfoot .subtotal { background:var(--ivory); font-weight:600; }
-  .items tfoot .subtotal td { border-top:1px solid var(--gold); }
-  .items tfoot .vat td { color:var(--dim); font-size:12px; }
+  /* 우선순위 박스 공통 */
+  .pri { border-radius:14px; margin:16px 0; overflow:hidden; }
 
-  /* 최종 결제금액 부각 */
-  .grand-total { margin:18px 0; padding:20px 24px;
+  /* ① 실제 입금 금액 — 파란 강조(제일 큼) */
+  .pay-box { border:2px solid var(--blue); background:linear-gradient(135deg,#eef5fc 0%,#dfecfa 100%);
+    padding:22px 24px; }
+  .pay-box .plabel { font-size:12px; font-weight:800; color:var(--blue); letter-spacing:.03em; }
+  .pay-box .plabel .tag { font-size:10px; font-weight:600; color:#fff; background:var(--blue);
+    padding:2px 8px; border-radius:10px; margin-left:6px; letter-spacing:0; }
+  .pay-box .pamt { font-size:38px; font-weight:800; color:var(--navy);
+    font-family:ui-monospace,'SF Mono',monospace; letter-spacing:-0.02em; line-height:1.1; margin:8px 0 4px; }
+  .pay-box .pamt small { font-size:14px; font-weight:500; color:var(--dim); }
+  .pay-box .pbreak { font-size:12px; color:var(--dim); }
+  .pay-box .bank { margin-top:14px; padding-top:13px; border-top:1px dashed #b9c9dc; }
+  .pay-box .bank .bk { font-size:18px; font-weight:800; color:var(--navy);
+    font-family:ui-monospace,monospace; letter-spacing:0.3px; }
+  .pay-box .bank .holder { font-size:12px; color:var(--dim); margin-top:2px; }
+  .pay-box .depositor { margin-top:10px; font-size:12px; color:#374; background:#fffdf6;
+    border:1px solid #ecdfb8; border-radius:7px; padding:9px 12px; line-height:1.6; }
+  .pay-box .depositor strong { color:#b26a00; }
+  .pay-box.paid { border-color:var(--green); background:linear-gradient(135deg,#eefaf3,#dcf5e7); }
+  .pay-box .paid-badge { font-size:20px; font-weight:800; color:var(--green); }
+  .pay-box.wait { border-color:#ccc; background:#fafafa; }
+
+  /* details 공통 (② ③ 펼침) */
+  details.pri { border:1.5px solid var(--line); }
+  details.pri > summary { list-style:none; cursor:pointer; padding:15px 20px; display:flex;
+    justify-content:space-between; align-items:center; gap:12px; user-select:none; }
+  details.pri > summary::-webkit-details-marker { display:none; }
+  details.pri > summary .chev { transition:transform .2s; font-size:11px; opacity:.5; }
+  details.pri[open] > summary .chev { transform:rotate(180deg); }
+  details.pri .body { padding:4px 20px 18px; }
+
+  /* ② FTA 절감 — 초록 */
+  .fta-box { background:#f1faf4; }
+  .fta-box { border-color:var(--green) !important; }
+  .fta-box > summary .stitle { font-weight:800; color:#1a8a52; font-size:14px; }
+  .fta-box > summary .samt { font-family:ui-monospace,monospace; font-weight:800; font-size:16px; color:#1a8a52; }
+
+  /* ③ 알리코인 — 회색 */
+  .coin-box { background:#f5f6f8; border-color:#c8ccd2 !important; }
+  .coin-box > summary .stitle { font-weight:700; color:#556; font-size:14px; }
+  .coin-box > summary .stitle .note { font-weight:400; font-size:11px; color:#c0392b; margin-left:6px; }
+  .coin-box > summary .samt { font-family:ui-monospace,monospace; font-weight:800; font-size:15px; color:#556; }
+  .coin-box table { width:100%; font-size:13px; border-collapse:collapse; }
+  .coin-box table td { padding:5px 0; }
+  .coin-box table td.num { text-align:right; font-family:ui-monospace,monospace; white-space:nowrap; }
+  .coin-box .grp { font-size:11.5px; color:#888; font-weight:700; margin:10px 0 3px; }
+  .coin-box .subtot { border-top:1px dashed #99a; font-weight:700; color:#556; }
+  .coin-box .grand { border-top:1.5px solid #889; margin-top:8px; padding-top:7px; display:flex;
+    justify-content:space-between; font-weight:800; color:#445; }
+  .coin-box .disclaimer { margin-top:10px; font-size:12px; color:#556; background:#eceef1;
+    border-radius:7px; padding:9px 12px; line-height:1.6; }
+
+  /* ④ 배차요청서 — 네이비 배경 + 골드 버튼(항상 강조, 맨 아래) */
+  .dispatch { margin:22px 0 8px; padding:24px 22px; text-align:center; border-radius:14px;
     background:linear-gradient(135deg,var(--navy) 0%,#2c4060 100%);
-    color:#F4EFE6; border-radius:12px;
-    display:flex; align-items:center; justify-content:space-between;
-    box-shadow:0 4px 12px rgba(27,42,59,0.25); }
-  .grand-total .lbl { font-size:11px; letter-spacing:0.15em; color:#ffd87a; text-transform:uppercase; font-weight:600; }
-  .grand-total .lbl-sub { font-size:10px; color:#9bb5d6; margin-top:2px; }
-  .grand-total .amt { font-size:34px; font-weight:800; color:var(--gold);
-    font-family:ui-monospace,monospace; letter-spacing:-0.01em; }
+    box-shadow:0 5px 16px rgba(27,42,59,0.25); }
+  .dispatch .dtitle { color:#ffd87a; font-size:13px; font-weight:800; letter-spacing:.04em; }
+  .dispatch .ddesc { color:#c6d5e8; font-size:12.5px; margin:8px 0 16px; line-height:1.6; }
+  .dispatch a.dbtn { display:inline-block; padding:16px 44px; background:var(--gold); color:#1B2A3B;
+    border-radius:11px; font-size:17px; font-weight:800; text-decoration:none;
+    box-shadow:0 4px 14px rgba(201,151,58,0.4); transition:transform .1s, box-shadow .1s; }
+  .dispatch a.dbtn:hover { transform:translateY(-1px); box-shadow:0 7px 18px rgba(201,151,58,0.5); }
 
-  /* FTA 절세 안내 (결제금액 미포함) */
-  .fta-note { margin:14px 0 6px; padding:11px 14px; background:#FAF6EE; border-left:4px solid var(--gold); border-radius:6px; font-size:12px; color:var(--dim); }
-  .fta-note .title { font-weight:700; color:var(--navy); margin-bottom:5px; font-size:12px; }
-  .fta-note .row { display:flex; justify-content:space-between; margin-top:3px; }
-  .fta-note .row span:last-child { font-family:ui-monospace,monospace; }
-  .fta-note .footer { margin-top:5px; color:#0a7b40; font-size:11px; }
+  /* FTA 비교 2단(펼침 내부) */
+  .cmp { display:flex; gap:12px; align-items:stretch; margin-top:4px; }
+  .cmp .col { flex:1; padding:11px 14px; border-radius:8px; font-size:12px; }
+  .cmp .col.base { background:#f4f4f4; opacity:.75; }
+  .cmp .col.fta { background:#fff; border:2px solid var(--gold); }
+  .cmp .row { display:flex; justify-content:space-between; margin-top:4px; }
+  .cmp .row span:last-child { font-family:ui-monospace,monospace; }
+  .cmp .col.base .row { color:#999; text-decoration:line-through; }
+  .cmp .col .tot { margin-top:5px; padding-top:5px; border-top:1px solid var(--line); font-weight:700; }
+  .cmp .badge { background:var(--gold); color:#fff; font-size:9px; font-weight:700; padding:2px 9px;
+    border-radius:10px; letter-spacing:.04em; }
 
-  /* 결제 버튼 */
-  .pay-btn-wrap { text-align:center; margin:24px 0 12px; }
-  .pay-btn { display:inline-block; padding:16px 52px; background:#2BB673; color:#fff;
-    border:none; border-radius:10px; font-size:17px; font-weight:700; cursor:pointer;
-    text-decoration:none; box-shadow:0 4px 12px rgba(43,182,115,0.3); transition:transform 0.1s, box-shadow 0.1s; }
-  .pay-btn:hover { transform:translateY(-1px); box-shadow:0 6px 16px rgba(43,182,115,0.4); }
-  .pay-btn:disabled, .pay-btn.disabled { background:#ccc; cursor:not-allowed; box-shadow:none; transform:none; }
-  /* [v3.2.141] 계좌이체 안내 (페이앱 결제하기 버튼 대체) */
-  .bank-guide { display:inline-block; text-align:center; padding:22px 40px; background:#FAF6EE; border:2px solid #C9973A; border-radius:12px; box-shadow:0 4px 12px rgba(201,151,58,0.15); max-width:520px; }
-  .bank-guide-title { font-size:15px; font-weight:700; color:#1B2A3B; margin-bottom:10px; }
-  .bank-guide-amt { font-size:26px; font-weight:800; color:#C9973A; margin-bottom:10px; }
-  .bank-guide-bank { font-size:18px; font-weight:700; color:#1B2A3B; font-family:ui-monospace,monospace; letter-spacing:0.3px; }
-  .bank-guide-holder { font-size:13px; color:#666; margin-top:3px; }
-  .bank-guide-note { font-size:12px; color:#666; margin-top:14px; line-height:1.7; text-align:left; padding-top:12px; border-top:1px dashed #d0c8b0; }
-
-  .foot { font-size:11px; color:#888; text-align:center; line-height:1.7; padding-top:16px; border-top:1px solid var(--line); }
+  .foot { font-size:11px; color:#888; text-align:center; line-height:1.7; padding-top:18px;
+    margin-top:20px; border-top:1px solid var(--line); }
   .loading, .err { padding:60px 30px; text-align:center; color:#888; }
   .err { color:#c0392b; }
 
@@ -81,9 +119,9 @@
     .info-grid { grid-template-columns:1fr; }
     header { flex-direction:column; }
     header .meta { text-align:left; }
-    .grand-total { flex-direction:column; gap:10px; text-align:center; }
-    .grand-total .amt { font-size:28px; }
-    .pay-btn { padding:14px 32px; font-size:15px; width:90%; }
+    .pay-box .pamt { font-size:30px; }
+    .cmp { flex-direction:column; }
+    .dispatch a.dbtn { width:90%; padding:15px 20px; }
   }
 </style>
 </head>
@@ -98,10 +136,7 @@ const mailbox = params.get('mailbox') || params.get('ship') || '';
 
 async function loadInvoice() {
   const root = document.getElementById('root');
-  if (!mailbox) {
-    root.innerHTML = '<div class="err">⚠ 사서함 번호가 URL에 없습니다.</div>';
-    return;
-  }
+  if (!mailbox) { root.innerHTML = '<div class="err">⚠ 사서함 번호가 URL에 없습니다.</div>'; return; }
   try {
     const r = await fetch('/api/invoice-view?mailbox=' + encodeURIComponent(mailbox));
     const data = await r.json();
@@ -122,95 +157,153 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// v3.2.82: 관부가세 비교(예상) — 도구가 URL 파라미터로 전달한 숫자를 그대로 렌더(서버 재계산 없음, 도구와 1원까지 동일).
-//   ★기존 청구서 스타일 재사용: 비교 박스 = 발행처/고객 카드 톤(--ivory·라운드), 절감 바 = --gold 바.
-//   파라미터 없음/불완전/절감0 → '' 반환 → 섹션 숨김(청구서 안 깨짐).
-function renderTariffCompare() {
+// FTA 비교 2단(기본세율 취소선 vs 적용 FTA) — 도구가 URL 파라미터로 전달한 숫자를 그대로 렌더(서버 재계산 없음).
+//   ② 펼침 내부에 삽입. 파라미터 없음/불완전/절감0 → '' (펼침 시 요약 문구만).
+function renderFtaCompare() {
   const bd = parseFloat(params.get('tcbd')), bv = parseFloat(params.get('tcbv')), bt = parseFloat(params.get('tcbt'));
   const fd = parseFloat(params.get('tcfd')), fv = parseFloat(params.get('tcfv')), ft = parseFloat(params.get('tcft'));
-  const sv = parseFloat(params.get('tcsv')); const fl = params.get('tcfl') || '선택 FTA';
+  const sv = parseFloat(params.get('tcsv')); const fl = params.get('tcfl') || '적용 FTA';
   if (![bd, bv, bt, fd, fv, ft, sv].every(n => !isNaN(n)) || sv <= 0) return '';
   return `
-    <div style="margin-bottom:18px;">
-      <div style="font-size:11px; color:#888; margin-bottom:6px;">관부가세 비교 <span style="color:#aaa;">(예상 · 고객 통관 비용 — 강하고 청구금액과 <strong>별개</strong>)</span></div>
-      <div style="display:flex; gap:12px; align-items:stretch;">
-        <div style="flex:1; padding:11px 14px; background:var(--ivory); border-radius:8px; opacity:.7; font-size:12px;">
-          <div style="font-weight:700; color:var(--navy); margin-bottom:6px;">기본세율 <span style="font-weight:400; color:#aaa;">(FTA 미적용)</span></div>
-          <div style="display:flex; justify-content:space-between; color:#999; text-decoration:line-through;"><span>관세</span><span style="font-family:ui-monospace,monospace;">${fmtKrw(bd)}</span></div>
-          <div style="display:flex; justify-content:space-between; color:#999; text-decoration:line-through;"><span>부가세 10%</span><span style="font-family:ui-monospace,monospace;">${fmtKrw(bv)}</span></div>
-          <div style="display:flex; justify-content:space-between; margin-top:5px; padding-top:5px; border-top:1px solid var(--line); color:#999; text-decoration:line-through; font-weight:700;"><span>합계</span><span style="font-family:ui-monospace,monospace;">${fmtKrw(bt)}</span></div>
-        </div>
-        <div style="flex:1; padding:11px 14px; background:var(--ivory); border:2px solid var(--gold); border-radius:8px; font-size:12px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <span style="font-weight:700; color:var(--navy);">${esc(fl)}</span>
-            <span style="background:var(--gold); color:#fff; font-size:9px; font-weight:700; padding:2px 9px; border-radius:10px; letter-spacing:.04em;">적용</span>
-          </div>
-          <div style="display:flex; justify-content:space-between;"><span>관세</span><span style="font-family:ui-monospace,monospace;">${fmtKrw(fd)}</span></div>
-          <div style="display:flex; justify-content:space-between;"><span>부가세 10%</span><span style="font-family:ui-monospace,monospace;">${fmtKrw(fv)}</span></div>
-          <div style="display:flex; justify-content:space-between; margin-top:5px; padding-top:5px; border-top:1px solid var(--line); font-weight:700; color:var(--navy);"><span>합계</span><span style="font-family:ui-monospace,monospace;">${fmtKrw(ft)}</span></div>
-        </div>
+    <div class="cmp">
+      <div class="col base">
+        <div style="font-weight:700; color:var(--navy); margin-bottom:6px;">기본세율 <span style="font-weight:400; color:#aaa;">(FTA 미적용)</span></div>
+        <div class="row"><span>관세</span><span>${fmtKrw(bd)}</span></div>
+        <div class="row"><span>부가세 10%</span><span>${fmtKrw(bv)}</span></div>
+        <div class="row tot"><span>합계</span><span>${fmtKrw(bt)}</span></div>
       </div>
-      <div style="background:var(--gold); color:#fff; border-radius:8px; padding:11px 16px; margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-size:12px; font-weight:700;">FTA 적용 절감액 <span style="font-weight:400; opacity:.85;">(기본세율 − ${esc(fl)})</span></span>
-        <span style="font-family:ui-monospace,monospace; font-size:16px; font-weight:800;">− ${fmtKrw(sv)}</span>
+      <div class="col fta">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span style="font-weight:700; color:var(--navy);">${esc(fl)}</span><span class="badge">적용</span>
+        </div>
+        <div class="row"><span>관세</span><span>${fmtKrw(fd)}</span></div>
+        <div class="row"><span>부가세 10%</span><span>${fmtKrw(fv)}</span></div>
+        <div class="row tot" style="color:var(--navy);"><span>합계</span><span>${fmtKrw(ft)}</span></div>
       </div>
-      <div style="font-size:10px; color:#aaa; margin-top:6px;">※ 표시 금액은 예상치이며, 정확한 관세·부가세는 협력 관세사 검토 후 안내됩니다.</div>
-    </div>`;
+    </div>
+    <div style="font-size:10px; color:#aaa; margin-top:8px;">※ 표시 금액은 예상치이며, 정확한 관세·부가세는 협력 관세사 검토 후 안내됩니다. 이 절감액은 강하고 청구금액과 별개입니다.</div>`;
 }
 
 function render(d) {
   const root = document.getElementById('root');
   const s = d.shipment, c = d.customer, t = d.totals, bd = d.breakdown || {}, al = d.alicoin || {};
-  // [v3.2.139] 발행주체 = 주식회사 테일코리아(단일 진실원). API에 issuer 없으면 폴백.
   const issuer = d.issuer || {
-    name: '주식회사 테일코리아', biz: '162-86-01960',
-    addr: '인천시 서구 북항로 207번길 55',
+    name: '주식회사 테일코리아', biz: '162-86-01960', addr: '인천시 서구 북항로 207번길 55',
     tel: '010-3622-7995', email: 'admin@talekorea.com',
     bank: '하나은행 121-910031-58704', bankHolder: '예금주 주식회사 테일코리아',
   };
   const ftaSavingKrw = (t && t.ftaSavingKrw) || 0;
-
-  // v3.2.18 P0: 물류비 청구서. 신고가 폴백 폐기 — 청구금액_KRW = 0이면 0 표시.
   const claimAmount = t.claimKrw || 0;
-  // [v3.2.141] 페이앱 영구 거절 → 결제수단 = 계좌이체(테일코리아 하나은행) + 세금계산서. 결제하기 버튼 제거.
   const paidIn = !!d.paidInAt;
+  const issueDate = (d.shipment && d.shipment.issueDate) ? d.shipment.issueDate.slice(0, 10) : (d.generatedAt || '').slice(0, 10);
 
-  // 물류비 항목 — 해당분만 표시 (0 또는 빈값은 줄 자체 생략)
-  // v3.2.31: CO는 절세 > 0일 때만 청구. note에 "FTA 적용 관세 ₩XXX 절감 (CO 발급 기준)"
+  // 국내운임(pre-VAT) + VAT — 표시용(계산 불변, 서버 값 그대로)
   const itemRows = [];
-  if (bd.bl > 0)      itemRows.push({ name: 'BL 발급료',          amount: bd.bl });
-  if (bd.sea > 0)     itemRows.push({ name: '해상운임',            amount: bd.sea });
-  if (bd.co > 0)      itemRows.push({
-    name: '원산지증명서 (CO)', amount: bd.co,
-    note: ftaSavingKrw > 0 ? `한중 FTA 적용으로 관세 ${fmtKrw(ftaSavingKrw)} 절감 (CO 발급 기준)` : ''
-  });
-  if (bd.parcel > 0)  itemRows.push({ name: '택배 (매트릭스)',      amount: bd.parcel });
-  if (bd.freight > 0) itemRows.push({ name: '화물',                amount: bd.freight });
-  if (bd.milkrun > 0) itemRows.push({ name: '밀크런',              amount: bd.milkrun, note: '⌈CBM/1.5⌉ × 30,000 (pre-VAT)' });   // v3.2.38
-  if (bd.coupang > 0) itemRows.push({ name: '쿠팡 밀크런',         amount: bd.coupang });
-
-  const preVatSum = itemRows.reduce((s, r) => s + r.amount, 0);
+  if (bd.parcel > 0)  itemRows.push({ name: '택배 (매트릭스)', amount: bd.parcel });
+  if (bd.freight > 0) itemRows.push({ name: '화물',           amount: bd.freight });
+  if (bd.milkrun > 0) itemRows.push({ name: '밀크런',         amount: bd.milkrun });
+  if (bd.coupang > 0) itemRows.push({ name: '쿠팡 밀크런',    amount: bd.coupang });
+  const preVatSum = itemRows.reduce((sm, r) => sm + r.amount, 0);
   const preVat = (t.preVat && t.preVat > 0) ? t.preVat : preVatSum;
   const vat = t.vat || Math.round(preVat * 0.10);
+
+  // ① 실제 입금 금액 박스 (3상태: 입금완료 / 청구액>0 / 발행대기)
+  let payBox;
+  if (paidIn) {
+    payBox = `<div class="pri pay-box paid">
+      <div class="plabel">① 결제 상태</div>
+      <div class="pamt paid-badge" style="font-size:24px;">✅ 입금 확인 완료</div>
+      <div class="pbreak">통관을 진행하고 있습니다. 감사합니다.</div>
+    </div>`;
+  } else if (claimAmount > 0) {
+    payBox = `<div class="pri pay-box">
+      <div class="plabel">① 실제 입금하실 금액 <span class="tag">계좌이체 · 세금계산서</span></div>
+      <div class="pamt">${fmtKrw(claimAmount)} <small>(VAT 포함)</small></div>
+      <div class="pbreak">국내운임 ${fmtKrw(preVat)} + 부가세 10% ${fmtKrw(vat)}</div>
+      <div class="bank">
+        <div style="font-size:11px; color:#888; font-weight:600;">입금 계좌</div>
+        <div class="bk">${esc(issuer.bank)}</div>
+        ${issuer.bankHolder ? `<div class="holder">${esc(issuer.bankHolder)}</div>` : ''}
+      </div>
+      <div class="depositor">※ 입금 시 <strong>사서함번호(${esc(s.mailbox)})</strong> 또는 <strong>상호</strong>를 입금자명에 기재해 주세요.<br>※ 입금 확인 후 영업일 1~2일 내 통관을 진행하고, 세금계산서를 발행해 드립니다.</div>
+    </div>`;
+  } else {
+    payBox = `<div class="pri pay-box wait">
+      <div class="plabel" style="color:#999;">① 실제 입금하실 금액</div>
+      <div class="pamt" style="font-size:22px; color:#999;">청구서 발행 대기</div>
+      <div class="pbreak">담당자가 국내운임 확정 후 금액을 안내드립니다.</div>
+    </div>`;
+  }
+
+  // ② FTA 절감 혜택 (초록 · ftaSavingKrw>0일 때만)
+  const cmpHtml = renderFtaCompare();
+  const ftaBox = (ftaSavingKrw > 0) ? `
+    <details class="pri fta-box">
+      <summary>
+        <span class="stitle">💚 ② FTA 절감 혜택 <span style="font-weight:400; font-size:11px; color:#888;">(고객님이 아끼신 금액)</span></span>
+        <span style="display:flex; align-items:center; gap:8px;"><span class="samt">− ${fmtKrw(ftaSavingKrw)}</span><span class="chev">▼</span></span>
+      </summary>
+      <div class="body">
+        <div style="font-size:12.5px; color:var(--dim); margin-bottom:10px;">기본세율 대신 <strong>FTA 특혜세율</strong>을 적용해 관세 <strong style="color:#1a8a52;">${fmtKrw(ftaSavingKrw)}</strong>을 절감했습니다.${(t.appliedFta && t.appliedFta !== '미선택') ? ` (적용: ${esc(t.appliedFta)})` : ''}</div>
+        ${cmpHtml || '<div style="font-size:11px; color:#aaa;">※ 세부 비교표는 관세사 검토 후 제공됩니다. 관세·수입부가세는 관세사가 화주에게 직접 청구합니다(강하고 청구서 미포함).</div>'}
+      </div>
+    </details>` : '';
+
+  // ③ 알리코인 차감 (회색 · grandUse>0일 때만) — CNY만 표시(≈₩ 미표시), "입금 아님" 명시
+  const grandUse = (al.grandUseCny != null) ? al.grandUseCny : ((al.totalCny || 0) + (al.localWorkCny || 0));
+  const coDesc = (al.coSheets > 1)
+    ? ` <span style="font-size:11px; color:#888;">· ${al.coSheets}장 (기본¥${al.coBase}+장추가¥${al.coAddCny} · CO종류 ${al.coTypes}개)</span>`
+    : (al.coTypes ? ` <span style="font-size:11px; color:#888;">· 1장 (CO종류 ${al.coTypes}개)</span>` : '');
+  const coinBox = (grandUse > 0) ? `
+    <details class="pri coin-box">
+      <summary>
+        <span class="stitle">🪙 ③ 알리코인(예치금) 차감<span class="note">참고 · 계좌이체 아님</span></span>
+        <span style="display:flex; align-items:center; gap:8px;"><span class="samt">¥${grandUse.toFixed(2)}</span><span class="chev">▼</span></span>
+      </summary>
+      <div class="body">
+        <div class="grp">［강하고 서비스 수수료］</div>
+        <table>
+          <tr><td>BL 발급료</td><td class="num">¥${(al.blCny || 0).toFixed(2)}</td></tr>
+          <tr><td>해운비 <span style="font-size:11px; color:#888;">(FREIGHT PREPAID)</span></td><td class="num">¥${(al.seaCny || 0).toFixed(2)}</td></tr>
+          ${(al.coCny || 0) > 0 ? `<tr><td>원산지증명(CO)${coDesc}</td><td class="num">¥${al.coCny.toFixed(2)}</td></tr>` : ''}
+          <tr><td>작업수수료 <span style="font-size:11px; color:#888;">(핸들링+DOCUMENT FEE)</span></td><td class="num">¥${(al.workfeeCny || 0).toFixed(2)}</td></tr>
+          <tr class="subtot"><td>└ 서비스 수수료 소계</td><td class="num">¥${(al.totalCny || 0).toFixed(2)}</td></tr>
+        </table>
+        ${(al.localWorkCny > 0) ? `
+        <div class="grp">［중국 현지 작업비］ <span style="font-weight:400; color:#c0392b;">제품 신고가에 이미 반영 · 참고</span></div>
+        <table><tr><td>🏭 중국 현지 작업비</td><td class="num" style="font-weight:700;">¥${(al.localWorkCny || 0).toFixed(2)}</td></tr></table>
+        <details style="margin-top:4px;"><summary style="cursor:pointer; font-size:12px; color:#556;">세부보기 ▼ (${(al.localWorkItems || []).length}항목)</summary>
+          <table style="margin-top:5px; font-size:12px; color:#555;">${(al.localWorkItems || []).map(it => { const qu = (it.qty != null && it.unit != null) ? `${it.qty}개 × ¥${it.unit}` : ''; return `<tr><td style="padding:3px 6px 3px 0;">${esc(it.label)}</td><td style="padding:3px 8px; color:#888; white-space:nowrap;">${qu}</td><td class="num">¥${(it.cny || 0).toFixed(2)}</td></tr>`; }).join('')}</table>
+        </details>` : ''}
+        <div class="grand"><span>🪙 알리코인 총 사용 (참고)</span><span style="font-family:ui-monospace,monospace;">¥${grandUse.toFixed(2)}</span></div>
+        <div class="disclaimer">위 금액은 <strong>알리코인(예치금)에서 이미 차감</strong>되었습니다. 계좌이체로 <strong>추가 청구하지 않습니다</strong>(이중청구 아님).</div>
+      </div>
+    </details>` : '';
+
+  // ④ 배차요청서 (네이비+골드 CTA · 맨 아래 · 토큰 링크 있을 때만)
+  const dispatchBox = (s.deliveryUrl) ? `
+    <div class="dispatch">
+      <div class="dtitle">🚚 ④ 배차요청서</div>
+      <div class="ddesc">빠른 배차를 위해 <strong style="color:#fff;">받는분·주소·배송유형</strong>을 미리 등록해 주세요.<br>통관 완료 후 배송 희망 일시를 선택·배차 요청하시면 됩니다.</div>
+      <a class="dbtn" href="${s.deliveryUrl}" target="_blank" rel="noopener">🚚 배차요청서 작성하기</a>
+    </div>` : '';
 
   root.innerHTML = `
     <header>
       <div style="display:flex; align-items:center; gap:14px;">
         <img src="/kanghago_logo.png" alt="강하고" onerror="this.style.display='none'" />
         <div>
-          <h1>강하고 물류비 청구서</h1>
-          <div class="sub">KANGHAGO LOGISTICS INVOICE</div>
+          <h1>청구서 <span style="font-size:15px; font-weight:600; color:var(--gold);">INVOICE</span></h1>
+          <div class="sub">강하고 물류비 · KANGHAGO LOGISTICS</div>
         </div>
       </div>
       <div class="meta">
-        <div><strong>사서함</strong> ${esc(s.mailbox)}</div>
-        <div><strong>발행일</strong> ${esc((d.shipment && d.shipment.issueDate) ? d.shipment.issueDate.slice(0,10) : d.generatedAt.slice(0, 10))}</div>
+        <div><strong>청구번호</strong> ${esc(s.mailbox)}</div>
+        <div><strong>발행일</strong> ${esc(issueDate)}</div>
         ${s.blNo ? `<div><strong>BL No.</strong> ${esc(s.blNo)}</div>` : ''}
         ${s.forwarder ? `<div><strong>포워딩</strong> ${esc(s.forwarder)}</div>` : ''}
       </div>
     </header>
-
-    ${renderTariffCompare()}
 
     <div class="info-grid">
       <div class="card">
@@ -219,11 +312,9 @@ function render(d) {
         <div class="sub">사업자 ${esc(issuer.biz)}</div>
         <div class="sub">${esc(issuer.addr)}</div>
         <div class="sub">${esc(issuer.tel)} · ${esc(issuer.email)}</div>
-        <div class="sub" style="margin-top:5px; padding-top:5px; border-top:1px dashed #d0c8b0; color:#1B2A3B; font-weight:600;">💳 입금: ${esc(issuer.bank)}</div>
-        ${issuer.bankHolder ? `<div class="sub" style="color:#888;">${esc(issuer.bankHolder)}</div>` : ''}
       </div>
       <div class="card">
-        <div class="label">고객</div>
+        <div class="label">수신처 (고객)</div>
         <div class="value">${esc(s.mailbox)} ${esc(c && c.name || '-')}${c && c.company ? ' (' + esc(c.company) + ')' : ''}</div>
         ${c && c.bizNo ? `<div class="sub">사업자: ${esc(c.bizNo)}</div>` : ''}
         ${c && c.address ? `<div class="sub">${esc(c.address)}</div>` : ''}
@@ -231,109 +322,16 @@ function render(d) {
       </div>
     </div>
 
-    <table class="items">
-      <thead>
-        <tr>
-          <th style="width:60%;">항목 (물류비)</th>
-          <th class="num" style="width:40%;">금액 (KRW, VAT 제외)</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${itemRows.length === 0 ? `
-          <tr><td colspan="2" style="text-align:center; padding:24px; color:#888;">(물류비 항목 미발생 — 도구 §12 청구서 발행 필요)</td></tr>
-        ` : itemRows.map(r => `
-          <tr>
-            <td>${esc(r.name)}</td>
-            <td class="num">${fmtKrw(r.amount)}</td>
-          </tr>
-          ${r.note ? `<tr><td colspan="2" style="padding:3px 12px 9px 28px; font-size:11px; color:#0a7b40; border-bottom:1px dashed #f0e8d8;">💡 ${esc(r.note)}</td></tr>` : ''}
-        `).join('')}
-        ${(bd.co === 0 && ftaSavingKrw === 0 && itemRows.length > 0) ? `
-          <tr><td colspan="2" style="padding:8px 12px; font-size:11px; color:#888; background:#fafaf5;">
-            ℹ 이 제품은 FTA 절세가 없어 원산지증명서(CO)가 필요하지 않습니다 (CO 발급료 미청구).
-          </td></tr>
-        ` : ''}
-      </tbody>
-      <tfoot>
-        <tr class="subtotal">
-          <td style="text-align:right;">합계 (pre-VAT)</td>
-          <td class="num">${fmtKrw(preVat)}</td>
-        </tr>
-        <tr class="vat">
-          <td style="text-align:right;">부가세 10%</td>
-          <td class="num">+ ${fmtKrw(vat)}</td>
-        </tr>
-      </tfoot>
-    </table>
-
-    <div class="grand-total">
-      <div>
-        <div class="lbl">국내 결제금액 (계좌이체·세금계산서)</div>
-        <div class="lbl-sub">국내운임 × 1.10 (택배/화물/밀크런만 +10% 과세)</div>
-      </div>
-      <div class="amt">${fmtKrw(claimAmount)}</div>
-    </div>
-
-    ${(al.totalCny > 0 || al.localWorkCny > 0) ? `
-    <div style="background:#eef4fb; border:1.5px solid #1B5E9A; border-radius:12px; padding:18px 20px; margin-top:16px;">
-      <div style="font-weight:700; color:#1B5E9A; font-size:14px; margin-bottom:10px;">🪙 알리코인(예치금) 사용내역 <span style="font-weight:400; font-size:11px; color:#888;">— 위 국내 결제와 별도 · 계좌이체 금액 아님</span></div>
-      <div style="font-size:12px; color:#888; font-weight:600; margin-bottom:4px;">［강하고 서비스 수수료］</div>
-      <table style="width:100%; font-size:13px; border-collapse:collapse;">
-        <tr><td style="padding:4px 0;">BL 발급료</td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.blCny||0).toFixed(2)}</td></tr>
-        <tr><td style="padding:4px 0;">해운비 <span style="font-size:11px; color:#888;">(FREIGHT PREPAID)</span></td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.seaCny||0).toFixed(2)}</td></tr>
-        ${(al.coCny||0) > 0 ? `<tr><td style="padding:4px 0;">원산지증명(CO)${(al.coSheets > 1) ? ` <span style="font-size:11px; color:#888;">(${al.coSheets}장 · 기본¥${al.coBase}+장추가¥${al.coAddCny} · CO종류 ${al.coTypes}개)</span>` : (al.coTypes ? ` <span style="font-size:11px; color:#888;">(1장 · CO종류 ${al.coTypes}개)</span>` : '')}</td><td class="num" style="text-align:right; font-family:monospace;">¥${al.coCny.toFixed(2)}</td></tr>` : ''}
-        <tr><td style="padding:4px 0;">작업수수료 <span style="font-size:11px; color:#888;">(핸들링+DOCUMENT FEE)</span></td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.workfeeCny||0).toFixed(2)}</td></tr>
-        <tr style="border-top:1px dashed #1B5E9A; font-weight:600;"><td style="padding:5px 0; font-size:12px;">└ 서비스 수수료 소계</td><td class="num" style="text-align:right; font-family:monospace;">¥${(al.totalCny||0).toFixed(2)}</td></tr>
-      </table>
-      ${(al.localWorkCny > 0) ? `
-      <div style="font-size:12px; color:#888; font-weight:600; margin:10px 0 4px 0;">［중국 현지 작업비］ <span style="font-weight:400; color:#c0392b;">제품 신고가에 이미 반영 · 사용내역 참고</span></div>
-      <table style="width:100%; font-size:13px; border-collapse:collapse;">
-        <tr><td style="padding:4px 0;">🏭 중국 현지 작업비</td><td class="num" style="text-align:right; font-family:monospace; font-weight:700;">¥${(al.localWorkCny||0).toFixed(2)}</td></tr>
-      </table>
-      <details style="margin-top:4px;"><summary style="cursor:pointer; font-size:12px; color:#1B5E9A;">세부보기 ▼ (${(al.localWorkItems||[]).length}항목)</summary>
-        <table style="width:100%; border-collapse:collapse; margin-top:5px; font-size:12px; color:#555;">${(al.localWorkItems||[]).map(it => { const qu=(it.qty!=null&&it.unit!=null)?`${it.qty}개 × ¥${it.unit}`:''; return `<tr><td style="padding:3px 6px 3px 0;">${esc(it.label)}</td><td style="padding:3px 8px; color:#888; white-space:nowrap;">${qu}</td><td style="padding:3px 0; text-align:right; font-family:ui-monospace,monospace; white-space:nowrap;">¥${(it.cny||0).toFixed(2)}</td></tr>`; }).join('')}</table>
-      </details>` : ''}
-      <div style="border-top:1.5px solid #1B5E9A; margin-top:8px; padding-top:6px; display:flex; justify-content:space-between; font-weight:700; color:#1B5E9A;"><span>🪙 알리코인 총 사용 (참고)</span><span style="font-family:monospace;">¥${(al.grandUseCny != null ? al.grandUseCny : ((al.totalCny||0)+(al.localWorkCny||0))).toFixed(2)}</span></div>
-      <div style="margin-top:9px; font-size:12px; color:#1B5E9A;">위 금액은 <strong>알리코인(예치금)에서 이미 차감</strong>되었습니다. 계좌이체로 추가 청구하지 않습니다.</div>
-    </div>` : ''}
-
-    ${(t.invoiceKrw > 0) ? `
-      <div class="fta-note">
-        <div class="title">💡 FTA 절세 안내 (결제금액 미포함)</div>
-        <div class="row"><span>· 신고가 (인보이스 KRW)</span><span>${fmtKrw(t.invoiceKrw)}</span></div>
-        <!-- v3.2.31: 적용 FTA 미선택 표시 제거 — 내부 용어. 한중/아태/일반만 표시 -->
-        ${(t.appliedFta && t.appliedFta !== '미선택') ? `<div class="row"><span>· 적용 FTA</span><span>${esc(t.appliedFta)}</span></div>` : ''}
-        ${ftaSavingKrw > 0 ? `<div class="row" style="color:#0a7b40; font-weight:600;"><span>· FTA 적용 관세 절감</span><span>${fmtKrw(ftaSavingKrw)}</span></div>` : ''}
-        <div class="footer">→ 관세·수입부가세는 관세사가 화주에게 직접 청구합니다. 강하고 청구서엔 미포함.</div>
-      </div>
-    ` : ''}
-
-    ${(s.deliveryUrl) ? `
-    <div style="text-align:center; margin:18px 0 6px;">
-      <a href="${s.deliveryUrl}" target="_blank" rel="noopener" style="display:inline-block; padding:15px 40px; background:#1B5E9A; color:#fff; border-radius:10px; font-size:16px; font-weight:800; text-decoration:none; box-shadow:0 4px 12px rgba(27,94,154,0.25);">🚚 배차요청서 작성</a>
-      <div style="font-size:12px; color:#666; margin-top:8px; line-height:1.5;">통관 완료 전에 <strong>배송 정보(받는분·주소·배송유형)</strong>를 미리 등록해 주세요.<br>수입신고 수리 완료 시 다시 안내드리고, 그때 배송 희망 일시를 선택·배차 요청하시면 됩니다.</div>
-    </div>` : ''}
-
-    <div class="pay-btn-wrap">
-      ${paidIn
-        ? `<button class="pay-btn disabled" disabled>✅ 입금 확인 완료 — 통관 진행 중</button>`
-        : claimAmount > 0
-          ? `<div class="bank-guide">
-               <div class="bank-guide-title">💳 아래 계좌로 입금해 주세요 (계좌이체)</div>
-               <div class="bank-guide-amt">${fmtKrw(claimAmount)} <span style="font-size:13px; font-weight:400; color:#666;">(VAT 포함)</span></div>
-               <div class="bank-guide-bank">${esc(issuer.bank)}</div>
-               ${issuer.bankHolder ? `<div class="bank-guide-holder">${esc(issuer.bankHolder)}</div>` : ''}
-               <div class="bank-guide-note">※ 입금 시 <strong>사서함번호(${esc(s.mailbox)})</strong> 또는 <strong>상호</strong>를 입금자명에 기재해 주세요.<br>※ 세금계산서를 발행해 드립니다. 입금 확인 후 영업일 기준 1~2일 내 통관을 진행합니다.</div>
-             </div>`
-          : `<button class="pay-btn disabled" disabled>⏳ 청구서 발행 대기 (직원이 §9에서 발행)</button>`
-      }
-    </div>
+    ${payBox}
+    ${ftaBox}
+    ${coinBox}
+    ${dispatchBox}
 
     <div class="foot">
       <div>강하고 (Kanghago) · 한·중 1688 무역대행 · 발행: ${esc(issuer.name)} (${esc(issuer.biz)})</div>
       <div>문의: ${esc(issuer.tel)} · ${esc(issuer.email)}</div>
-      <div style="margin-top:6px; color:#bbb;">청구번호 ${esc(s.mailbox)} · 발행 ${esc((d.shipment && d.shipment.issueDate) ? d.shipment.issueDate.slice(0,10) : d.generatedAt.slice(0, 10))}</div>
-      <div style="margin-top:3px; color:#999; font-size:10px;">국내 결제 = 국내운임(택배/화물/밀크런) × 1.10 · BL·해운비·CO·작업수수료는 알리코인(CNY) 차감(FREIGHT PREPAID)</div>
+      <div style="margin-top:6px; color:#bbb;">청구번호 ${esc(s.mailbox)} · 발행 ${esc(issueDate)}</div>
+      <div style="margin-top:3px; color:#999; font-size:10px;">① 국내 결제 = 국내운임(택배/화물/밀크런) × 1.10 · ③ BL·해운비·CO·작업수수료는 알리코인(예치금) 차감(FREIGHT PREPAID, 계좌이체 아님)</div>
     </div>
   `;
 }
