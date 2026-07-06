@@ -243,31 +243,31 @@ function render(d) {
 
   // ② FTA 절감 혜택 (초록 · ftaSavingKrw>0일 때만)
   const cmpHtml = renderFtaCompare();
-  const ftaBox = (ftaSavingKrw > 0) ? `
+  const ftaBox = `
     <details class="pri fta-box">
       <summary>
         <span class="stitle">💚 ② FTA 절감 혜택 <span style="font-weight:400; font-size:11px; color:#888;">(고객님이 아끼신 금액)</span></span>
-        <span style="display:flex; align-items:center; gap:8px;"><span class="samt">− ${fmtKrw(ftaSavingKrw)}</span><span class="chev">▼</span></span>
+        <span style="display:flex; align-items:center; gap:8px;"><span class="samt">${ftaSavingKrw > 0 ? '− ' + fmtKrw(ftaSavingKrw) : '적용분 없음'}</span><span class="chev">▼</span></span>
       </summary>
       <div class="body">
-        <div style="font-size:12.5px; color:var(--dim); margin-bottom:10px;">기본세율 대신 <strong>FTA 특혜세율</strong>을 적용해 관세 <strong style="color:#1a8a52;">${fmtKrw(ftaSavingKrw)}</strong>을 절감했습니다.${(t.appliedFta && t.appliedFta !== '미선택') ? ` (적용: ${esc(t.appliedFta)})` : ''}</div>
+        <div style="font-size:12.5px; color:var(--dim); margin-bottom:10px;">${ftaSavingKrw > 0 ? `기본세율 대신 <strong>FTA 특혜세율</strong>을 적용해 관세 <strong style="color:#1a8a52;">${fmtKrw(ftaSavingKrw)}</strong>을 절감했습니다.${(t.appliedFta && t.appliedFta !== '미선택') ? ` (적용: ${esc(t.appliedFta)})` : ''}` : '이 사서함은 FTA 특혜세율 적용분이 없습니다(기본세율 신고). 절감액은 FTA 적용 사서함에서 표시됩니다.'}</div>
         ${cmpHtml || '<div style="font-size:11px; color:#aaa;">※ 세부 비교표는 관세사 검토 후 제공됩니다. 관세·수입부가세는 관세사가 화주에게 직접 청구합니다(강하고 청구서 미포함).</div>'}
       </div>
-    </details>` : '';
+    </details>`;
 
   // ③ 알리코인 차감 (회색 · grandUse>0일 때만) — CNY만 표시(≈₩ 미표시), "입금 아님" 명시
   const grandUse = (al.grandUseCny != null) ? al.grandUseCny : ((al.totalCny || 0) + (al.localWorkCny || 0));
   const coDesc = (al.coSheets > 1)
     ? ` <span style="font-size:11px; color:#888;">· ${al.coSheets}장 (기본¥${al.coBase}+장추가¥${al.coAddCny} · CO종류 ${al.coTypes}개)</span>`
     : (al.coTypes ? ` <span style="font-size:11px; color:#888;">· 1장 (CO종류 ${al.coTypes}개)</span>` : '');
-  const coinBox = (grandUse > 0) ? `
+  const coinBox = `
     <details class="pri coin-box">
       <summary>
         <span class="stitle">🪙 ③ 알리코인(예치금) 차감<span class="note">참고 · 계좌이체 아님</span></span>
-        <span style="display:flex; align-items:center; gap:8px;"><span class="samt">¥${grandUse.toFixed(2)}</span><span class="chev">▼</span></span>
+        <span style="display:flex; align-items:center; gap:8px;"><span class="samt">${grandUse > 0 ? '¥' + grandUse.toFixed(2) : '차감 내역 없음'}</span><span class="chev">▼</span></span>
       </summary>
       <div class="body">
-        <div class="grp">［강하고 서비스 수수료］</div>
+        ${grandUse > 0 ? `<div class="grp">［강하고 서비스 수수료］</div>
         <table>
           <tr><td>BL 발급료</td><td class="num">¥${(al.blCny || 0).toFixed(2)}</td></tr>
           <tr><td>해운비 <span style="font-size:11px; color:#888;">(FREIGHT PREPAID)</span></td><td class="num">¥${(al.seaCny || 0).toFixed(2)}</td></tr>
@@ -282,9 +282,9 @@ function render(d) {
           <table style="margin-top:5px; font-size:12px; color:#555;">${(al.localWorkItems || []).map(it => { const qu = (it.qty != null && it.unit != null) ? `${it.qty}개 × ¥${it.unit}` : ''; return `<tr><td style="padding:3px 6px 3px 0;">${esc(it.label)}</td><td style="padding:3px 8px; color:#888; white-space:nowrap;">${qu}</td><td class="num">¥${(it.cny || 0).toFixed(2)}</td></tr>`; }).join('')}</table>
         </details>` : ''}
         <div class="grand"><span>🪙 알리코인 총 사용 (참고)</span><span style="font-family:ui-monospace,monospace;">¥${grandUse.toFixed(2)}</span></div>
-        <div class="disclaimer">위 금액은 <strong>알리코인(예치금)에서 이미 차감</strong>되었습니다. 계좌이체로 <strong>추가 청구하지 않습니다</strong>(이중청구 아님).</div>
+        <div class="disclaimer">위 금액은 <strong>알리코인(예치금)에서 이미 차감</strong>되었습니다. 계좌이체로 <strong>추가 청구하지 않습니다</strong>(이중청구 아님).</div>` : `<div style="font-size:12.5px; color:var(--dim);">알리코인(예치금) 차감 내역이 없습니다. BL·해운비·CO·작업수수료 발생 시 여기에 표시됩니다.</div>`}
       </div>
-    </details>` : '';
+    </details>`;
 
   // ④ 배차요청서 (네이비+골드 CTA · 맨 아래 · 접기 없음 · ★항상 표시)
   //   링크: 토큰 있으면 완성 URL(s.deliveryUrl), 없으면 delivery-request.html?s={shipmentId} 폴백.
