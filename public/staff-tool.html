@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.225</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.226</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -17560,7 +17560,7 @@ async function fetchDispatchMaster(daysOverride) {
     // (2) Shipments — 배차/통관/포워딩/수취/테이프/메모 필드(try/fallback)
     // [v3.2.193] 통관일→통관완료일(실존 필드). 배차방식(신규)은 미생성 시 422 대비 별도 폴백. 통관완료일=수입신고수리 처리일시.
     const _dispCore = ['배송방식','포워딩사','보세창고','입항일','한국포워딩사','배차견적액','실제배차비','세관창고료','차량번호','기사전화번호','배차완료일','배차상태','통관완료일'];
-    const _dispQ = _dispCore.concat(['배차방식']).map(n => '&fields[]=' + encodeURIComponent(n)).join('');
+    const _dispQ = _dispCore.concat(['배차방식', '배송유형']).map(n => '&fields[]=' + encodeURIComponent(n)).join('');   // [v3.2.226] 배송유형(고객) 추가
     const _dispQCore = _dispCore.map(n => '&fields[]=' + encodeURIComponent(n)).join('');
     const baseQ = ['사서함','고객사서함','상태','BL번호','테이프색상','메모','수취_주소','수취_전화','도착지주소'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');
     const ships = (await Promise.all(chunkArray(shipIds, 50).map(async chunk => {
@@ -17601,7 +17601,7 @@ async function fetchDispatchMaster(daysOverride) {
         포워딩사: sf['포워딩사'] || '', 한국포워딩사: sf['한국포워딩사'] || '', blNo: String(sf['BL번호'] || '').trim(),
         테이프색상: sf['테이프색상'] || '', 마킹: _transportMarkRange(base, seqs),
         boxCount: boxes.length, cbmSum, kgSum,
-        회사: cust.회사명 || '', 요청사항: requestByShip[s.id] || '', 가장큰박스: _bigBox, 배차방식: sf['배차방식'] || '',   // [v3.2.192] 배차정보 탭
+        회사: cust.회사명 || '', 요청사항: requestByShip[s.id] || '', 가장큰박스: _bigBox, 배차방식: sf['배차방식'] || '', 배송유형: sf['배송유형'] || '',   // [v3.2.192/226] 배차방식(직원)·배송유형(고객)
         보세창고: sf['보세창고'] || '', 입항일: sf['입항일'] || '', 통관일: sf['통관완료일'] || sf['통관일'] || '',   // [v3.2.193] 통관일시=통관완료일(수입신고수리) 우선
         배송지: sf['수취_주소'] || destByShip[s.id] || sf['도착지주소'] || '', 수취인연락처: sf['수취_전화'] || telByShip[s.id] || '',
         배송방법: methodByShip[s.id] || '', shipMethod: sf['배송방식'] || '', methodAgg: _methodAgg,   // [v3.2.199] Boxes 집계 배송방법
@@ -17657,15 +17657,14 @@ function renderDispatchMaster() {
           const agg = r.methodAgg || '';
           const dm = r.배차방식 || '';
           if (agg === '화물') {
-            const editing = dispatchState._editMethod && dispatchState._editMethod.has(r.id);
-            if (dm && !editing) {
-              return `<td style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#333;" title="화물-${esc(dm)}">화물-${esc(dm)} <a href="#" onclick="dispatchEditMethod('${r.id}');return false;" style="font-size:10px; color:#1B5E9A; text-decoration:underline;">변경</a></td>`;
+            // [v3.2.226] ★읽기전용 — 고객이 배차요청서(delivery-request)에서 정한 배송유형(독차/합배송) 표시. 직원 선택 드롭다운 제거.
+            //   고객 배송유형 우선 → 없으면 구 배차방식(직원 입력분) 폴백 → 둘 다 없으면 "고객 미입력".
+            const _ctype = (r.배송유형 || '').trim();
+            const _disp = _ctype || (dm || '').trim();
+            if (_disp) {
+              return `<td style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#333;" title="화물-${esc(_disp)}${_ctype ? ' (고객 선택)' : ' (직원 입력)'}">화물-${esc(_disp)}</td>`;
             }
-            return `<td style="padding:2px 4px; overflow:hidden;"><select onchange="saveDispatchMethod('${r.id}', this.value)" style="font-size:11px; padding:2px 3px; border:1px solid #c9973a; border-radius:4px; width:100%; background:#fff;">
-              <option value=""${!dm ? ' selected' : ''}>선택</option>
-              <option value="독차"${dm === '독차' ? ' selected' : ''}>독차</option>
-              <option value="합차"${dm === '합차' ? ' selected' : ''}>합차</option>
-            </select></td>`;
+            return `<td style="padding:4px 7px; overflow:hidden; white-space:nowrap; font-size:11px;" title="고객이 배차요청서에서 배송유형 미입력">화물 · <span style="color:#c0392b;">고객 미입력</span></td>`;
           }
           const txt = agg || '—';
           return `<td style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#555;" title="${esc(txt)}">${esc(txt)}</td>`;
@@ -17777,7 +17776,7 @@ async function fetchBookingSummary(mode) {
     //   배차 필드 포함 쿼리 먼저 시도, 실패하면 기본 쿼리로 폴백(필드 추가 전까지 배차 입력만 빈칸, 부킹은 정상).
     // [v3.2.193] 통관일→통관완료일(실존 필드). 배차방식(신규)은 미생성 시 422 대비 별도 폴백. 통관완료일=수입신고수리 처리일시.
     const _dispCore = ['배송방식','포워딩사','보세창고','입항일','한국포워딩사','배차견적액','실제배차비','세관창고료','차량번호','기사전화번호','배차완료일','배차상태','통관완료일'];
-    const _dispQ = _dispCore.concat(['배차방식']).map(n => '&fields[]=' + encodeURIComponent(n)).join('');
+    const _dispQ = _dispCore.concat(['배차방식', '배송유형']).map(n => '&fields[]=' + encodeURIComponent(n)).join('');   // [v3.2.226] 배송유형(고객) 추가
     const _dispQCore = _dispCore.map(n => '&fields[]=' + encodeURIComponent(n)).join('');
     const shipResults = await Promise.all(shipChunks.map(async chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
