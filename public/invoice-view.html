@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>강하고 청구서 — 물류비</title>
-<!-- invoice-view v3.2.219 — 우선순위 4블록(①입금 ②FTA ③알리코인 ④배차) — ?s= 지원 + ④배차 항상표시(출발/도착지). 계산 불변(표시만). -->
+<!-- invoice-view v3.2.223 — 우선순위 4블록(①입금 ②FTA ③알리코인 ④배차) — ?s= 지원 + ④배차 항상표시(출발/도착지). 계산 불변(표시만). -->
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
 <style>
   :root { --navy:#1B2A3B; --gold:#C9973A; --bg:#F4EFE6; --ivory:#FAF6EE; --dim:#666; --line:#e8e0d0;
@@ -212,7 +212,10 @@ function render(d) {
     tel: '010-3622-7995', email: 'admin@talekorea.com',
     bank: '하나은행 121-910031-58704', bankHolder: '예금주 주식회사 테일코리아',
   };
-  const ftaSavingKrw = (t && t.ftaSavingKrw) || 0;
+  const ftaSavingKrw = (t && t.ftaSavingKrw) || 0;   // 저장값(청구_FTA_절세_KRW, §9 발행 시 저장)
+  // [v3.2.223] ② FTA 단일 소스 — live(URL tcsv) 우선, 없으면 저장값 폴백. 헤더·본문·비교표가 같은 값을 봄(모순 제거).
+  const _tcsvLive = parseFloat(params.get('tcsv')) || 0;
+  const ftaSaving = _tcsvLive > 0 ? _tcsvLive : ftaSavingKrw;
   const claimAmount = t.claimKrw || 0;
   const paidIn = !!d.paidInAt;
   const issueDate = (d.shipment && d.shipment.issueDate) ? d.shipment.issueDate.slice(0, 10) : (d.generatedAt || '').slice(0, 10);
@@ -261,11 +264,11 @@ function render(d) {
     <details class="pri fta-box">
       <summary>
         <span class="stitle">💚 ② FTA 절감 혜택 <span style="font-weight:400; font-size:11px; color:#888;">(고객님이 아끼신 금액)</span></span>
-        <span style="display:flex; align-items:center; gap:8px;"><span class="samt">${ftaSavingKrw > 0 ? '− ' + fmtKrw(ftaSavingKrw) : '적용분 없음'}</span><span class="chev">▼</span></span>
+        <span style="display:flex; align-items:center; gap:8px;"><span class="samt">${ftaSaving > 0 ? '− ' + fmtKrw(ftaSaving) : '적용분 없음'}</span><span class="chev">▼</span></span>
       </summary>
       <div class="body">
-        <div style="font-size:12.5px; color:var(--dim); margin-bottom:10px;">${ftaSavingKrw > 0 ? `기본세율 대신 <strong>FTA 특혜세율</strong>을 적용해 관세 <strong style="color:#1a8a52;">${fmtKrw(ftaSavingKrw)}</strong>을 절감했습니다.${(t.appliedFta && t.appliedFta !== '미선택') ? ` (적용: ${esc(t.appliedFta)})` : ''}` : '이 사서함은 FTA 특혜세율 적용분이 없습니다(기본세율 신고). 절감액은 FTA 적용 사서함에서 표시됩니다.'}</div>
-        ${cmpHtml || '<div style="font-size:11px; color:#aaa;">※ 세부 비교표는 관세사 검토 후 제공됩니다. 관세·수입부가세는 관세사가 화주에게 직접 청구합니다(강하고 청구서 미포함).</div>'}
+        <div style="font-size:12.5px; color:var(--dim); margin-bottom:10px;">${ftaSaving > 0 ? `기본세율 대신 <strong>FTA 특혜세율</strong>을 적용해 관세 <strong style="color:#1a8a52;">${fmtKrw(ftaSaving)}</strong>을 절감했습니다.${(t.appliedFta && t.appliedFta !== '미선택') ? ` (적용: ${esc(t.appliedFta)})` : ''}` : '이 사서함은 FTA 특혜세율 적용분이 없습니다(기본세율 신고). 절감액은 FTA 적용 사서함에서 표시됩니다.'}</div>
+        ${ftaSaving > 0 ? (cmpHtml || '<div style="font-size:11px; color:#aaa;">※ 세부 비교표는 관세사 검토 후 제공됩니다. 관세·수입부가세는 관세사가 화주에게 직접 청구합니다(강하고 청구서 미포함).</div>') : ''}
       </div>
     </details>`;
 
