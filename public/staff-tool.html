@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.222</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.225</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -15104,10 +15104,11 @@ function renderInvoiceHTML(d) {
 
 // [v3.2.220] 옛 미리보기(renderInvoiceHTML 옛 레이아웃·모달) 제거 → 실제 배포 invoice-view 새 탭 열기.
 //   ★고객이 받는 것과 동일: §9 [통합 청구서 URL]과 같은 URL(mailbox + FTA 관부가세 비교 tc 파라미터)로 조립.
-function openCustomerInvoiceView() {
+async function openCustomerInvoiceView() {
   if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
   const mb = (state.shipment.fields || {})['사서함'] || '';
   if (!mb) { toastWarn && toastWarn('사서함명을 확인할 수 없습니다'); return; }
+  await ensureParcelConfirmed();   // [v3.2.225] 택배 미확정이면 자동 저장 후 열기(청구서에 택배 운임 표시)
   const base = (typeof INVOICE_VIEW_BASE !== 'undefined' && INVOICE_VIEW_BASE) ? INVOICE_VIEW_BASE : 'https://kanghago-pages.vercel.app/invoice-view.html';
   let url = base + '?mailbox=' + encodeURIComponent(mb);
   try {
@@ -15231,6 +15232,17 @@ const INVOICE_VIEW_BASE = 'https://kanghago-pages.vercel.app/invoice-view.html';
 // 흐름: 도구에서 [📄 통합 청구서 URL] → 금액 확인 1회 → invoice-view URL + 카톡 메시지(입금계좌 포함) → 클립보드 복사
 // [v3.2.207] §9 국내운임 확정 — 국내운임(택배/화물/밀크런)만 확정·저장. 해운비·BL·CO·작업수수료는 트리거(알리코인 CNY)라 §9 무관.
 //   게이트 = 확정일시(청구서발행일시). ★청구금액_KRW = post-VAT(국내×1.10) — invoice-view 최종표시. 청구_preVAT 별도(이중VAT 방지).
+// [v3.2.225] 택배 자동확정 — 택배는 매트릭스 결정적(수정불가)이라 수동 [확정] 없이 §9 열기/발송 시 청구금액_KRW 자동 저장.
+//   화물/밀크런은 견적 수정 여지 있어 수동 [확정] 유지. 계산 불변(confirmDomesticFreight의 기존 calc 그대로 저장만).
+async function ensureParcelConfirmed() {
+  try {
+    if (!state.shipment) return;
+    const _m = ((state.shipment.fields || {})['배송방식'] || '').trim();
+    if (_m === '택배' && !((state.shipment.fields || {})['청구서발행일시'])) {
+      await confirmDomesticFreight();
+    }
+  } catch (e) { console.warn('[v3.2.225 택배 자동확정]', e && e.message); }
+}
 async function confirmDomesticFreight() {
   if (!state.shipment || !state.shipment.id) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
   const bd = (typeof calcInvoiceBreakdownKrw === 'function') ? calcInvoiceBreakdownKrw() : {};
@@ -15320,6 +15332,7 @@ function setDomesticMilkrunEdit(v) {
 
 async function shareInvoiceViewUrl() {
   if (!state.shipment) { toastWarn && toastWarn('사서함을 먼저 불러오세요'); return; }
+  await ensureParcelConfirmed();   // [v3.2.225] 택배 미확정이면 자동 확정 → 발행 게이트 통과(화물/밀크런은 수동 유지)
   // [v3.2.137] ★발행(돈) 하드 게이트 — BL/CO 대조확인 미완/자동대조 불일치면 청구서 발송 차단.
   const _payGate = (typeof _publishGateReason === 'function') ? _publishGateReason('payapp') : '';
   if (_payGate) { toastWarn && toastWarn(_payGate, { title: '⛔ 발행 차단' }); return; }
