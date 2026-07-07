@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>강하고 청구서 — 물류비</title>
-<!-- invoice-view v3.2.223 — 우선순위 4블록(①입금 ②FTA ③알리코인 ④배차) — ?s= 지원 + ④배차 항상표시(출발/도착지). 계산 불변(표시만). -->
+<!-- invoice-view v3.2.224 — 우선순위 4블록(①입금 ②FTA ③알리코인 ④배차) — ?s= 지원 + ④배차 항상표시(출발/도착지). 계산 불변(표시만). -->
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
 <style>
   :root { --navy:#1B2A3B; --gold:#C9973A; --bg:#F4EFE6; --ivory:#FAF6EE; --dim:#666; --line:#e8e0d0;
@@ -305,8 +305,10 @@ function render(d) {
     </details>`;
 
   // ④ 배차요청서 (네이비+골드 CTA · 맨 아래 · 접기 없음 · ★항상 표시)
-  //   링크: 토큰 있으면 완성 URL(s.deliveryUrl), 없으면 delivery-request.html?s={shipmentId} 폴백.
-  const dispatchHref = s.deliveryUrl || ('/delivery-request.html?s=' + encodeURIComponent(s.id || s.mailbox || ''));
+  //   [v3.2.224] 링크 = s.deliveryUrl(서버가 고객토큰으로 생성·없으면 발급). 토큰 없는 깨진 ?s= 폴백 제거 — 없으면 버튼 비활성.
+  const dispatchBtn = s.deliveryUrl
+    ? `<a class="dbtn" href="${s.deliveryUrl}" target="_blank" rel="noopener">배차요청서 작성하기</a>`
+    : `<span class="dbtn" style="opacity:.55; cursor:not-allowed;" title="강하고에서 받은 링크로 다시 열어주세요">배차요청서 (링크 확인 필요)</span>`;
   const dispatchBox = `
     <div class="dispatch">
       <div class="dtitle">🚚 ④ 배송정보를 입력해 주세요</div>
@@ -315,7 +317,7 @@ function render(d) {
         <div class="darow"><span class="dk">도착지</span><span class="dv">${s.deliveryAddr ? esc(maskAddr(s.deliveryAddr)) : '고객님 요청 주소 <em>(입력 필요)</em>'}</span></div>
       </div>
       <div class="ddesc">통관 완료 후 신속한 배차를 위해, 미리 결제와 배송정보를 등록해 주세요.<br>결제가 확인되면 통관·배차가 바로 진행됩니다.</div>
-      <a class="dbtn" href="${dispatchHref}" target="_blank" rel="noopener">배차요청서 작성하기</a>
+      ${dispatchBtn}
     </div>`;
 
   root.innerHTML = `

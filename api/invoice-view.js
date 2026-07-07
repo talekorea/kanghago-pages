@@ -173,14 +173,24 @@ module.exports = async (req, res) => {
       bankHolder: '예금주 주식회사 테일코리아',
     };
 
-    // [v3.2.212] 배차요청서(배송정보) 링크 — delivery-request는 ship+t(고객토큰) 필수. 토큰 raw 노출 대신 ★완성 URL만 서버 생성(고객 본인 링크).
-    //   고객토큰 없음/만료면 null(버튼 숨김). 만료일 지난 토큰은 delivery-request가 재차단하므로 여기서도 만료 체크.
+    // [v3.2.224] 배차요청서 링크 — delivery-request는 ship+t(고객토큰) 필수. ★토큰 없음/만료면 발급·저장(재사용)해 배차링크가 항상 유효.
+    //   (§9 청구서 URL은 토큰을 안 만들어서, 토큰 없는 사서함은 배차버튼이 "잘못된 접근"이 됐음 — v3.2.224 근본수정.)
+    //   ★교차접근 차단 불변: 토큰은 사서함별 고유, delivery-request가 그 사서함 토큰과 대조(다른 사서함 토큰=401). validateDeliveryToken 무변경.
     let deliveryUrl = null;
     try {
-      const _tok = String(f['고객토큰'] || '').trim();
+      let _tok = String(f['고객토큰'] || '').trim();
       const _exp = f['고객토큰만료일'];
       const _notExpired = !_exp || (new Date(_exp) >= new Date(new Date().toISOString().slice(0, 10)));
-      if (_tok && _tok.length >= 16 && _notExpired) {
+      let _valid = _tok.length >= 16 && _notExpired;
+      if (!_valid) {
+        _tok = require('crypto').randomBytes(48).toString('base64').replace(/[^A-Za-z0-9]/g, '').slice(0, 32);
+        const _newExp = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+        try {
+          await atRequest('PATCH', `/${TABLES.Shipments}/${ship.id}`, { fields: { '고객토큰': _tok, '고객토큰만료일': _newExp }, typecast: true });
+          _valid = true;
+        } catch (e) { _valid = false; }   // 발급 실패 시 버튼은 프런트에서 비활성 처리
+      }
+      if (_valid) {
         deliveryUrl = `https://kanghago-pages.vercel.app/delivery-request.html?ship=${ship.id}&t=${encodeURIComponent(_tok)}`;
       }
     } catch (e) { deliveryUrl = null; }
