@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.226</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.227</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -15249,6 +15249,17 @@ async function confirmDomesticFreight() {
   const method = bd.shipMethod || (typeof getShipMethod === 'function' ? getShipMethod() : '');
   if (!method) { toastWarn && toastWarn('배송방식(택배/화물/밀크런)을 먼저 선택하세요 (§4/§5)', { title: '⛔ 국내운임 확정' }); return; }
   if (method === '화물' && !(bd.freight > 0)) { toastWarn && toastWarn('화물 견적을 §5에서 먼저 [견적 계산]하세요 — 미계산(₩0) 오청구 방지', { title: '⛔ 화물 견적 필요' }); return; }
+  // [v3.2.227] 화물 배차방식(라벨) — 견적대로=독차 / 수정=사유 필수(기상·합차·특별할인). 라벨만, 금액(bd.freight) 불변.
+  let _dispatchType = '';
+  if (method === '화물') {
+    const _af = parseFloat(state._freightAuto) || 0;
+    if (_af > 0 && Math.abs((bd.freight || 0) - _af) > 1) {
+      _dispatchType = state._domesticReason || '';
+      if (!_dispatchType) { toastWarn && toastWarn('운임을 수정하셨습니다 — §5에서 사유(기상/합차/특별할인)를 선택해야 확정됩니다.', { title: '⛔ 수정 사유 필요' }); return; }
+    } else {
+      _dispatchType = '독차';
+    }
+  }
   const _inv = (typeof resolveIssueDate === 'function') ? resolveIssueDate((document.getElementById('docIssueDate') || {}).value) : { date: new Date().toISOString().slice(0, 10) };
   const fields = {
     '청구금액_KRW': bd.totalKrw || 0,         // ★국내운임×1.10(post-VAT) — invoice-view 최종(VAT 포함) 표시
@@ -15263,6 +15274,7 @@ async function confirmDomesticFreight() {
   // [v3.2.209] 화물 수정값 ≠ 자동견적이면 원본견적 비고 저장(투명성). 필드 없으면 typecast로 생성 시도(권한 실패 시 스킵).
   const _auto = parseFloat(state._freightAuto) || 0;
   if (method === '화물' && _auto > 0 && Math.abs((bd.freight || 0) - _auto) > 1) fields['국내운임_원본견적'] = _auto;
+  if (_dispatchType) fields['배차방식'] = _dispatchType;   // [v3.2.227] §5 배차방식 라벨 저장(계산 무관)
   try {
     await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields, typecast: true });
     Object.assign(state.shipment.fields, fields);
@@ -15297,10 +15309,28 @@ function renderDomesticConfirmStatus() {
   } else if (method === '택배') {
     amtCell = `<span>택배 pre-VAT <strong>₩${(bd.parcel || 0).toLocaleString()}</strong> <span style="font-size:10px; color:#888;">(매트릭스 자동 · 수정 불가)</span></span>`;
   }
+  // [v3.2.227] 화물 배차방식(라벨) — 견적대로=독차 / 금액 수정 시 사유 필수(기상·합차·특별할인). 계산 불변(금액은 §5 수정값 그대로).
+  let reasonCell = '';
+  if (method === '화물') {
+    const _editedR = _auto > 0 && Math.abs((bd.freight || 0) - _auto) > 1;
+    if (_editedR) {
+      const _r = state._domesticReason || '';
+      reasonCell = `<span style="font-size:11px; color:#c0392b; font-weight:700;">수정 사유(필수):</span> `
+        + `<select id="domesticReasonSel" onchange="state._domesticReason=this.value" style="font-size:11px; padding:3px 6px; border:1px solid #c0392b; border-radius:4px;">`
+        + `<option value=""${!_r ? ' selected' : ''}>선택</option>`
+        + `<option value="기상"${_r === '기상' ? ' selected' : ''}>기상 (견적↑)</option>`
+        + `<option value="합차"${_r === '합차' ? ' selected' : ''}>합차 (견적↓)</option>`
+        + `<option value="특별할인"${_r === '특별할인' ? ' selected' : ''}>특별할인 (견적↓)</option>`
+        + `</select>`;
+    } else {
+      reasonCell = `<span style="font-size:11px; color:#0a7b40;">견적대로 확정 = <strong>독차</strong></span>`;
+    }
+  }
   el.innerHTML =
     `<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0;">`
     + `<span>💳 국내운임(${method || '미선택'}):</span>`
     + (amtCell ? `<span>${amtCell}</span>` : '')
+    + (reasonCell ? `<span>${reasonCell}</span>` : '')
     + `<span>= <strong style="color:#1B2A3B;">₩${liveKrw.toLocaleString()}</strong> <span style="font-size:10px; color:#888;">(VAT 포함 · ×1.10)</span></span>`
     + `<button onclick="confirmDomesticFreight()" ${disabled ? 'disabled' : ''} style="padding:6px 14px; background:${disabled ? '#ccc' : '#1b7a44'}; color:#fff; border:none; border-radius:6px; font-weight:700; cursor:${disabled ? 'not-allowed' : 'pointer'};" title="${reason || '국내운임 확정 → 청구서 URL 가능'}">${confirmed ? '✓ 재확정' : '국내운임 확정'}</button>`
     + (confirmed
@@ -17659,12 +17689,11 @@ function renderDispatchMaster() {
           if (agg === '화물') {
             // [v3.2.226] ★읽기전용 — 고객이 배차요청서(delivery-request)에서 정한 배송유형(독차/합배송) 표시. 직원 선택 드롭다운 제거.
             //   고객 배송유형 우선 → 없으면 구 배차방식(직원 입력분) 폴백 → 둘 다 없으면 "고객 미입력".
-            const _ctype = (r.배송유형 || '').trim();
-            const _disp = _ctype || (dm || '').trim();
-            if (_disp) {
-              return `<td style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#333;" title="화물-${esc(_disp)}${_ctype ? ' (고객 선택)' : ' (직원 입력)'}">화물-${esc(_disp)}</td>`;
+            // [v3.2.227] §5 직원 결정(배차방식: 독차/기상/합차/특별할인) 읽기전용 표시. §5 확정 전=미확정.
+            if (dm) {
+              return `<td style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#333;" title="화물-${esc(dm)} (§5 확정)">화물-${esc(dm)}</td>`;
             }
-            return `<td style="padding:4px 7px; overflow:hidden; white-space:nowrap; font-size:11px;" title="고객이 배차요청서에서 배송유형 미입력">화물 · <span style="color:#c0392b;">고객 미입력</span></td>`;
+            return `<td style="padding:4px 7px; overflow:hidden; white-space:nowrap; font-size:11px;" title="§5 국내운임 확정 전">화물 · <span style="color:#c0392b;">미확정</span></td>`;
           }
           const txt = agg || '—';
           return `<td style="padding:4px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#555;" title="${esc(txt)}">${esc(txt)}</td>`;
