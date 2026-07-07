@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.220</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.222</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -6300,7 +6300,14 @@ async function permanentDeleteProduct(pid) {
   state.modifiedProducts && state.modifiedProducts.delete(pid);
   if (state._prodBaseline) { delete state._prodBaseline[pid]; delete state._prodBaseline[pid + '_sid']; }
   renderProducts(); renderBoxes && renderBoxes(); refreshAll && refreshAll();
-  if (typeof _markBoxDirty === 'function') _markBoxDirty();
+  // [v3.2.222 G5범위] 수량0 제품 삭제 = 신고 무관(IV/패킹/CO 제외, 코드 5344) → 재확정 트리거 스킵.
+  //   수량>0 삭제만 _markBoxDirty→[박스수정완료]→G5 발동(안전장치 유지). 박스재배치·분할·수량변경은 각 호출부에서 그대로 트리거.
+  const _delQty = parseFloat(rf['수량']) || 0;
+  if (_delQty > 0) {
+    if (typeof _markBoxDirty === 'function') _markBoxDirty();
+  } else {
+    console.log('[v3.2.222] 수량0 삭제 — 재확정 트리거 스킵(신고 무관):', sid);
+  }
   if (!siblings.length) toastWarn && toastWarn(`주문 ${orderKey}의 마지막 제품 삭제 — 이 주문 작업비 귀속처가 사라집니다(§4 작업비 확인).`, { title: '⚠ 작업비' });
   toastSuccess && toastSuccess(`영구 삭제됨 (${sid})`, { title: '❌ Airtable' });
 }
