@@ -213,9 +213,10 @@ function render(d) {
     bank: '하나은행 121-910031-58704', bankHolder: '예금주 주식회사 테일코리아',
   };
   const ftaSavingKrw = (t && t.ftaSavingKrw) || 0;   // 저장값(청구_FTA_절세_KRW, §9 발행 시 저장)
-  // [v3.2.223] ② FTA 단일 소스 — live(URL tcsv) 우선, 없으면 저장값 폴백. 헤더·본문·비교표가 같은 값을 봄(모순 제거).
+  // [v3.2.223] ② FTA 단일 소스 — 저장값(청구_FTA_절세_KRW, 확정) 우선, 없으면 live(URL tcsv) 폴백. 헤더·본문·비교표 동일 값(모순 제거).
+  //   발행완료=확정 저장값 유지 / 미발행=live 미리보기 폴백(AP1840).
   const _tcsvLive = parseFloat(params.get('tcsv')) || 0;
-  const ftaSaving = _tcsvLive > 0 ? _tcsvLive : ftaSavingKrw;
+  const ftaSaving = ftaSavingKrw > 0 ? ftaSavingKrw : _tcsvLive;
   const claimAmount = t.claimKrw || 0;
   const paidIn = !!d.paidInAt;
   const issueDate = (d.shipment && d.shipment.issueDate) ? d.shipment.issueDate.slice(0, 10) : (d.generatedAt || '').slice(0, 10);
