@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.227</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.228</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -602,8 +602,8 @@
           <input id="staffInviteName" type="text" placeholder="홍길동" style="width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:5px;" />
         </div>
         <div style="flex:1; min-width:170px;">
-          <label style="font-size:11px; color:#666; display:block;">비밀번호 (10자 이상 권장 — 통관·결제 접근)</label>
-          <input id="staffInvitePassword" type="text" placeholder="강한 비번 (영문+숫자+기호 12자+)" style="width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:5px; font-family:monospace;" />
+          <label style="font-size:11px; color:#666; display:block;">비밀번호 (6자 이상)</label>
+          <input id="staffInvitePassword" type="text" placeholder="예: kjh16615776" style="width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:5px; font-family:monospace;" />
         </div>
         <button class="primary" onclick="staffInvite()" style="padding:9px 18px;">등록</button>
       </div>
@@ -9752,13 +9752,14 @@ function getStaffAdminToken() {
   return t;
 }
 
-// 약한 비번 1차 검사 (브라우저 측 — 백엔드도 6자 강제, UI에선 통관·결제 계정이라 더 엄격 권장)
+// 약한 비번 1차 검사 (브라우저 측 — 백엔드도 6자 강제)
+//   v3.2.228: 브리지 도구 편의 우선 — 10자 권장 재클릭 게이트 제거, 6자 이상이면 통과.
+//   흔한 비번 blacklist는 유지(정상 비번엔 마찰 0, 사고성 비번만 차단). 본 플랫폼 전환 시 재강화.
 function checkWeakPassword(pw) {
   if (!pw || pw.length < 6) return '비밀번호는 6자 이상 필수';
   const lower = pw.toLowerCase();
-  const blacklist = ['password', '123456', 'qwerty', 'kanghago', 'kanghago1', 'staff', 'admin', 'test1234', '111111', 'abc123'];
+  const blacklist = ['password', '123456', 'qwerty', 'kanghago', 'kanghago1', 'staff', 'admin', 'test1234', '111111', 'abc123', '000000'];
   if (blacklist.includes(lower)) return '너무 흔한 비번 (' + pw + ') — 다른 비번으로';
-  if (pw.length < 10) return '권장: 10자 이상 (현재 ' + pw.length + '자). 통관·결제 접근 계정이라 강한 비번이 안전합니다. 계속하시려면 다시 등록 누르세요.';
   return null;   // OK
 }
 
@@ -9771,26 +9772,14 @@ async function staffInvite() {
   const name = (nameEl.value || '').trim() || null;
   const password = (pwEl.value || '').trim();
   if (!email) { msgEl.innerHTML = '<span style="color:#c0392b;">⚠ 이메일 필수</span>'; return; }
-  // 비번 검사 — 약한 비번 경고(blacklist는 차단, 짧은 비번은 confirm)
+  // 비번 검사 — 6자 미만 또는 blacklist면 차단, 그 외 통과
   const warn = checkWeakPassword(password);
-  if (warn) {
-    // 6자 미만 또는 blacklist → 즉시 차단
-    if (warn.indexOf('권장') !== 0) { msgEl.innerHTML = '<span style="color:#c0392b;">⚠ ' + warn + '</span>'; return; }
-    // "권장: 10자 이상" — 사장님이 다시 누르면 통과 (한 번 경고 후 강행 허용)
-    if (msgEl.dataset.warned !== '1') {
-      msgEl.innerHTML = '<span style="color:#9a7b2a;">⚠ ' + warn + '</span>';
-      msgEl.dataset.warned = '1';
-      return;
-    }
-    // 두 번째 클릭이면 진행
-    msgEl.dataset.warned = '';
-  }
+  if (warn) { msgEl.innerHTML = '<span style="color:#c0392b;">⚠ ' + warn + '</span>'; return; }
   msgEl.innerHTML = '<span style="color:#888;">등록 중...</span>';
   try {
     const r = await adminApiCall('POST', '', { op: 'staff_admin_create', email, name, password });
     msgEl.innerHTML = '<span style="color:#1b5e20;">✓ 직원 등록 완료 — ' + r.staff.email + ' (role=staff, 즉시 로그인 가능)</span>';
     emailEl.value = ''; nameEl.value = ''; pwEl.value = '';
-    msgEl.dataset.warned = '';
     staffReload();
   } catch (e) {
     msgEl.innerHTML = '<span style="color:#c0392b;">❌ ' + e.message + '</span>';
@@ -9798,11 +9787,11 @@ async function staffInvite() {
 }
 
 async function staffSetPassword(email) {
-  const pw = prompt(email + '\n새 비밀번호 (10자 이상 권장):');
+  const pw = prompt(email + '\n새 비밀번호를 입력하세요 (6자 이상):');
   if (pw === null) return;
   const trimmed = pw.trim();
   const warn = checkWeakPassword(trimmed);
-  if (warn && warn.indexOf('권장') !== 0) { alert('⚠ ' + warn); return; }
+  if (warn) { alert('⚠ ' + warn); return; }
   try {
     await adminApiCall('POST', '', { op: 'staff_admin_set_password', email, password: trimmed });
     alert('✓ 비밀번호가 변경되었습니다: ' + email);
