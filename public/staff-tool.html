@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.228</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.229</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3520,12 +3520,21 @@ async function ensureSchema() {
       { name: '주문건수', type: 'number', options: { precision: 0 } },
       { name: '추천인아이디', type: 'singleLineText' },
       { name: '메모', type: 'multilineText' },
-      { name: '가입일', type: 'date', options: { dateFormat: { name: 'iso' } } }
+      { name: '가입일', type: 'date', options: { dateFormat: { name: 'iso' } } },
+      // [v3.2.229] ★누락 보정 — 신규생성 목록엔 있으나 기존테이블 보정 목록에 빠져 있던 필드들.
+      //   Customers는 이미 존재하므로 이 목록만 탐 → '영문성명' 미생성 → saveCustomer가 보내는 payload가
+      //   422 UNKNOWN_FIELD_NAME으로 전량 실패(§2.5 저장 100% 유실, v3.2.134~228). saveCustomer가 보내는 필드와 1:1 정합.
+      { name: '영문회사명', type: 'singleLineText' },
+      { name: '영문성명', type: 'singleLineText' },
+      { name: '영문주소', type: 'multilineText' },
+      { name: '등록일', type: 'date', options: { dateFormat: { name: 'iso' } } },
+      { name: '마지막사용일', type: 'date', options: { dateFormat: { name: 'iso' } } }
     ];
     for (const f of needed) {
       if (!existing.has(f.name)) {
-        await addField(TABLES.Customers, f);
-        log(`  + Customers.${f.name}`, 'ok');
+        const ok = await addField(TABLES.Customers, f);
+        if (ok) log(`  + Customers.${f.name}`, 'ok');
+        else log(`  ✗ Customers.${f.name} 생성 실패 — PAT에 schema.bases:write 권한 필요 (§2.5 저장 불가)`, 'err');
       }
     }
   }
@@ -9212,10 +9221,13 @@ async function loadCustomer(shipmentName) {
 
 function fillCustomerForm() {
   const f = state.customer ? state.customer.fields : {};
-  CUST_FIELDS.forEach(k => {
-    const el = document.getElementById('cust_' + k);
-    if (el) el.value = f[CUST_FIELD_MAP[k]] || '';
-  });
+  state._custFilling = true;   // [v3.2.229] 로드성 채움 — 자동저장 발화 금지
+  try {
+    CUST_FIELDS.forEach(k => {
+      const el = document.getElementById('cust_' + k);
+      if (el) el.value = f[CUST_FIELD_MAP[k]] || '';
+    });
+  } finally { state._custFilling = false; }
   if (typeof applyCustomerTypeUI === 'function') applyCustomerTypeUI();   // [v3.2.134] 유형별 입력칸 분기 반영
 }
 // [v3.2.134] §2.5 고객유형별 입력칸 분기 — 사업자=사업자번호·영문회사명 / 개인=통관고유부호·영문성명. 영문주소 공통. 미선택=양쪽 노출.
@@ -9227,15 +9239,27 @@ function applyCustomerTypeUI() {
   document.querySelectorAll('.cust-personal-only').forEach(el => { el.style.display = (per || unknown) ? '' : 'none'; });
 }
 
+// [v3.2.229] §2.5 자동저장 — 사용자 실입력만 1초 debounce 후 saveCustomer(). (§11-A 택배정보 패턴 동일)
+//   ★프로그램 채움(fillCustomerForm 로드·autofillCustomerFromOrders)은 state._custFilling 가드로 발화 금지.
+//   하단 saveAll과 독립. 자동저장이 최신이면 saveAll 6단계는 modifiedCustomer=false라 자연히 스킵(이중저장 없음).
+let _custSaveTimer = null;
+function _scheduleCustomerSave() {
+  if (_custSaveTimer) clearTimeout(_custSaveTimer);
+  _custSaveTimer = setTimeout(() => { _custSaveTimer = null; saveCustomer(); }, 1000);
+}
+
 function setupCustomerListeners() {
   CUST_FIELDS.forEach(k => {
     const el = document.getElementById('cust_' + k);
-    if (!el) return;
+    if (!el || el.dataset.custBound === '1') return;   // 사서함 전환 시 리스너 중복 바인딩 방지
+    el.dataset.custBound = '1';
     el.addEventListener('input', () => {
+      if (state._custFilling) return;   // ★프로그램 채움 — dirty 표시도 자동저장도 하지 않음
       state.modifiedCustomer = true;
       const statusEl = document.getElementById('customerStatus');
       if (statusEl) statusEl.innerHTML = `<span style="color:var(--red);">✏ ${t('cust.editing')}</span>`;
       updateModifiedCounter();
+      _scheduleCustomerSave();   // 1초 후 자동저장 → "💾 방금 저장됨" 또는 "⚠ 저장 실패"
     });
   });
 }
@@ -9249,9 +9273,20 @@ function getCustomerFields() {
   return fields;
 }
 
+// [v3.2.229] ★조용한 유실(silent no-op) 금지 — 아래 3경로는 전부 "저장됨" 대신 명시적 실패를 표시한다.
+//   ① TABLES.Customers 미해결(스키마 점검 실패) ② _batchMode 쓰기차단 스텁({}) ③ 응답에 records 없음(422 등)
+//   v3.2.134~228: '영문성명' 필드 부재로 ③이 상시 발생했으나 로그 한 줄뿐이라 직원·사장이 유실을 못 봄.
+function _custSaveFailed(msg) {
+  const el = document.getElementById('customerStatus');
+  if (el) el.innerHTML = `<span style="color:var(--red);">⚠ 저장 실패 — ${msg}</span>`;
+  log('고객 정보 저장 실패: ' + msg, 'err');
+  toastError && toastError('§2.5 고객정보 저장 실패 — ' + msg, { title: '⚠ 저장 실패' });
+}
+
 async function saveCustomer() {
-  if (!TABLES.Customers || !state.shipment) return;
+  if (!state.shipment) return;
   if (!state.modifiedCustomer && state.customer) return;  // 변경 없음
+  if (!TABLES.Customers) { _custSaveFailed('Customers 테이블 미해결 — 스키마 점검 필요(새로고침)'); return; }
   const shipmentName = baseMailbox(state.shipment.fields['사서함']);   // [선적분 키] Customers는 base 사서함 1:1
   const today = new Date().toISOString().slice(0, 10);
   const fields = {
@@ -9261,6 +9296,9 @@ async function saveCustomer() {
   };
   if (!state.customer) fields['등록일'] = today;
 
+  // [v3.2.229] 배치(IP 전체) 중에는 api()가 쓰기를 스텁({})으로 막음 → 저장된 척 금지. 배치 무쓰기 보존.
+  if (state._batchMode && !state._allowSeqWrite) { _custSaveFailed('IP 배치 생성 중 — 배치 완료 후 다시 저장하세요'); return; }
+
   log('고객 정보 저장 중...', 'dim');
   try {
     const res = await api('PATCH', `/${TABLES.Customers}`, {
@@ -9268,14 +9306,19 @@ async function saveCustomer() {
       typecast: true,
       records: [{ fields }]
     });
-    if (res.records && res.records[0]) {
+    if (res && res.records && res.records[0]) {
       state.customer = res.records[0];
       state.modifiedCustomer = false;
       log(`✓ 고객 정보 저장됨 (${shipmentName})`, 'ok');
       document.getElementById('customerStatus').innerHTML = `💾 ${t('cust.saved_just_now')}`;
+    } else {
+      _custSaveFailed('Airtable 응답에 레코드 없음 (쓰기 차단·권한 확인)');   // ★"저장됨" 절대 표시 안 함
     }
   } catch (e) {
-    log('고객 정보 저장 실패: ' + e.message, 'err');
+    const m = String(e.message || '');
+    // 필드 부재(422)는 원인·조치를 그대로 지목 — 사장이 Airtable에서 바로 고칠 수 있게.
+    if (/UNKNOWN_FIELD_NAME/i.test(m)) _custSaveFailed('Airtable Customers에 없는 필드 — 새로고침 시 자동 추가 시도(스키마 점검). ' + m.slice(0, 120));
+    else _custSaveFailed(m);
   }
 }
 
@@ -16974,19 +17017,26 @@ function autofillCustomerFromOrders() {
     if (orderName && orderAddr && orderTel) break;
   }
   // §2.5 input들 — 빈 칸만 채움 (기존 값 보호)
+  // [v3.2.229] ★프로그램 채움 → 자동저장 발화 금지(_custFilling). 단 dirty 표시는 유지 →
+  //   사용자가 확인 후 하단 [Airtable에 저장](saveAll 6단계)에서 저장. v3.1.1 의도 보존.
   const fillIfEmpty = (id, val) => {
     const el = document.getElementById(id);
     if (!el || !val) return false;
     if (String(el.value || '').trim()) return false;  // 기존 값 보호
     el.value = val;
-    el.dispatchEvent(new Event('input', { bubbles: true }));  // saveCustomer 트리거
     return true;
   };
   let n = 0;
-  if (fillIfEmpty('cust_name', orderName)) n++;
-  if (fillIfEmpty('cust_address', orderAddr)) n++;
-  if (fillIfEmpty('cust_phone', orderTel)) n++;
+  state._custFilling = true;
+  try {
+    if (fillIfEmpty('cust_name', orderName)) n++;
+    if (fillIfEmpty('cust_address', orderAddr)) n++;
+    if (fillIfEmpty('cust_phone', orderTel)) n++;
+  } finally { state._custFilling = false; }
   if (n > 0) {
+    state.modifiedCustomer = true;   // 저장 대상으로 표시(자동저장은 안 함 — 사용자 실입력 아님)
+    const _st = document.getElementById('customerStatus');
+    if (_st) _st.innerHTML = `<span style="color:var(--red);">✏ ${t('cust.editing')}</span>`;
     console.info(`[v3.1.1 autofillCustomer] §2.5 빈 칸 ${n}개 자동 채움 (Orders 수취인 정보에서)`);
   }
 }
