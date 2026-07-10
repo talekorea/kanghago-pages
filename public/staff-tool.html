@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.230</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.231</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -7239,6 +7239,9 @@ const ATTACH_FIELD_IDS = {
 async function _recordPlainFtaIfCoUnneeded(shipmentId) {
   try {
     if (!shipmentId || !TABLES.Shipments) return;
+    // [v3.2.231] ★2차 IP(CO 발급용) 배치는 stage='final'을 재사용하므로 여기 딸려올 수 있다 → 명시 차단.
+    //   기록은 "최종 IP 시점"에만. 2차는 읽기·생성 전용(Airtable PATCH 0).
+    if (state._batchIpMode === 'co') return;
     if (state._batchMode && !state._allowSeqWrite) return;              // ④ 배치 무쓰기 보존
     const f = (state.shipment && state.shipment.fields) || {};
     if (String(f['적용FTA확정'] || '').trim()) return;                   // ① 기존값(특혜 포함) 절대 덮어쓰지 않음
@@ -12511,13 +12514,19 @@ async function downloadInvoiceExcel(opts) {
     const _missH = (typeof finalHeaderMissing === 'function') ? finalHeaderMissing() : [];
     if (_missH.length) miss.push(`신고 헤더필드 미입력: ${_missH.join('·')}`);
     // v3.2.30: 고객 확인 요청 절차 폐기 → 고객응답 필수 게이트 제거
-    if (!f['BL번호']) miss.push('BL번호');
-    if (!(f['BL파일'] && Array.isArray(f['BL파일']) && f['BL파일'].length)) miss.push('BL파일');
-    // [v3.2.127] 최종 IP = CO 발급 *전* 산출물(기본세율·CO발급용)일 땐 CO·대조 불요(닭-달걀).
-    //   세율 모드: 적용FTA확정 미선택/기본=CO발급용(pre-CO) / 한중·RCEP·아태=특혜세율 관세사 제출용(post-CO).
-    // [v3.2.137] ★특혜세율(제출용) 모드만 하드 게이트(CO+대조) — 자동대조 불일치는 항상 차단. 단일 함수.
-    const _gr = _publishGateReason('finalIp');
-    if (_gr) miss.push(_gr);
+    // [v3.2.231] ★2차 IP(CO 발급기관 전달용) 전용 완화 — state._batchIpMode==='co'일 때만.
+    //   CO 발급 *전* 산출물이라 BL파일·포워딩사·CO파일/대조를 요구할 수 없다(닭-달걀).
+    //   ★완화는 stage가 아니라 이 플래그로만 분기 → 최종 단일 다운·최종 배치 게이트 불변(회귀 0).
+    //   영문명·HS·신고헤더·제품·박스·환율·관세사확정 하드차단은 그대로 유지(통관 품명 필수).
+    if (state._batchIpMode !== 'co') {
+      if (!f['BL번호']) miss.push('BL번호');
+      if (!(f['BL파일'] && Array.isArray(f['BL파일']) && f['BL파일'].length)) miss.push('BL파일');
+      // [v3.2.127] 최종 IP = CO 발급 *전* 산출물(기본세율·CO발급용)일 땐 CO·대조 불요(닭-달걀).
+      //   세율 모드: 적용FTA확정 미선택/기본=CO발급용(pre-CO) / 한중·RCEP·아태=특혜세율 관세사 제출용(post-CO).
+      // [v3.2.137] ★특혜세율(제출용) 모드만 하드 게이트(CO+대조) — 자동대조 불일치는 항상 차단. 단일 함수.
+      const _gr = _publishGateReason('finalIp');
+      if (_gr) miss.push(_gr);
+    }
   }
 
   if (miss.length) {
@@ -12600,10 +12609,12 @@ async function downloadInvoiceExcel(opts) {
     const yymmdd = shipDateIso.slice(2).replace(/-/g, '');   // YYMMDD (선적일 기준)
     const forwarder = (f['포워딩사'] || '').trim();
     // [B] 최종 다운로드 + 포워딩 미선택 → 차단 (CI 번호 확정 불가).
-    if (stage === 'final' && !forwarder) { if (_rb) return { skip: '포워딩사(ZTK/BTK) 미선택' }; toastWarn('최종 다운로드는 포워딩사(ZTK/BTK) 선택 후 가능 — CI 번호 확정 필요', { title: '🔒 번호 확정' }); return; }
+    // [v3.2.231] 2차 IP(CO 발급용)는 포워딩사 미정 시점 → 번호 확정 불요. 인보이스번호는 '사서함-yymmdd' 폴백.
+    if (stage === 'final' && !forwarder && state._batchIpMode !== 'co') { if (_rb) return { skip: '포워딩사(ZTK/BTK) 미선택' }; toastWarn('최종 다운로드는 포워딩사(ZTK/BTK) 선택 후 가능 — CI 번호 확정 필요', { title: '🔒 번호 확정' }); return; }
     // [B] CI 순번 영구 불변: 부여돼 있으면 재사용, 없으면 같은 (포워딩,선적일) max+1 부여·저장(포워딩 선택분만 확정).
     let seq = parseInt(f['인보이스순번']) || 0;
-    if (!seq && forwarder) {
+    // [v3.2.231] ★2차 IP(CO 발급용)는 순번 부여·persist 금지 — 무쓰기 보장 + CI 번호는 최종에서 확정(영구 불변 원칙).
+    if (!seq && forwarder && state._batchIpMode !== 'co') {
       // [v3.2.100] 미부여 → 부여+persist. ★최종 배치에서만 순번 persist 예외 통과(_allowSeqWrite 1회). 1차는 무쓰기 유지. 개별은 _batchMode=false라 무관.
       if (_rb && stage === 'final') state._allowSeqWrite = true;
       try { seq = await assignInvoiceSeq(forwarder, shipDateIso); }
@@ -17405,10 +17416,16 @@ function closeBookingSummary() {
 
 // [v3.2.98] 배치 IP 다운로드 — 선적일 사서함 순회·게이트 통과만 생성→ZIP. 가드형 로드-루프(무쓰기·무손상 재사용·작업 사서함 복원).
 //   stage='first'(1차) / 'final'(최종). 1차 게이트=영문명·HS(productsMissingNameOrHs) / 최종=1차+BL번호+BL파일+CO파일(+downloadInvoiceExcel 내부 게이트 안전망).
+// [v3.2.231] stage 인자에 'co'(2차 IP = CO 발급기관 전달용) 추가.
+//   그날 선적분 전체 중 ★CO 발급 대상(calcCoCny()>0)만 묶는다. 절세<¥100은 CO 미발급 → 배제.
+//   양식·blob은 stage='final'과 동일(별도 stage 없음). 게이트만 _batchIpMode='co'로 완화(BL파일·포워딩사·CO/대조).
+//   ★무쓰기: 순번 persist·적용FTA확정 자동기록 전부 차단(둘 다 _batchIpMode==='co' 가드).
 async function downloadBatchIp(stage) {
   const rows = (bookingState.rows || []).slice();
   if (!rows.length) { toastWarn && toastWarn('먼저 [선적일별 부킹 요약]을 조회하세요'); return; }
-  const label = (stage === 'first') ? '1차' : '최종';
+  const isCo = (stage === 'co');
+  const genStage = isCo ? 'final' : stage;   // 2차는 최종 양식 재사용
+  const label = (stage === 'first') ? '1차' : (isCo ? 'CO발급용' : '최종');
   const loadingEl = document.getElementById('bookingLoadingMsg');
   // 작업 사서함 스냅샷(복원용)
   const origShipId = (state.shipment && state.shipment.id) || '';
@@ -17418,6 +17435,7 @@ async function downloadBatchIp(stage) {
   const zip = new JSZip();
   const done = [], skipped = [];
   state._batchMode = true; state._batchWriteBlocked = 0;
+  if (isCo) state._batchIpMode = 'co';   // [v3.2.231] 게이트 완화·무쓰기 가드 활성 (finally에서 반드시 해제)
   _batchProgress.show(`${label} IP 전체 생성`);   // [v3.2.184] 진행 인디케이터
   try {
     for (let i = 0; i < rows.length; i++) {
@@ -17426,13 +17444,23 @@ async function downloadBatchIp(stage) {
       _batchProgress.step(`${label} IP 생성 중… — ${r.mailbox}`, i + 1, rows.length);   // [v3.2.184]
       try {
         await loadShipment(r.id);   // _batchMode: 쓰기 차단·스키마 스킵. (booking 모달이 화면 덮어 깜빡임 가림)
-        const res = await downloadInvoiceExcel({ stage, returnBlob: true });
+        // [v3.2.231] ★2차 IP 배제 필터 — loadShipment 직후(환율·제품·박스 로드 완료 시점)에 판정.
+        //   환율 미로드 → calcCoSavingCny()가 0을 반환해 "미발급"으로 오판 → 거짓 배제/포함 둘 다 방지하려 스킵.
+        if (isCo) {
+          const _rate = parseFloat((document.getElementById('rateCnyKrw') || {}).value) || 0;
+          if (!(_rate > 0)) { skipped.push({ mb: r.mailbox, reason: '환율 미로드 판정불가' }); continue; }
+          const _sav = (typeof calcCoSavingCny === 'function') ? calcCoSavingCny() : 0;
+          const _co = (typeof calcCoCny === 'function') ? calcCoCny() : 0;
+          if (!(_co > 0)) { skipped.push({ mb: r.mailbox, reason: `절세<¥100 CO 미발급(¥${_sav.toFixed(0)})` }); continue; }
+        }
+        const res = await downloadInvoiceExcel({ stage: genStage, returnBlob: true });
         if (res && res.blob) { zip.file(res.filename, res.blob); done.push(r.mailbox); }
         else { skipped.push({ mb: r.mailbox, reason: (res && res.skip) || '게이트 미충족' }); }
       } catch (e) { skipped.push({ mb: r.mailbox, reason: '오류 ' + (e.message || '') }); }
     }
   } finally {
     state._batchMode = false;
+    state._batchIpMode = null;   // [v3.2.231] 예외·중단에도 반드시 해제(완화 플래그 스틱 금지)
     _batchProgress.step('작업 사서함 복원 중…');   // [v3.2.184]
     if (origShipId) { try { await loadShipment(origShipId); } catch (e) {} }   // ★작업 사서함 복원(화면 원복)
     if (loadingEl) loadingEl.textContent = '';
@@ -18090,9 +18118,11 @@ function renderBookingTable(rows, dateLabel) {
   </div>`;
 
   // [v3.2.98] 배치 IP 다운로드 — 1차/최종 ZIP. 게이트 통과만 생성, 미충족 스킵+사유. 무쓰기·작업 사서함 복원.
+  // [v3.2.231] 2차(CO 발급용) 추가 — IP 3단계: 1차=포워딩 / 2차=CO 발급기관(절세<¥100 배제) / 최종=세관.
   html += `<div style="margin-top:10px; padding:12px; background:#eef7f0; border:1px solid #b7dcc2; border-radius:6px;">
     <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">📦 배치 IP 다운로드 <span style="font-weight:400; color:#888;">(선적일 사서함 일괄 → ZIP. 게이트 통과만 생성·미충족 스킵. Airtable 무쓰기·현재 사서함 복원)</span></div>
     <button onclick="downloadBatchIp('first')" style="padding:8px 16px; margin-right:8px; background:#C9973A; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">📥 1차 IP 전체</button>
+    <button onclick="downloadBatchIp('co')" style="padding:8px 16px; margin-right:8px; background:#0a7b40; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;" title="CO 발급기관 전달용 — 그날 선적분 중 CO 발급 대상(절세 ≥ ¥100)만 묶습니다. 절세<¥100(기본세율 신고)은 배제.">📄 CO 발급용 IP</button>
     <button onclick="downloadBatchIp('final')" style="padding:8px 16px; background:#1B2A3B; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">📋 최종 IP 전체</button>
     <div id="batchIpResult"></div>
   </div>`;
