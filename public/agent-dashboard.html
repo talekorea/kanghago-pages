@@ -86,7 +86,7 @@
       <button onclick="downloadAgentFinalZip()" id="agentFinalZipBtn" style="padding:8px 14px; font-size:13px; background:#1B2A3B; color:#fff; border:none; border-radius:6px; cursor:pointer; display:none;">📦 ZIP 다운로드</button>
       <span id="agentFinalLoading" style="font-size:12px; color:#888;"></span>
     </div>
-    <div style="font-size:11px; color:#888; margin-bottom:8px;">ℹ️ 최종 IP·CO·BL 3종이 모두 있는 사서함만 ZIP에 담깁니다. 하나라도 없으면 ❌ 표시 후 스킵. 최종 IP는 사장님이 발행한 최종(통관) 인보이스/패킹입니다.</div>
+    <div style="font-size:11px; color:#888; margin-bottom:8px;">ℹ️ 최종IP·BL 필수. CO는 특혜세율 신고분만(기본세율분은 IP+BL만). 적용FTA 미확정 사서함은 안전을 위해 스킵됩니다. 최종 IP는 사장님이 발행한 최종(통관) 인보이스/패킹입니다.</div>
     <div id="agentFinalResult"><div style="padding:18px; text-align:center; color:#999; font-size:13px;">날짜 선택 후 조회하세요.</div></div>
   </div>
 </div>
@@ -357,6 +357,13 @@
       loading.textContent = '';
       if (!rows.length) { box.innerHTML = `<div style="padding:18px; text-align:center; color:#999; font-size:13px;">📭 <strong>${agentFinalLabel}</strong> 선적 예정 사서함 0건</div>`; return; }
       const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+      // [v3.2.230] 상태 라벨 — CO 조건부 3상태. 서버 ready/missing/isPlain/isPref 그대로 표시(판정 중복 금지).
+      const statusLabel = (r) => {
+        if (r.ready) return r.isPlain && !r.co.length ? 'CO 미발급(기본세율) — IP+BL' : '다운로드 대상';
+        if (r.missing.includes('적용FTA 미확정')) return '스킵 (적용FTA 미확정 — 도구에서 확정 필요)';
+        if (r.missing.length === 1 && r.missing[0] === 'CO') return '스킵 (CO 미업로드)';
+        return '스킵 (' + r.missing.join('·') + ' 없음)';
+      };
       const mark = (arr, label) => arr.length ? `<span style="color:#0a7b40;font-weight:700;">✅${arr.length > 1 ? '×' + arr.length : ''}</span>` : `<span style="color:#c0392b;font-weight:700;">❌${label}</span>`;
       const trs = rows.map(r => `<tr style="background:${r.ready ? '#fff' : '#fff3e0'};">
         <td style="padding:6px 8px;border-bottom:1px solid #eee;">${esc(r.shipDate)}</td>
@@ -364,7 +371,7 @@
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${mark(r.finalIp, '')}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${mark(r.co, '')}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${mark(r.bl, '')}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;color:${r.ready ? '#0a7b40' : '#c0392b'};">${r.ready ? '다운로드 대상' : '스킵 (' + r.missing.join('·') + ' 없음)'}</td></tr>`).join('');
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;color:${r.ready ? '#0a7b40' : '#c0392b'};">${statusLabel(r)}</td></tr>`).join('');
       const readyN = rows.filter(r => r.ready).length;
       box.innerHTML = `<div style="font-size:12px;color:#666;margin-bottom:6px;">${esc(agentFinalLabel)} · ${rows.length} 사서함 · 다운로드 대상 <strong>${readyN}</strong>건</div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -375,7 +382,7 @@
   };
   window.downloadAgentFinalZip = async () => {
     const ready = (agentFinalRows || []).filter(r => r.ready);
-    if (!ready.length) { alert('다운로드 대상이 없습니다 (최종IP·CO·BL 3종 모두 있는 사서함 없음)'); return; }
+    if (!ready.length) { alert('다운로드 대상이 없습니다.\n\n최종IP·BL 필수. CO는 특혜세율 신고분만(기본세율분은 IP+BL만).\n적용FTA 미확정 사서함은 도구에서 확정 후 다시 조회하세요.'); return; }
     const btn = document.getElementById('agentFinalZipBtn'); const loading = document.getElementById('agentFinalLoading');
     const orig = btn.textContent; btn.disabled = true;
     try {

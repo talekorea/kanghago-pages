@@ -1374,7 +1374,7 @@ module.exports = async (req, res) => {
         let ships = [];
         for (const c of chunk(shipIds, 50)) {
           const f = `OR(${c.map(id => `RECORD_ID()='${id}'`).join(',')})`;
-          ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=상태&fields[]=BL번호&fields[]=최종IP파일&fields[]=CO파일&fields[]=BL파일`));
+          ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=상태&fields[]=BL번호&fields[]=최종IP파일&fields[]=CO파일&fields[]=BL파일&fields[]=적용FTA확정`));
         }
         const att = (arr) => (Array.isArray(arr) ? arr : []).map(a => ({ url: a.url, filename: a.filename || 'file' })).filter(a => a.url);
         const rows = ships.map(s => {
@@ -1382,8 +1382,20 @@ module.exports = async (req, res) => {
           // [v3.2.132] 최종IP는 ★최신(마지막) 1장만 — 과거 append 누적분(예: CO 전/후 2장)이 남아도 가장 최근것만 담음. (1차IP파일은 ZIP 미포함)
           const _ipAll = att(sf['최종IP파일']); const finalIp = _ipAll.length ? [_ipAll[_ipAll.length - 1]] : [];
           const co = att(sf['CO파일']); const bl = att(sf['BL파일']);
-          const missing = [].concat(finalIp.length ? [] : ['최종IP'], co.length ? [] : ['CO'], bl.length ? [] : ['BL']);
-          return { id: s.id, mailbox: sf['사서함'] || '', shipDate: shipDateMap[s.id] || '', status: sf['상태'] || '', blNo: sf['BL번호'] || '', finalIp, co, bl, ready: missing.length === 0, missing };
+          // [v3.2.230] ★CO 조건부 3상태 게이트 — 도구 _publishGateReason/finalMiss(staff-tool 11698~11701)와 동일 정책.
+          //   '일반'(기본세율 신고, 절세<¥100 → CO 미발급) → CO 불요, IP+BL만으로 다운로드.
+          //   특혜(한중FTA·RCEP협정·아태협정)             → CO 필수(특혜세율 신고엔 CO 원본 필요).
+          //   빈값/'미선택'(미확정)                       → ★안전측 CO 필요 + 사유 명시. 특혜분이 CO 없이 나가면 통관 사고.
+          const ftaConf = String(sf['적용FTA확정'] || '').trim();
+          const isPlain = ftaConf === '일반';
+          const isPref = ['한중FTA', 'RCEP협정', '아태협정'].includes(ftaConf);
+          const coNeeded = !isPlain;   // 특혜 + 미확정 = CO 필요 (기본값이 안전측)
+          const missing = [].concat(
+            finalIp.length ? [] : ['최종IP'],
+            (coNeeded && !co.length) ? [(isPref ? 'CO' : '적용FTA 미확정')] : [],
+            bl.length ? [] : ['BL']
+          );
+          return { id: s.id, mailbox: sf['사서함'] || '', shipDate: shipDateMap[s.id] || '', status: sf['상태'] || '', blNo: sf['BL번호'] || '', finalIp, co, bl, ftaConf, isPlain, isPref, ready: missing.length === 0, missing };
         });
         rows.sort((a, b) => (a.shipDate || '').localeCompare(b.shipDate || '') || a.mailbox.localeCompare(b.mailbox));
         return res.json({ rows, days });

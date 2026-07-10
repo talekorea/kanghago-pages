@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.229</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.230</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -7230,6 +7230,30 @@ const ATTACH_FIELD_IDS = {
 // [v3.2.132] ★누적(append) 버그 fix — 기존 "clear 후 append"는 REST PATCH(api.airtable.com) clear와
 //   content endpoint(content.airtable.com) append가 별도 서비스라 정합성 레이스 → clear 누락 시 2~4장 누적.
 //   해법: 먼저 append → 응답의 전체 첨부 목록에서 ★최신(마지막) 1장 id만 남기고 PATCH로 trim(레이스 없음).
+// [v3.2.230] ★CO 미발급 확정 기록 — 최종 IP 시점에만. 절세<¥100(calcCoCny()===0) → 적용FTA확정='일반'.
+//   왜: 관세사 ZIP 게이트가 "CO 불요"를 판정하려면 데이터가 필요한데, 청구_CO_CNY는 CO 업로드 트리거(7380)에서만
+//   기록돼 미발급 건엔 영원히 안 남는다(구조적 순환). 발급 여부가 확정되는 최종 IP 시점에 '일반'을 박제한다.
+//   ★안전 불변식 — 아래 4경우는 절대 쓰지 않는다(빈값 유지 → 서버 게이트가 'CO 필요'로 안전 판정):
+//     ① 이미 값 있음(특혜 덮어쓰기 절대 금지) ② calcCoCny()>0(발급 대상) ③ 환율 미로드(절세 판정 불가)
+//     ④ 배치 모드(_batchMode 무쓰기 보장). enum 문자열은 3755~3758행 choices와 100% 일치(일반/한중FTA/아태협정/RCEP협정).
+async function _recordPlainFtaIfCoUnneeded(shipmentId) {
+  try {
+    if (!shipmentId || !TABLES.Shipments) return;
+    if (state._batchMode && !state._allowSeqWrite) return;              // ④ 배치 무쓰기 보존
+    const f = (state.shipment && state.shipment.fields) || {};
+    if (String(f['적용FTA확정'] || '').trim()) return;                   // ① 기존값(특혜 포함) 절대 덮어쓰지 않음
+    const rateCnyKrw = parseFloat((document.getElementById('rateCnyKrw') || {}).value) || 0;
+    if (!(rateCnyKrw > 0)) return;                                      // ③ 환율 0 → calcCoSavingCny=0(거짓 미발급) 방지
+    if (typeof calcCoCny !== 'function') return;
+    if (calcCoCny() > 0) return;                                        // ② CO 발급 대상 → 기록 안 함
+    await api('PATCH', `/${TABLES.Shipments}/${shipmentId}`, { fields: { '적용FTA확정': '일반' }, typecast: true });
+    if (state.shipment && state.shipment.fields) state.shipment.fields['적용FTA확정'] = '일반';
+    if (typeof log === 'function') log('✓ CO 미발급 확정(절세<¥100) → 적용FTA확정=일반 기록 — 관세사 ZIP은 IP+BL만', 'ok');
+  } catch (e) {
+    console.warn('[v3.2.230 적용FTA확정=일반 기록]', e && e.message);   // 실패해도 다운로드 계속(빈값 → CO 필요로 안전 판정)
+  }
+}
+
 // [v3.2.173] ★반환값 {ok,error,count} — 거짓성공 근절. 호출부가 PATCH 성공·GET 재확인 후에만 ✅ 표시.
 async function _snapshotIp(shipmentId, stage, blob, filename) {
   const NAME = stage === 'first' ? '1차IP파일' : (stage === 'final' ? '최종IP파일' : '');
@@ -13018,6 +13042,10 @@ async function downloadInvoiceExcel(opts) {
     // [v3.2.116] ★IP 스냅샷 저장 — 개별·배치 공용. 생성된 그 blob을 1차IP파일/최종IP파일에 1장 replace(관세사 다운로드용). wb 빌드·청구식 미변경.
     let _snap = null;
     try { _snap = await _snapshotIp((state.shipment && state.shipment.id), stage, blob, fname); } catch (e) { _snap = { ok: false, error: String((e && e.message) || e) }; console.warn('[IP 스냅샷]', e && e.message); }
+    // [v3.2.230] ★최종 IP 시점에만 CO 미발급 확정 기록(절세<¥100 → 적용FTA확정='일반').
+    //   1차 IP(stage==='first')엔 넣지 않는다 — 게이트 예외 원칙(1차는 CO 발급 전 산출물).
+    //   _rb return 앞에 둬서 _autoRegisterFinalIp(returnBlob 경로)도 동일하게 기록. 배치는 함수 내부에서 스킵.
+    if (stage === 'final') await _recordPlainFtaIfCoUnneeded((state.shipment && state.shipment.id));
     if (_rb) return { blob, filename: fname, snapshot: _snap };   // [v3.2.173] ★저장결과 동봉 — auto 호출부가 _snap.ok 확인 후에만 ✅(거짓성공 근절)
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
