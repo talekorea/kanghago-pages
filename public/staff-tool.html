@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.232</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.233</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -4118,7 +4118,7 @@ async function loadShipmentList() {
     }
     log('사서함 목록 로드 중...', 'info');
     // 작업1 P0: 고객응답일시 포함 — 응답 받은 사서함을 '고객확정' 탭으로 분류
-    const records = await apiPaged(`/${TABLES.Shipments}?fields[]=사서함&fields[]=출고요청일&fields[]=선적일&fields[]=상태&fields[]=고객응답일시&fields[]=입금완료일시&fields[]=청구금액_KRW`);
+    const records = await apiPaged(`/${TABLES.Shipments}?fields[]=사서함&fields[]=출고요청일&fields[]=선적일&fields[]=상태&fields[]=고객응답일시&fields[]=입금완료일시&fields[]=청구금액_KRW&fields[]=통관트랙`);   // [v3.2.233] 통관트랙 — 목록 뱃지용(전자상거래 인지)
 
     // 사서함 목록 표시용 Customers 조인 (읽기 전용, 사서함번호→{회원명,회사명}). 사서함당 1행(1:1). 실패해도 번호로 표시.
     state.customerByPost = {};
@@ -4296,7 +4296,7 @@ function renderShipmentOptions() {
         const opt = document.createElement('option');
         opt.value = r.id;
         const isNew = state.shipTabNewIds && state.shipTabNewIds[active] && state.shipTabNewIds[active].has(r.id);
-        opt.textContent = (isNew ? '🆕 ' : '') + (isCreditUnpaid(r) ? '⚠외상 ' : '') + shipmentLabel(r);   // [v3.2.142] 외상(미입금) 출고 표시
+        opt.textContent = (isNew ? '🆕 ' : '') + (isCreditUnpaid(r) ? '⚠외상 ' : '') + (isEcommerce(r) ? '🛒전자상거래 ' : '') + shipmentLabel(r);   // [v3.2.142] 외상 [v3.2.233] 전자상거래 뱃지(관세사 라인 제외 대상, 숨기지 않고 인지)시
         opt.dataset.shipment = JSON.stringify(r);
         opt.dataset.status = status;
         og.appendChild(opt);
@@ -7865,6 +7865,12 @@ function getBoxCount() {
 function normalizeShipType(v) {
   if (v === '택배' || v === 'parcel') return '택배';
   return '화물';  // 화물 / cargo / 빈값 → 화물 (기본)
+}
+// [v3.2.233] ★통관트랙 판정 단일소스 — Shipments.통관트랙='전자상거래'만 전자상거래(관세사 라인 완전 배제).
+//   빈값·'무역'·미상 → false(무역, 안전측). 서버(agent.js)는 sf['통관트랙']==='전자상거래' 인라인(문자열 동일).
+//   현재 전 사서함 빈값 → 전부 false → 회귀 0. 물류(배차)는 트랙 무관 유지.
+function isEcommerce(shipment) {
+  return String(((shipment && shipment.fields) || {})['통관트랙'] || '').trim() === '전자상거래';
 }
 
 // Phase C-C3: 박스 배송방식 그룹핑 (snippets/box-grouping.js 검증본 7/7)
@@ -17448,6 +17454,9 @@ async function downloadBatchIp(stage) {
       if (loadingEl) loadingEl.textContent = `⏳ ${label} IP 생성 ${i + 1}/${rows.length} — ${r.mailbox}`;
       _batchProgress.step(`${label} IP 생성 중… — ${r.mailbox}`, i + 1, rows.length);   // [v3.2.184]
       try {
+        // [v3.2.233] ★전자상거래 배제 — 1차·최종·CO발급용 전부. 관세사 라인 대상 아님.
+        //   r.통관트랙은 부킹요약 조회에서 실린 값 → loadShipment 전에 판정(불필요 로드 절약). CO발급용은 calcCoCny 필터보다 앞.
+        if (String(r.통관트랙 || '').trim() === '전자상거래') { skipped.push({ mb: r.mailbox, reason: '전자상거래(관세사 대상 아님)' }); continue; }
         await loadShipment(r.id);   // _batchMode: 쓰기 차단·스키마 스킵. (booking 모달이 화면 덮어 깜빡임 가림)
         // [v3.2.231] ★2차 IP 배제 필터 — loadShipment 직후(환율·제품·박스 로드 완료 시점)에 판정.
         //   환율 미로드 → calcCoSavingCny()가 0을 반환해 "미발급"으로 오판 → 거짓 배제/포함 둘 다 방지하려 스킵.
@@ -17912,7 +17921,8 @@ async function fetchBookingSummary(mode) {
       const base = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}`
               + `&fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=도착지거리km`
               + `&fields[]=BL파일&fields[]=BL번호&fields[]=CO파일`   // [v3.2.87] 문서 누락 감지(읽기만) [v3.2.95] 도착지거리km(화물 견적)
-              + `&fields[]=선명&fields[]=선적항&fields[]=출발지`;   // [v3.2.129] CO 요청 메시지 — 선명항차·적출항
+              + `&fields[]=선명&fields[]=선적항&fields[]=출발지`   // [v3.2.129] CO 요청 메시지 — 선명항차·적출항
+              + `&fields[]=통관트랙`;   // [v3.2.233] 배치(CO발급용/최종) 전자상거래 배제 판정용
       try { return await apiPaged(base + _dispQ); }
       catch (e) { return await apiPaged(base); }   // 배차 필드 미생성 → 폴백
     }));
@@ -17975,6 +17985,7 @@ async function fetchBookingSummary(mode) {
         선명: String(sf['선명'] || '').trim(),
         선적항: String(sf['선적항'] || '').trim(),
         출발지: String(sf['출발지'] || '').trim(),
+        통관트랙: String(sf['통관트랙'] || '').trim(),   // [v3.2.233] 배치 전자상거래 배제 판정용
       };
     }));
 

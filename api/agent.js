@@ -1193,8 +1193,9 @@ module.exports = async (req, res) => {
         //   출고요청·박스확정·관세사확정대기·관세사확정완료·인보이스완료·통관중·통관완료·배송중·출고완료·입금완료 등 모두 list에.
         //   관세사 페이지의 탭이 시각 필터링 담당. API는 차단 안 함.
         // 선적일 추가(관세사 대시보드 목록 날짜 = 선적일 표시용). 출고요청일도 호환 위해 유지.
-        const url = `/${TABLES.Shipments}?fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=선적일&fields[]=입금완료일시&fields[]=메모`;   // [v3.2.142] 입금완료일시 분류 / [v3.2.145] 메모=박스변경 재확정 마커
-        const recs = await atListAll(url);
+        const url = `/${TABLES.Shipments}?fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=선적일&fields[]=입금완료일시&fields[]=메모&fields[]=통관트랙`;   // [v3.2.142] 입금완료일시 분류 / [v3.2.145] 메모=박스변경 재확정 마커 / [v3.2.233] 통관트랙
+        // [v3.2.233] ★전자상거래 완전 배제 — 관세사 화면·데이터에 원천적으로 안 뜸. 빈값·무역·미상=출현(안전측).
+        const recs = (await atListAll(url)).filter(s => (s.fields || {})['통관트랙'] !== '전자상거래');
         // [고객명 표시] Customers(사서함번호 → 회원명/회사명) 조인 — booking_summary와 동일 소스. 읽기 전용·표시 전용.
         let custMap = {};
         try {
@@ -1312,8 +1313,9 @@ module.exports = async (req, res) => {
         let ships = [];
         for (const c of chunk(shipIds, 50)) {
           const f = `OR(${c.map(id => `RECORD_ID()='${id}'`).join(',')})`;
-          ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=BL번호&fields[]=배송방식`));   // [v3.2.109] BL번호 = 수입면장 일괄 매칭 키 / [v3.2.37] 배송방식
+          ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=상태&fields[]=출고요청일&fields[]=BL번호&fields[]=배송방식&fields[]=통관트랙`));   // [v3.2.109] BL번호 = 수입면장 일괄 매칭 키 / [v3.2.37] 배송방식 / [v3.2.233] 통관트랙
         }
+        ships = ships.filter(s => (s.fields || {})['통관트랙'] !== '전자상거래');   // [v3.2.233] ★전자상거래 완전 배제(관세사 대상 아님)
         let custMap = {};
         try {
           const custs = await atListAll(`/${TABLES.Customers}?fields[]=사서함번호&fields[]=회원명&fields[]=회사명`);
@@ -1340,7 +1342,8 @@ module.exports = async (req, res) => {
       //   완료 판정 = isBoxInputComplete (도구와 동일 로직 — 박스≥1 + 모든 박스 무게/가로/세로/높이 > 0).
       if (op === 'box_progress') {
         const cutoff = new Date(Date.now() - 7 * 86400000 + 9 * 3600000).toISOString().slice(0, 10);   // 오늘-7일 KST (산술만)
-        const ships = await atListAll(`/${TABLES.Shipments}?fields[]=사서함&fields[]=선적일`);
+        const ships = (await atListAll(`/${TABLES.Shipments}?fields[]=사서함&fields[]=선적일&fields[]=통관트랙`))   // [v3.2.233] 통관트랙
+          .filter(s => (s.fields || {})['통관트랙'] !== '전자상거래');   // [v3.2.233] ★전자상거래 완전 배제(관세사 대상 아님)
         const windowed = ships.filter(s => { const sd = (s.fields || {})['선적일']; return sd && sd >= cutoff; });   // 문자열 비교(파싱 X)
         const groups = {};
         for (const s of windowed) {
@@ -1374,8 +1377,9 @@ module.exports = async (req, res) => {
         let ships = [];
         for (const c of chunk(shipIds, 50)) {
           const f = `OR(${c.map(id => `RECORD_ID()='${id}'`).join(',')})`;
-          ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=상태&fields[]=BL번호&fields[]=최종IP파일&fields[]=CO파일&fields[]=BL파일&fields[]=적용FTA확정`));
+          ships = ships.concat(await atListAll(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=상태&fields[]=BL번호&fields[]=최종IP파일&fields[]=CO파일&fields[]=BL파일&fields[]=적용FTA확정&fields[]=통관트랙`));
         }
+        ships = ships.filter(s => (s.fields || {})['통관트랙'] !== '전자상거래');   // [v3.2.233] ★전자상거래 완전 배제 — ZIP 소스에서 제외(아래 rows.map isEcomm 이중안전)
         const att = (arr) => (Array.isArray(arr) ? arr : []).map(a => ({ url: a.url, filename: a.filename || 'file' })).filter(a => a.url);
         const rows = ships.map(s => {
           const sf = s.fields || {};
@@ -1390,7 +1394,9 @@ module.exports = async (req, res) => {
           const isPlain = ftaConf === '일반';
           const isPref = ['한중FTA', 'RCEP협정', '아태협정'].includes(ftaConf);
           const coNeeded = !isPlain;   // 특혜 + 미확정 = CO 필요 (기본값이 안전측)
+          const isEcomm = sf['통관트랙'] === '전자상거래';   // [v3.2.233] 이중안전 — 위 filter로 이미 제외됐으나 혹시 남으면 ready 차단
           const missing = [].concat(
+            isEcomm ? ['전자상거래(관세사 대상 아님)'] : [],
             finalIp.length ? [] : ['최종IP'],
             (coNeeded && !co.length) ? [(isPref ? 'CO' : '적용FTA 미확정')] : [],
             bl.length ? [] : ['BL']
