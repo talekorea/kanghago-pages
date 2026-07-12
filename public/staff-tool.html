@@ -454,7 +454,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.233</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.234</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -4118,7 +4118,10 @@ async function loadShipmentList() {
     }
     log('사서함 목록 로드 중...', 'info');
     // 작업1 P0: 고객응답일시 포함 — 응답 받은 사서함을 '고객확정' 탭으로 분류
-    const records = await apiPaged(`/${TABLES.Shipments}?fields[]=사서함&fields[]=출고요청일&fields[]=선적일&fields[]=상태&fields[]=고객응답일시&fields[]=입금완료일시&fields[]=청구금액_KRW&fields[]=통관트랙`);   // [v3.2.233] 통관트랙 — 목록 뱃지용(전자상거래 인지)
+    const _allRecords = await apiPaged(`/${TABLES.Shipments}?fields[]=사서함&fields[]=출고요청일&fields[]=선적일&fields[]=상태&fields[]=고객응답일시&fields[]=입금완료일시&fields[]=청구금액_KRW&fields[]=통관트랙`);   // [v3.2.233] 통관트랙
+    // [v3.2.234] ★전자상거래 완전 제외 — ecommerce-tool 전용 도구가 생겨 무역 도구 목록에서 완전 분리(뱃지→제외).
+    //   isEcommerce(통관트랙='전자상거래')만 제외. 빈값·무역·미상은 100% 그대로(안전측). 목록·탭·카운트·prevIds 전부 이 필터 후 집합 기준.
+    const records = _allRecords.filter(r => !isEcommerce(r));
 
     // 사서함 목록 표시용 Customers 조인 (읽기 전용, 사서함번호→{회원명,회사명}). 사서함당 1행(1:1). 실패해도 번호로 표시.
     state.customerByPost = {};
@@ -4296,7 +4299,7 @@ function renderShipmentOptions() {
         const opt = document.createElement('option');
         opt.value = r.id;
         const isNew = state.shipTabNewIds && state.shipTabNewIds[active] && state.shipTabNewIds[active].has(r.id);
-        opt.textContent = (isNew ? '🆕 ' : '') + (isCreditUnpaid(r) ? '⚠외상 ' : '') + (isEcommerce(r) ? '🛒전자상거래 ' : '') + shipmentLabel(r);   // [v3.2.142] 외상 [v3.2.233] 전자상거래 뱃지(관세사 라인 제외 대상, 숨기지 않고 인지)시
+        opt.textContent = (isNew ? '🆕 ' : '') + (isCreditUnpaid(r) ? '⚠외상 ' : '') + shipmentLabel(r);   // [v3.2.142] 외상 [v3.2.234] 전자상거래 뱃지 제거 — 목록에서 완전 제외(위 records 필터)라 여기 도달 시 무역만시
         opt.dataset.shipment = JSON.stringify(r);
         opt.dataset.status = status;
         og.appendChild(opt);
@@ -17926,7 +17929,7 @@ async function fetchBookingSummary(mode) {
       try { return await apiPaged(base + _dispQ); }
       catch (e) { return await apiPaged(base); }   // 배차 필드 미생성 → 폴백
     }));
-    const ships = shipResults.flat();
+    const ships = shipResults.flat().filter(s => (s.fields || {})['통관트랙'] !== '전자상거래');   // [v3.2.234] ★전자상거래 완전 제외 — 부킹요약·배차·배치 rows 소스에서 원천 제거(배치 17459 중복방어는 유지)
 
     loading.textContent = `⏳ ${ships.length}개 사서함의 박스 조회 중...`;
 
