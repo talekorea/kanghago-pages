@@ -353,6 +353,10 @@
       </div>
       <button class="primary" onclick="loadCustomsShipment()" data-i18n="btn.load">불러오기</button>
     </div>
+    <!-- [추출기 열기] staff·admin 공통(admin-only 아님) — extractor.html 새 탭. 링크만(추출 로직·PAT·권한 무변경). -->
+    <div style="margin-top:8px;">
+      <a href="https://kanghago-pages.vercel.app/extractor.html" target="_blank" rel="noopener" class="secondary" style="display:inline-block; padding:6px 12px; font-size:12px; text-decoration:none;" title="알리피드 주문 추출기(콘솔 스크립트) 복사 페이지를 새 탭에서 엽니다">📋 추출기 열기</a>
+    </div>
     <div style="margin-top:6px; font-size:11px; color:var(--text-dim);" data-i18n="customs.tip">
       💡 "출고요청" 상태의 사서함이 표시됩니다 (관세사확정대기 단계 폐지 — 회의 결정). 확정 완료 시 자동으로 다음 단계로 이동.
     </div>
@@ -454,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.234</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.235</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
