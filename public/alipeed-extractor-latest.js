@@ -1,6 +1,11 @@
 /* ============================================================
-   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.5 (콘솔 fetch 전 페이지 순회)
-   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.5.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.6 (콘솔 fetch 전 페이지 순회)
+   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.6.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+
+   v2.9.6 수정 (2026-07-21): ★구매수수료CNY 매핑 누락 복구. 파싱(p.구매수수료CNY, line 644)은 됐으나
+     Products 업로드 fields에 키가 없어(line 1444~) 무조건 0 저장되던 버그. 스키마엔 '구매수수료CNY'(precision4)만
+     존재 → CNY만 매핑('현지배송비CNY'=Orders 전용 422 진범·'구매수수료KRW'=스키마 없음 → 미포함).
+     debugCommission 통계도 fields→파싱원본(orders[].상품[])에서 읽도록 정정(가짜 0% 지표 제거).
      기능 변경 시 세 곳을 반드시 함께 올린다(불일치 금지). 시작 시 버전 알림창 첫 줄에도 버전이 표시되어
      실행자가 신/구버전을 즉시 눈으로 확인한다.
    v2.9.5 수정 (2026-06-27): ★대행종류 소스 = 주문구분 → 물류센터 대괄호 (알리피드 시스템 변경 대응).
@@ -119,7 +124,7 @@
   }
 
   // ===== 버전 단일 소스 — 기능 변경 시 헤더 버전과 함께 이 값을 올린다 =====
-  var EXTRACTOR_VERSION = 'v2.9.5';   // ★파일명·헤더와 항상 일치시킬 것
+  var EXTRACTOR_VERSION = 'v2.9.6';   // ★파일명·헤더와 항상 일치시킬 것
   // ===== v2.9.3 선적일 = 추출 주문의 실제출고요청일에서 자동 도출 (prompt 수동입력 폐지) =====
   //   키 = {AP번호}-{선적일YYMMDD}. 선적일은 추출 완료 후 deriveShipDate()가 채운다(아래 후처리 .then).
   //   ★사람이 날짜를 타이핑하지 않음 → 날짜 오타 휴먼에러 근본 차단.
@@ -1456,7 +1461,11 @@
                 '수량': p.수량 || 0,
                 '합계CNY': p.합계CNY || 0,
                 '단가KRW': p.단가KRW || 0,
-                '합계KRW': p.합계KRW || 0
+                '합계KRW': p.합계KRW || 0,
+                // [v2.9.6] 구매수수료CNY 매핑 복구 — 파싱(line 644 p.구매수수료CNY)은 됐으나
+                //   이 fields에 키가 없어 무조건 0 저장되던 버그. Products 스키마엔 '구매수수료CNY'(precision4)만
+                //   존재 → CNY만 매핑. '현지배송비CNY'(Orders 전용·2026-05-29 422 진범)·'구매수수료KRW'(스키마 없음)는 미포함.
+                '구매수수료CNY': p.구매수수료CNY || 0
               };
               // v2.1: 제품 링크 (1688/Taobao URL) — 관세사 매칭의 핵심
               if (p.제품링크) {
@@ -1508,9 +1517,15 @@
           //   commission 폴백 효과 확인용 — 콘솔 그룹에 추출 통계 출력.
           //   사장님이 재추출 후 console.group([commission 분포])를 펼쳐 결과 확인.
           (function debugCommission() {
-            var cnyVals = allProducts.map(function(p){ return parseFloat((p.fields||{})['구매수수료CNY']) || 0; });
+            // [v2.9.6] ★파싱 원본(p)에서 읽는다 — 업로드 fields가 아님.
+            //   구버전은 fields['구매수수료CNY']를 읽어 매핑 누락 시 항상 0(가짜 지표)이었음.
+            //   여기선 orders[].상품[].구매수수료CNY(parseProductDetail 산출값)를 직접 집계 →
+            //   "파싱 성공 여부"를 매핑·스키마와 무관하게 관측(팝업 파서 필요 판단 근거).
+            var parsed = [];
+            orders.forEach(function(o){ (o.상품 || []).forEach(function(p){ if (!p._error && !p._warning) parsed.push(p); }); });
+            var cnyVals = parsed.map(function(p){ return parseFloat(p['구매수수료CNY']) || 0; });
             var nz = cnyVals.filter(function(v){ return v > 0; });
-            var krwVals = allProducts.map(function(p){ return parseFloat((p.fields||{})['구매수수료KRW']) || 0; });
+            var krwVals = parsed.map(function(p){ return parseFloat(p['구매수수료KRW']) || 0; });
             var nzKrw = krwVals.filter(function(v){ return v > 0; });
             console.group('[v2.5 commission 분포]');
             console.log('전체 제품 수    :', cnyVals.length);
