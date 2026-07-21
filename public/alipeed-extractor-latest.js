@@ -1,6 +1,11 @@
 /* ============================================================
-   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.6 (콘솔 fetch 전 페이지 순회)
-   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.6.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.7 (콘솔 fetch 전 페이지 순회)
+   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.7.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+
+   v2.9.7 수정 (2026-07-21): ★전자상거래 자동 트랙분류. 주문구분 셀(ordTyText)에 "전자상거래" 포함 시
+     (예 "전자상거래(사업자)-해운") o.전자상거래=true → 사서함 OR 집계 → Shipments.통관트랙='전자상거래' 저장.
+     기존엔 자체추출(ecommerce-tool line 16343)만 태그해 일반추출 전자상거래 건이 빈값(무역 오분류)이던 반쪽 구조 해소.
+     무역 건은 통관트랙 키 미포함=빈값 유지(회귀0). typecast:true로 singleSelect 옵션 수용.
 
    v2.9.6 수정 (2026-07-21): ★구매수수료CNY 매핑 누락 복구. 파싱(p.구매수수료CNY, line 644)은 됐으나
      Products 업로드 fields에 키가 없어(line 1444~) 무조건 0 저장되던 버그. 스키마엔 '구매수수료CNY'(precision4)만
@@ -124,7 +129,7 @@
   }
 
   // ===== 버전 단일 소스 — 기능 변경 시 헤더 버전과 함께 이 값을 올린다 =====
-  var EXTRACTOR_VERSION = 'v2.9.6';   // ★파일명·헤더와 항상 일치시킬 것
+  var EXTRACTOR_VERSION = 'v2.9.7';   // ★파일명·헤더와 항상 일치시킬 것
   // ===== v2.9.3 선적일 = 추출 주문의 실제출고요청일에서 자동 도출 (prompt 수동입력 폐지) =====
   //   키 = {AP번호}-{선적일YYMMDD}. 선적일은 추출 완료 후 deriveShipDate()가 채운다(아래 후처리 .then).
   //   ★사람이 날짜를 타이핑하지 않음 → 날짜 오타 휴먼에러 근본 차단.
@@ -226,6 +231,10 @@
     var customsType = '';
     if (ordTyText.indexOf('사업자통관') >= 0) customsType = '사업자통관';
     else if (ordTyText.indexOf('개인통관') >= 0) customsType = '개인통관';
+    // [v2.9.7] 전자상거래 트랙 자동판정 — 주문구분 셀에 "전자상거래" 포함 시(예 "전자상거래(사업자)-해운").
+    //   부분매칭 → 사업자/개인·해운 변형 전부 커버. 대행종류·통관유형과 독립축(구매대행+전자상거래 공존 가능).
+    //   사서함 레벨 통관트랙='전자상거래' 저장의 원천 플래그(Shipments upsert에서 OR 집계).
+    var isEcommerce = ordTyText.indexOf('전자상거래') >= 0;
 
     // [3] 사서함, 회원명, 수취인
     var memCell = cells.eq(3);
@@ -408,6 +417,7 @@
       주문구분: agentType,   // [v2.9.5] 대행종류 소스 = 물류센터 대괄호 우선(agentType) → Orders.대행종류로 저장(orderRecords). 도구 수입자 분기 자동 파생.
       배송방식: dlvrType,
       통관: customsType,
+      전자상거래: isEcommerce,   // [v2.9.7] 전자상거래 트랙 플래그 → Shipments.통관트랙='전자상거래' 사서함 OR 집계 원천.
       사서함: saseom ? 'AP'+saseom.replace(/^AP/,'') : '',
       회원명: memberName,
       수취인: receiver,
@@ -909,7 +919,8 @@
         결제금액KRW: arr.reduce(function(sum, o){ return sum + (o.결제금액KRW || 0) + (o.추가결제KRW || 0); }, 0),
         무게KG: Math.round(arr.reduce(function(sum, o){ return sum + ((o.화물입고정보||{}).무게KG || 0); }, 0) * 100) / 100,
         부피CBM: Math.round(arr.reduce(function(sum, o){ return sum + ((o.화물입고정보||{}).부피CBM || 0); }, 0) * 1000) / 1000,
-        환율: (arr[0] || {}).환율 || 0
+        환율: (arr[0] || {}).환율 || 0,
+        전자상거래: arr.some(function(o){ return o.전자상거래; })   // [v2.9.7] OR 집계 — 사서함 주문 중 하나라도 전자상거래면 사서함=전자상거래(안전측).
       };
     });
 
@@ -1081,6 +1092,10 @@
             '알리피드URL': result.meta.URL,
             '메모': '주문 ' + st.주문수 + '건 / 상품 ' + st.상품수 + '개 / 무게 ' + st.무게KG + 'KG / 부피 ' + st.부피CBM + 'CBM'
           };
+          // [v2.9.7] 전자상거래 트랙 자동태그 — 사서함에 전자상거래 주문 하나라도 있으면 통관트랙='전자상거래'.
+          //   ecommerce-tool 자체추출(line 16343)과 값 정확 일치(문자열 동일). 무역 건은 키 미포함=빈값 유지(회귀0).
+          //   Products 아닌 Shipments 스키마 필드 '통관트랙'(singleSelect) — typecast:true로 옵션 자동수용(§2.5 422 방지).
+          if (st.전자상거래) fields['통관트랙'] = '전자상거래';
           // (B) 가드: 신규 선적건(복합키)에만 워크플로우 초기값. 기존은 보존(상태·출고요청일 다운그레이드 차단).
           if (!existingShipMap[compositeKey]) {
             fields['출고요청일'] = today;
