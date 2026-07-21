@@ -1,6 +1,13 @@
 /* ============================================================
-   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.7 (콘솔 fetch 전 페이지 순회)
-   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.7.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.8 (콘솔 fetch 전 페이지 순회)
+   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.8.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+
+   v2.9.8 수정 (2026-07-21): ★전자상거래 트랙 판정 확장 + 항공·해상 키 분리(전자상거래 격리).
+     - 트랙: ordTyText에 "전자상거래" OR "항공특송" 포함 → 전자상거래(v2.9.7의 전자상거래-only → 항공특송 포함 5종 커버).
+     - 운송수단: /항공|특송/→항공, else /해운|해상/→해운(전자상거래 그룹키 분리에만 사용, 무역 미사용).
+     - 그룹핑: 전자상거래는 AP+운송수단 → 복합키 'AP-운송수단-YYMMDD'(끝 -YYMMDD 유지·고객사서함=원본AP → base 복원 안전).
+       무역은 AP만 → 키 바이트 동일(무변경). 항공+해상 한 AP → Shipment 2개(무게·박스 분리).
+     - Shipments에 전용 '운송수단' 필드 없음(배송방식=택배/화물 예약) → 필드 저장 스킵, 운송수단은 키에 인코딩(무손실).
 
    v2.9.7 수정 (2026-07-21): ★전자상거래 자동 트랙분류. 주문구분 셀(ordTyText)에 "전자상거래" 포함 시
      (예 "전자상거래(사업자)-해운") o.전자상거래=true → 사서함 OR 집계 → Shipments.통관트랙='전자상거래' 저장.
@@ -129,7 +136,7 @@
   }
 
   // ===== 버전 단일 소스 — 기능 변경 시 헤더 버전과 함께 이 값을 올린다 =====
-  var EXTRACTOR_VERSION = 'v2.9.7';   // ★파일명·헤더와 항상 일치시킬 것
+  var EXTRACTOR_VERSION = 'v2.9.8';   // ★파일명·헤더와 항상 일치시킬 것
   // ===== v2.9.3 선적일 = 추출 주문의 실제출고요청일에서 자동 도출 (prompt 수동입력 폐지) =====
   //   키 = {AP번호}-{선적일YYMMDD}. 선적일은 추출 완료 후 deriveShipDate()가 채운다(아래 후처리 .then).
   //   ★사람이 날짜를 타이핑하지 않음 → 날짜 오타 휴먼에러 근본 차단.
@@ -231,10 +238,13 @@
     var customsType = '';
     if (ordTyText.indexOf('사업자통관') >= 0) customsType = '사업자통관';
     else if (ordTyText.indexOf('개인통관') >= 0) customsType = '개인통관';
-    // [v2.9.7] 전자상거래 트랙 자동판정 — 주문구분 셀에 "전자상거래" 포함 시(예 "전자상거래(사업자)-해운").
-    //   부분매칭 → 사업자/개인·해운 변형 전부 커버. 대행종류·통관유형과 독립축(구매대행+전자상거래 공존 가능).
+    // [v2.9.8] 전자상거래 트랙 자동판정 — "전자상거래" OR "항공특송" 포함(5종: 전자상거래(사업자/개인)-해운/-항공, 항공특송(사업자)).
+    //   ★v2.9.7은 "전자상거래"만 → 항공특송(사업자) 놓침 → "항공특송" 추가. 부분매칭, 대행종류·통관유형과 독립축.
     //   사서함 레벨 통관트랙='전자상거래' 저장의 원천 플래그(Shipments upsert에서 OR 집계).
-    var isEcommerce = ordTyText.indexOf('전자상거래') >= 0;
+    var isEcommerce = ordTyText.indexOf('전자상거래') >= 0 || ordTyText.indexOf('항공특송') >= 0;
+    // [v2.9.8] 운송수단 판정(전자상거래 트랙 내 항공·해상 분리 키용). 항공 우선(항공/특송/항공특송), else 해운/해상.
+    //   ★현 dlvrType 정규식(LCL/FCL/항공/특송)은 "해운" 미매칭 → 별도 판정. 무역엔 미사용(전자상거래 그룹키에만).
+    var shipMode = /항공|특송/.test(ordTyText) ? '항공' : (/해운|해상/.test(ordTyText) ? '해운' : '');
 
     // [3] 사서함, 회원명, 수취인
     var memCell = cells.eq(3);
@@ -418,6 +428,7 @@
       배송방식: dlvrType,
       통관: customsType,
       전자상거래: isEcommerce,   // [v2.9.7] 전자상거래 트랙 플래그 → Shipments.통관트랙='전자상거래' 사서함 OR 집계 원천.
+      운송수단: shipMode,        // [v2.9.8] '항공'/'해운'/'' — 전자상거래 그룹키 분리용(무역 미사용).
       사서함: saseom ? 'AP'+saseom.replace(/^AP/,'') : '',
       회원명: memberName,
       수취인: receiver,
@@ -849,7 +860,10 @@
     var fallbackSaseom = 'AP' + ($('#shPost').val() || '?');
     var ordersBySaseom = {};
     orders.forEach(function(o) {
-      var s = o.사서함 || fallbackSaseom;
+      var ap = o.사서함 || fallbackSaseom;
+      // [v2.9.8] 전자상거래는 AP+운송수단으로 분리 그룹핑(항공·해상 별도 Shipment). 무역은 AP만(현행 무변경, 키 바이트 동일).
+      //   그룹키 접미(-해운/-항공)는 아래 shipmentRecords에서 rawAP·복합키로 분해. 키 끝은 -YYMMDD 유지(base 복원 안전).
+      var s = (o.전자상거래 && o.운송수단) ? (ap + '-' + o.운송수단) : ap;
       if (!ordersBySaseom[s]) ordersBySaseom[s] = [];
       ordersBySaseom[s].push(o);
     });
@@ -1083,11 +1097,15 @@
        .then(function(existingShipMap) {
         var shipmentRecords = saseomList.map(function(s) {
           var st = statsBySaseom[s];
+          // [v2.9.8] 복합키 = s + '-' + YYMMDD (끝 -YYMMDD 유지 → base 복원 replace(/-\d{6}$/) 정상).
+          //   전자상거래 그룹키 s='AP2197-해운' → 복합키 'AP2197-해운-260715'. 무역 s='AP2197' → 'AP2197-260715'(무변경).
           var compositeKey = s + '-' + SHIP_DATE_YYMMDD;   // v2.7 {AP번호}-{선적일YYMMDD}
+          // [v2.9.8] 고객사서함 = 원본 AP(운송수단 접미 제거) — base 복원 폴백이 s를 파싱하지 않도록 원본 AP를 우선 저장.
+          var rawAP = s.replace(/-(해운|항공)$/, '');
           var fields = {
             '사서함': compositeKey,
             '선적일': SHIP_DATE_ISO,        // v2.7 키 suffix 원천 (Date)
-            '고객사서함': s,                // v2.7 AP원본 (Customers 자동채움 키)
+            '고객사서함': rawAP,            // v2.7 AP원본 (Customers 자동채움 키) — [v2.9.8] 운송수단 접미 제외 원본 AP
             '환율CNY_KRW': st.환율,
             '알리피드URL': result.meta.URL,
             '메모': '주문 ' + st.주문수 + '건 / 상품 ' + st.상품수 + '개 / 무게 ' + st.무게KG + 'KG / 부피 ' + st.부피CBM + 'CBM'
