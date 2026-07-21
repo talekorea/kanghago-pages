@@ -1,6 +1,14 @@
 /* ============================================================
-   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.8 (콘솔 fetch 전 페이지 순회)
-   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.8.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.9 (콘솔 fetch 전 페이지 순회)
+   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.9.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+
+   v2.9.9 수정 (2026-07-21): ★전자상거래 통관유형 5종 완전 분리(v2.9.8 해운/항공 2분할 → 5분할).
+     - 파생: ordTyText에서 (전자상거래|항공특송)+(사업자|개인)+(해운|항공|특송) → o.통관구분(정규화 5종) + o.사업자개인.
+       5종: 전자상거래사업자해운/전자상거래개인해운/전자상거래사업자항공/전자상거래개인항공/항공특송사업자.
+       ★항공특송사업자 ≠ 전자상거래사업자항공 → 다른 키(병합 방지).
+     - 그룹핑: 전자상거래=AP+통관구분 → 복합키 'AP-통관구분-YYMMDD'(끝 -YYMMDD·고객사서함=원본AP → base 복원 안전).
+       무역=AP만 → 키 바이트 동일(무변경). 한 AP 5종 → Shipment 5개(무게·박스 각각 분리).
+     - 사업자/개인: 계산방식 결정 요소지만 Shipments 전용 필드 없음 → 저장 스킵(사장 수동생성 권장), 값은 통관구분 키에 인코딩(무손실).
 
    v2.9.8 수정 (2026-07-21): ★전자상거래 트랙 판정 확장 + 항공·해상 키 분리(전자상거래 격리).
      - 트랙: ordTyText에 "전자상거래" OR "항공특송" 포함 → 전자상거래(v2.9.7의 전자상거래-only → 항공특송 포함 5종 커버).
@@ -136,7 +144,7 @@
   }
 
   // ===== 버전 단일 소스 — 기능 변경 시 헤더 버전과 함께 이 값을 올린다 =====
-  var EXTRACTOR_VERSION = 'v2.9.8';   // ★파일명·헤더와 항상 일치시킬 것
+  var EXTRACTOR_VERSION = 'v2.9.9';   // ★파일명·헤더와 항상 일치시킬 것
   // ===== v2.9.3 선적일 = 추출 주문의 실제출고요청일에서 자동 도출 (prompt 수동입력 폐지) =====
   //   키 = {AP번호}-{선적일YYMMDD}. 선적일은 추출 완료 후 deriveShipDate()가 채운다(아래 후처리 .then).
   //   ★사람이 날짜를 타이핑하지 않음 → 날짜 오타 휴먼에러 근본 차단.
@@ -245,6 +253,15 @@
     // [v2.9.8] 운송수단 판정(전자상거래 트랙 내 항공·해상 분리 키용). 항공 우선(항공/특송/항공특송), else 해운/해상.
     //   ★현 dlvrType 정규식(LCL/FCL/항공/특송)은 "해운" 미매칭 → 별도 판정. 무역엔 미사용(전자상거래 그룹키에만).
     var shipMode = /항공|특송/.test(ordTyText) ? '항공' : (/해운|해상/.test(ordTyText) ? '해운' : '');
+    // [v2.9.9] 통관유형 5종 완전 분리 — ordTyText에서 (전자상거래|항공특송)+(사업자|개인)+(해운|항공|특송) 파생.
+    //   사업자/개인 = 계산방식 결정 요소. 통관구분 = 사서함 그룹키 구분자(정규화, 한글만·괄호/하이픈 제거).
+    //   ★항공특송은 유형=특송이라 '항공특송사업자'로 → '전자상거래사업자항공'과 다른 키(병합 방지).
+    var bizPersonal = /사업자/.test(ordTyText) ? '사업자' : (/개인/.test(ordTyText) ? '개인' : '');
+    var customsBucket = '';
+    if (isEcommerce) {
+      if (ordTyText.indexOf('항공특송') >= 0) customsBucket = '항공특송' + bizPersonal;                 // 항공특송사업자
+      else if (ordTyText.indexOf('전자상거래') >= 0) customsBucket = '전자상거래' + bizPersonal + shipMode; // 전자상거래사업자해운
+    }
 
     // [3] 사서함, 회원명, 수취인
     var memCell = cells.eq(3);
@@ -429,6 +446,8 @@
       통관: customsType,
       전자상거래: isEcommerce,   // [v2.9.7] 전자상거래 트랙 플래그 → Shipments.통관트랙='전자상거래' 사서함 OR 집계 원천.
       운송수단: shipMode,        // [v2.9.8] '항공'/'해운'/'' — 전자상거래 그룹키 분리용(무역 미사용).
+      통관구분: customsBucket,   // [v2.9.9] 5종 정규화 키(전자상거래사업자해운/…/항공특송사업자) — 사서함 그룹키 구분자.
+      사업자개인: bizPersonal,   // [v2.9.9] '사업자'/'개인'/'' — 계산방식 결정(필드 있으면 저장).
       사서함: saseom ? 'AP'+saseom.replace(/^AP/,'') : '',
       회원명: memberName,
       수취인: receiver,
@@ -861,9 +880,10 @@
     var ordersBySaseom = {};
     orders.forEach(function(o) {
       var ap = o.사서함 || fallbackSaseom;
-      // [v2.9.8] 전자상거래는 AP+운송수단으로 분리 그룹핑(항공·해상 별도 Shipment). 무역은 AP만(현행 무변경, 키 바이트 동일).
-      //   그룹키 접미(-해운/-항공)는 아래 shipmentRecords에서 rawAP·복합키로 분해. 키 끝은 -YYMMDD 유지(base 복원 안전).
-      var s = (o.전자상거래 && o.운송수단) ? (ap + '-' + o.운송수단) : ap;
+      // [v2.9.9] 전자상거래는 AP+통관구분(5종)으로 완전 분리 그룹핑(사업자/개인·해운/항공·특송 각각 별도 Shipment).
+      //   무역은 AP만(현행 무변경, 키 바이트 동일). 그룹키 접미(-전자상거래사업자해운 등)는 shipmentRecords에서 rawAP·복합키로 분해.
+      //   키 끝은 -YYMMDD 유지(base 복원 안전). ★항공특송사업자 ≠ 전자상거래사업자항공 → 다른 키(병합 방지).
+      var s = (o.전자상거래 && o.통관구분) ? (ap + '-' + o.통관구분) : ap;
       if (!ordersBySaseom[s]) ordersBySaseom[s] = [];
       ordersBySaseom[s].push(o);
     });
@@ -1098,10 +1118,11 @@
         var shipmentRecords = saseomList.map(function(s) {
           var st = statsBySaseom[s];
           // [v2.9.8] 복합키 = s + '-' + YYMMDD (끝 -YYMMDD 유지 → base 복원 replace(/-\d{6}$/) 정상).
-          //   전자상거래 그룹키 s='AP2197-해운' → 복합키 'AP2197-해운-260715'. 무역 s='AP2197' → 'AP2197-260715'(무변경).
+          //   전자상거래 그룹키 s='AP2197-전자상거래사업자해운' → 복합키 'AP2197-전자상거래사업자해운-260715'. 무역 s='AP2197' → 'AP2197-260715'(무변경).
           var compositeKey = s + '-' + SHIP_DATE_YYMMDD;   // v2.7 {AP번호}-{선적일YYMMDD}
-          // [v2.9.8] 고객사서함 = 원본 AP(운송수단 접미 제거) — base 복원 폴백이 s를 파싱하지 않도록 원본 AP를 우선 저장.
-          var rawAP = s.replace(/-(해운|항공)$/, '');
+          // [v2.9.9] 고객사서함 = 원본 AP(통관구분 접미 제거) — base 복원 폴백이 s를 파싱하지 않도록 원본 AP를 우선 저장.
+          //   접미 = -전자상거래…/-항공특송… (한글) → AP('AP'+숫자)엔 없어 오매칭 없음. 무역 s는 접미 없어 rawAP=s(무변경).
+          var rawAP = s.replace(/-(전자상거래|항공특송)[가-힣]*$/, '');
           var fields = {
             '사서함': compositeKey,
             '선적일': SHIP_DATE_ISO,        // v2.7 키 suffix 원천 (Date)
