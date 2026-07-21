@@ -1,6 +1,12 @@
 /* ============================================================
-   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.10 (콘솔 fetch 전 페이지 순회)
-   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.10.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.11 (콘솔 fetch 전 페이지 순회)
+   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.11.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+
+   v2.9.11 수정 (2026-07-21): ★전자상거래 주문→사서함 연결 키 불일치 수정(v2.9.9 미스로 §1 제품 0).
+     - v2.9.9가 사서함 생성 키=AP+통관구분으로 바꿨으나, 주문 연결 조회 키는 순수 AP 그대로 → shipIdBySaseom[AP] 미스 →
+       전자상거래 주문 Shipment=[] → 사서함에서 §1 제품 안 뜸.
+     - 수정: 주문→사서함 조회 키를 그룹핑 키(line 887)와 동일하게 — 전자상거래=AP+통관구분, 무역=순수 AP(무변경).
+       실제 링크(orderRecords)·가드 C 이동감지 두 곳 모두 일치화. shipIdBySaseom 맵은 base 복원값(AP-통관구분) 유지.
 
    v2.9.10 수정 (2026-07-21): ★사업자개인 필드 저장(전자상거래 계산방식용).
      - Shipments.사업자개인(Single select, 옵션 사업자/개인) 신설 대응 — 이미 파생하던 o.사업자개인을 statsBySaseom 집계 후 저장.
@@ -149,7 +155,7 @@
   }
 
   // ===== 버전 단일 소스 — 기능 변경 시 헤더 버전과 함께 이 값을 올린다 =====
-  var EXTRACTOR_VERSION = 'v2.9.10';   // ★파일명·헤더와 항상 일치시킬 것
+  var EXTRACTOR_VERSION = 'v2.9.11';   // ★파일명·헤더와 항상 일치시킬 것
   // ===== v2.9.3 선적일 = 추출 주문의 실제출고요청일에서 자동 도출 (prompt 수동입력 폐지) =====
   //   키 = {AP번호}-{선적일YYMMDD}. 선적일은 추출 완료 후 deriveShipDate()가 채운다(아래 후처리 .then).
   //   ★사람이 날짜를 타이핑하지 않음 → 날짜 오타 휴먼에러 근본 차단.
@@ -1268,7 +1274,9 @@
               if (!ex) return;   // 신규 주문 → 이동 아님
               var curLink = ex['Shipment'];
               if (!Array.isArray(curLink) || !curLink.length) return;   // 기존 링크 없음 → 이동 아님
-              var oSaseom = o.사서함 || fallbackSaseom;
+              // [v2.9.11] 조회 키 = 그룹핑 키(line 887)와 일치 — 전자상거래는 AP+통관구분(분리 사서함 매칭). 무역은 순수 AP.
+              var _oapG = o.사서함 || fallbackSaseom;
+              var oSaseom = (o.전자상거래 && o.통관구분) ? (_oapG + '-' + o.통관구분) : _oapG;
               var newShipId = ctx.shipIdBySaseom[oSaseom];
               if (newShipId && curLink.indexOf(newShipId) === -1) {
                 _moveSet[o.주문번호] = { from: curLink, to: newShipId };   // 다른 Shipment에 연결됨 → 이동 후보
@@ -1283,7 +1291,10 @@
             var orderRecords = orders.map(function(o) {
               var cargo = o.화물입고정보 || {};
               // v2.3: 각 주문이 자기 사서함의 Shipment에 연결되도록
-              var orderSaseom = o.사서함 || fallbackSaseom;
+              // [v2.9.11] ★조회 키 = 그룹핑 키(line 887)와 일치. 전자상거래는 AP+통관구분 → 자기 분리 사서함에 연결.
+              //   무역은 순수 AP(무변경, 회귀0). v2.9.9가 사서함 키만 바꾸고 이 조회 키를 안 바꿔 Shipment=[] → §1 제품 0이던 버그 수정.
+              var _oap = o.사서함 || fallbackSaseom;
+              var orderSaseom = (o.전자상거래 && o.통관구분) ? (_oap + '-' + o.통관구분) : _oap;
               var orderShipId = ctx.shipIdBySaseom[orderSaseom];
               // [v2.9.2 가드 C] 이동 거절 주문은 Shipment 필드를 빼서 기존 링크 보존(아래 _skipShip 처리).
               var _skipShip = (!_allowMove && _moveSet[o.주문번호]);
