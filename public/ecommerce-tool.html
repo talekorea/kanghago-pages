@@ -2005,36 +2005,54 @@ async function translateAllBlank() {
   toastSuccess && toastSuccess(`🌐 일괄 번역: 성공 ${ok} · 스킵 ${skip} · 실패 ${fail} — 전부 미확정(노란배경), 확인 후 확정`, { title: 'AI 번역 완료' });
 }
 
-// [전자상거래 B] 영문명 → HS 6자리 AI 추천(name2hs6). ★빈칸만·10자리 추정 없음·미확정(관세사메모 마커) 노란배경.
+// [전자상거래 B] 영문명 → HS 6자리. ★①HSMapping 학습(관세사 확정) 우선 → ②AI(name2hs6). 빈칸만·10자리 추정 없음.
+//   출처 구분: 학습='📚 학습(관세사 확정)'(관세사메모 마커 없음=신뢰) / AI='🤖 AI추천 미확정'(노란배경).
+//   ★HSMapping 읽기 전용 — 전자상거래 AI값을 HSMapping에 절대 쓰지 않음(관세사 확정 데이터 오염 금지).
 async function _suggestHs6(p) {
   const f = p.fields || {};
   if (String(f['HS코드'] || '').replace(/[^0-9]/g, '')) return { skip: '기존 HS 있음' };   // ★빈칸만
   const en = String(f['Description'] || f['통관품명_영문'] || '').trim();
   if (!en) return { skip: '영문명 없음' };
-  const r = await fetch(HS_SUGGEST_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'name2hs6', nameEn: en, material: String(f['Material'] || '') }) });
+  const mat = String(f['Material'] || '');
+  // ① 학습 우선 — findLearnedHs(재질 포함, 재질 일치 우선). 10자리 반환 → 앞6자리(0000.00).
+  const learned = (typeof findLearnedHs === 'function') ? findLearnedHs(en, mat) : [];
+  if (learned.length) {
+    const h10 = String(learned[0].hs10 || '').replace(/\D/g, '');
+    if (h10.length >= 6) {
+      const hs6 = `${h10.slice(0,4)}.${h10.slice(4,6)}`;
+      // ★학습 유래 = 관세사 확정분 → 미확정 마커 안 붙임(신뢰). 관세사메모에 출처만 표기.
+      const memo = String(f['관세사메모'] || '');
+      const fields = { 'HS코드': hs6, '관세사메모': (memo ? memo + ' / ' : '') + `📚학습HS: ${en} → ${hs6} (${learned[0].reason || '관세사 확정 누적'})` };
+      await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields, typecast: true });
+      Object.assign(f, fields);
+      return { hs6, en, source: 'learned' };
+    }
+  }
+  // ② AI — 재질 포함 전달(재질이 분류 좌우: 플라스틱3926/유리7007/금속7323).
+  const r = await fetch(HS_SUGGEST_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'name2hs6', nameEn: en, material: mat }) });
   const d = await r.json().catch(() => ({}));
   if (!r.ok || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
   const top = (d.hs6Candidates || [])[0];
   if (!top) return { skip: 'HS6 확정 불가(억지 추정 안 함)' };   // 빈칸 유지
-  const hs6 = top.formatted;   // '0000.00' (6자리, 뒷자리 없음 — 전자상거래는 HS6만)
+  const hs6 = top.formatted;   // '0000.00'
   const memo = String(f['관세사메모'] || '');
   const fields = { 'HS코드': hs6, '관세사메모': (memo ? memo + ' / ' : '') + `AI-HS추천(미확정): ${en} → ${hs6}${top.reason ? ' · ' + top.reason : ''}` };
   await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields, typecast: true });
   Object.assign(f, fields);
-  return { hs6, en };
+  return { hs6, en, source: 'ai' };
 }
 async function suggestHs6AllBlank() {
   const targets = (state.products || []).filter(p => !String((p.fields||{})['HS코드'] || '').replace(/[^0-9]/g, '') && String((p.fields||{})['Description'] || (p.fields||{})['통관품명_영문'] || '').trim());
   if (!targets.length) { toastWarn && toastWarn('HS 빈칸 + 영문명 있는 제품이 없습니다'); return; }
-  if (!confirm(`HS 빈칸 ${targets.length}건을 AI로 6자리 추천합니다(빈칸만·10자리 추정 안 함·미확정 노란배경). 진행할까요?`)) return;
-  let ok = 0, skip = 0, fail = 0;
+  if (!confirm(`HS 빈칸 ${targets.length}건을 추천합니다(①학습 우선 → ②AI · 빈칸만 · 10자리 추정 안 함). 진행할까요?`)) return;
+  let learned = 0, ai = 0, skip = 0, fail = 0;
   for (const p of targets) {
-    try { const r = await _suggestHs6(p); r.skip ? skip++ : ok++; }
+    try { const r = await _suggestHs6(p); if (r.skip) skip++; else if (r.source === 'learned') learned++; else ai++; }
     catch (e) { fail++; console.warn('[HS6 실패]', (p.fields||{})['상품ID'], e.message); }
     await sleep(300);
   }
   if (typeof renderProducts === 'function') renderProducts();
-  toastSuccess && toastSuccess(`🤖 HS6 일괄 추천: 성공 ${ok} · 스킵 ${skip} · 실패 ${fail} — 전부 미확정(노란배경), 확인 후 확정`, { title: 'HS6 추천 완료' });
+  toastSuccess && toastSuccess(`HS6 추천: 📚학습 ${learned} · 🤖AI ${ai} · 스킵 ${skip} · 실패 ${fail} — AI분만 미확정(노란배경), 확인 후 확정`, { title: 'HS6 추천 완료' });
 }
 
 // [전자상거래 C] AI 추천값 확정 — ★관세사메모의 AI-미확정 마커만 제거(노란배경 해제). 관세사확정 필드 미사용. 값은 그대로 유지.
@@ -5336,6 +5354,7 @@ function renderProducts() {
     // [전자상거래 B·C] AI 미확정 = 노란배경(관세사메모 마커). 영문명 번역 or HS6 추천. [✓ 확정] 시 마커 제거.
     const _aiUnconfEn = /AI번역\(미확정\)/.test(String(f['관세사메모'] || ''));
     const _aiUnconfHs = /AI-HS추천\(미확정\)/.test(String(f['관세사메모'] || ''));
+    const _learnedHs = /📚학습HS/.test(String(f['관세사메모'] || ''));   // [B] 학습 유래 HS(관세사 확정 누적) — 신뢰, 노란배경 아님
     const _aiUnconfirmed = _aiUnconfEn || _aiUnconfHs;
     const descBg = _aiUnconfEn ? 'background:#fff8d6;border:1px solid #e8c14a;' : empBg;
     const empTitle = isConfirmed
@@ -5420,7 +5439,7 @@ function renderProducts() {
       <td style="min-width:140px;">
         <!-- v3.2.46 ②-a: 관세사확정 전이면 직원이 제품별 HS 직접 입력 가능 (세율은 읽기전용·공식표 자동). 확정 후엔 관세사 값 보호. -->
         <input type="text" class="hs" data-field="HS코드" value="${escAttr(hsValue)}" placeholder="0000.00-0000" ${isConfirmed ? 'readonly title="관세사 확정값 — 수정 불가" style="background:#f4f1ea; width:112px;"' : `title="제품별 HS 직접 입력. 전자상거래는 6자리(0000.00)면 충분" style="width:112px;${_aiUnconfHs ? 'background:#fff8d6;border:1px solid #e8c14a;' : ''}"`} />
-        ${_aiUnconfHs ? `<div style="font-size:9px;color:#a5820a;text-align:center;margin-top:1px;">🤖 HS추천 미확정</div>` : ''}
+        ${_aiUnconfHs ? `<div style="font-size:9px;color:#a5820a;text-align:center;margin-top:1px;">🤖 HS추천 미확정</div>` : (_learnedHs ? `<div style="font-size:9px;color:#0a5a2e;text-align:center;margin-top:1px;">📚 학습(관세사 확정)</div>` : '')}
         ${_aiUnconfirmed ? `<button type="button" onclick="confirmOneProduct('${escAttr(p.id)}')" title="✓ 이 제품 AI추천 확정(미확정 표시 해제)" style="display:block;margin:2px auto 0;font-size:10px;padding:1px 7px;background:#e8f7ef;color:#0a5a2e;border:1px solid #0a7b40;border-radius:4px;cursor:pointer;">✓ 확정</button>` : ''}
         ${isConfirmed ? '' : `<button type="button" class="row-hs-suggest" data-pid="${escAttr(p.id)}" title="🤖 HS 추천 (영문명·재질 → 학습/AI)" style="margin-top:3px; font-size:10px; padding:2px 7px; background:linear-gradient(135deg,#1B5E9A,#2872B5); color:#fff; border:none; border-radius:4px; cursor:pointer;">🤖 추천</button>`}
         ${autoFilled ? '<div style="font-size:9px;color:var(--blue);margin-top:2px;">' + (currentLang==='ko'?'자동':currentLang==='zh'?'自动':'auto') + '</div>' : ''}
