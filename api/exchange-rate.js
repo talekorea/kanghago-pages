@@ -46,6 +46,14 @@ function weekStartOf(date) {
   d.setDate(d.getDate() - d.getDay());    // getDay 0=일 → 일요일까지 뒤로
   return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
 }
+// [v3.2.242] ★KST 기준 현재 고시 적용주차(일요일). Vercel=UTC라 weekStartOf(now)는 KST 일요일 경계에서 하루 밀림 → KST로 계산.
+//   UTC 시각에 +9h 시프트 후 getUTC* 사용 = KST 벽시계. 반환 형식 인자로 선택(YYYYMMDD 캐시키 / YYYY-MM-DD 대조).
+function kstWeekStart(dash, ms) {
+  const k = new Date((ms != null ? ms : Date.now()) + 9 * 3600 * 1000);
+  const sun = new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate() - k.getUTCDay()));
+  const s = sun.getUTCFullYear() + String(sun.getUTCMonth() + 1).padStart(2, '0') + String(sun.getUTCDate()).padStart(2, '0');
+  return dash ? (s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8)) : s;
+}
 function minusDaysYmd(ymd, days) {
   const d = new Date(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8));
   d.setDate(d.getDate() - days);
@@ -110,8 +118,8 @@ module.exports = async (req, res) => {
 
   try {
     const debug = !!req.query.debug;
-    // [환율 수정] 요청 주차 키 = ?date 있으면 그 주, 없으면 이번주 (캐시 분리)
-    const reqWeekKey = req.query.date ? weekStartOf(req.query.date) : weekStartOf(new Date());
+    // [환율 수정] 요청 주차 키 = ?date 있으면 그 주, 없으면 이번주(★KST 기준 — UTC weekStartOf는 일요일 경계 하루 밀림)
+    const reqWeekKey = req.query.date ? weekStartOf(req.query.date) : kstWeekStart(false);
     if (_cache[reqWeekKey] && Date.now() - _cache[reqWeekKey].at < CACHE_TTL && !req.query.force && !debug) {
       return res.json({ ...(_cache[reqWeekKey].result), cached: true });
     }
@@ -125,7 +133,7 @@ module.exports = async (req, res) => {
     }
 
     // 적용개시일(월요일) — 지정일 우선, 없으면 이번 주. 결과 없으면 이전 주들로 폴백(최대 3주)
-    let aplyBgnDt = req.query.date ? weekStartOf(req.query.date) : weekStartOf(new Date());
+    let aplyBgnDt = req.query.date ? weekStartOf(req.query.date) : kstWeekStart(false);
     let attempt = null, parsed = null;
     for (let i = 0; i < 3; i++) {
       attempt = await callDataGo(key, aplyBgnDt);
@@ -150,10 +158,17 @@ module.exports = async (req, res) => {
     // [v3.2.241] ★stale-cache 폴백 — 업스트림 실패 시 마지막 성공 캐시(만료됐어도) 반환 → 하드 502 방지.
     //   관세청 적용환율은 주(weekStart~weekEnd) 단위 고정값 → 같은 주 stale = 여전히 정확한 고시환율(오염 아님).
     //   캐시조차 없을 때만 502(도구는 haveLive=false로 처리 → 0/Mock 미주입, 계산은 사람 재조회 유도).
+    //   ★주 경계 가드 — 관세청 적용환율=주(일~토) 고정. 캐시의 고시적용주차(weekStart) == 현재 KST 고시주차일 때만 stale 허용.
+    //   주가 바뀐 뒤 업스트림 실패면 전주 환율이 과세가격에 유입되므로 stale 금지 → 502 stale_week_expired.
     const _staleOr502 = (errMsg) => {
       const c = _cache[reqWeekKey];
+      const curWeek = req.query.date ? weekStartOf(req.query.date).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3') : kstWeekStart(true);
       if (c && c.result && c.result.rates && c.result.rates.USD > 0) {
-        return res.json({ ...c.result, cached: true, stale: true, staleReason: errMsg });
+        if (c.result.weekStart === curWeek) {
+          return res.json({ ...c.result, cached: true, stale: true, staleReason: errMsg });
+        }
+        return res.status(502).json({ error: errMsg, code: 'stale_week_expired', hint: 'mock_fallback',
+          cachedWeek: c.result.weekStart, currentWeek: curWeek });
       }
       return res.status(502).json({ error: errMsg, hint: 'mock_fallback' });
     };

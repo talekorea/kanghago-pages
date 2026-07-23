@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.241</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.242</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -10905,7 +10905,9 @@ function renderOfficialRates() {
   const fmt = n => n.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   document.getElementById('rateWeekRange').textContent = r.weekStart.replace(/-/g, '.') + ' ~ ' + r.weekEnd.replace(/-/g, '.');
   document.getElementById('rateWeekNo').textContent = '제' + r.weekNo;
-  document.getElementById('rateSource').textContent = r.source;
+  // [v3.2.242] stale(캐시) 표시 — 업스트림 실패로 같은 주 캐시 반환 시(rate는 유효, 관세청 주간 고정값). 기입은 허용, 출처에 명시.
+  const _isStale = !!(_officialRatesCache && _officialRatesCache.stale);
+  document.getElementById('rateSource').textContent = r.source + (_isStale ? ' · ⚠ stale(캐시, 업스트림 일시 실패)' : '');
   document.getElementById('rateFetchedAt').textContent = r.fetchedAt;
   document.getElementById('officialUSD').textContent = fmt(r.rates.USD);
   document.getElementById('officialCNY').textContent = fmt(r.rates.CNY);
