@@ -17423,6 +17423,28 @@ const TYREDS_HEADERS = ["NO", "주문번호", "운송장번호\n(H.BL NO#)", "�
 // M열 플래그(포워더 참고값) — 1=개인 목록통관 / 2=개인 간이통관(매니페스트에선 미사용) / 3=사업자 통관. 승격 판정은 청구 트랙에만 존재.
 const SAEOP_FLAG = { '개인': 1, '사업자': 3 };
 const TYREDS_MAX_ITEMS = 30;   // 품목 슬롯(가로전개 W~EL). 초과 시 잘림 + 경고.
+// [ecommerce] 알리피드 구매수수료 요율표 — 구간 판정 = (구매비 + 현지배송비) 합계 CNY. ★반례 발견 시 여기만 수정.
+//   [하한, 상한(포함), kind, 값] · kind='flat'=정액¥ / 'rate'=비율. 반올림=올림(ceil, 0자리).
+//   실측 검증: 260719001 (1260+25=1285) → 8% → ceil(102.8)=103 (팝업값 일치).
+const BUY_FEE_TIERS = [
+  [0.1,     199.99,   'flat', 20],    // 0.1~199.99 → 정액 ¥20
+  [200,     499.99,   'rate', 0.10],  // 200~499.99 → 10%
+  [500,     999.99,   'rate', 0.09],  // 500~999.99 → 9%
+  [1000,    4999.99,  'rate', 0.08],  // 1000~4999.99 → 8%
+  [5000,    9999.99,  'rate', 0.07],  // 5000~9999.99 → 7%
+  [10000,   999999,   'rate', 0.06],  // 10000~999999 → 6%
+];
+// [ecommerce] 구매수수료 단일 산출 — 주문 단위(구매비CNY, 현지배송비CNY). 합계≤0/빈값/음수 → 0(에러 없이).
+//   ★런타임 계산 전용. Airtable Products.구매수수료CNY(추출값)에는 절대 쓰지 않는다(혼동 방지).
+function calcBuyFeeCny(buyCny, localShipCny) {
+  const base = (parseFloat(buyCny) || 0) + (parseFloat(localShipCny) || 0);
+  if (!(base > 0)) return 0;
+  const t = BUY_FEE_TIERS.find(([lo, hi]) => base >= lo && base <= hi);
+  if (!t) return 0;   // 요율표 범위 밖(999999 초과 등) → 0(반례 시 요율표 확장)
+  const [, , kind, val] = t;
+  // ★부동소수점 보정 후 올림 — 5000×0.07=350.0000006 → ceil 351 오류 방지(toFixed 6자리 반올림 → 350).
+  return kind === 'flat' ? val : Math.ceil(Number((base * val).toFixed(6)));
+}
 
 async function generateTyredsManifest() {
   const pat = (document.getElementById('pat') || {}).value || sessionStorage.getItem('kanghago_airtable_pat') || '';
@@ -17437,7 +17459,7 @@ async function generateTyredsManifest() {
     toastInfo && toastInfo('매니페스트 생성 중… 데이터 조회');
     // (1) 그 선적일 Orders
     const oF = `IS_SAME({실제출고요청일},'${shipDate}','day')`;
-    const orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&fields[]=주문번호&fields[]=수취인&fields[]=연락처&fields[]=수취인주소&fields[]=배송요청사항&fields[]=운송장번호&fields[]=Shipment`);
+    const orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&fields[]=주문번호&fields[]=수취인&fields[]=연락처&fields[]=수취인주소&fields[]=배송요청사항&fields[]=운송장번호&fields[]=Shipment&fields[]=총액CNY&fields[]=현지배송비CNY`);   // [구매수수료] 총액CNY(구매비)·현지배송비CNY = calcBuyFeeCny 입력
     if (!orders.length) { toastWarn && toastWarn(`${shipDate} 선적 Orders 0건`); return; }
     // (2) Shipments — 전자상거래만
     const shipIds = [...new Set(orders.flatMap(o => (o.fields||{}).Shipment || []))];
@@ -17514,15 +17536,24 @@ async function generateTyredsManifest() {
       row[19] = '';                                            // T 中文품명 — 미저장 빈칸
       row[20] = p0['Material'] || '';                          // U 규격/모델=재질
       row[21] = String(p0['HS코드']||'').replace(/\./g,'');     // V HS(점 제거)
+      // [구매수수료] 주문 단위 부대비 = 구매수수료(요율표 calcBuyFeeCny) + 현지배송비. 개당단가에 합계CNY 비례 배분.
+      //   ★Products.구매수수료CNY(추출값·전건0)·현지배송비CNY(Products엔 없음) 대신 Orders 값으로 런타임 계산. Airtable 미기록.
+      const _buyCny    = parseFloat(of['총액CNY']) || 0;         // 구매비 = Σ Products 합계CNY(주문)
+      const _localShip = parseFloat(of['현지배송비CNY']) || 0;   // 주문 단위 현지배송비
+      const _buyFee    = calcBuyFeeCny(_buyCny, _localShip);     // 구매수수료(요율표, ceil)
+      const _overhead  = _buyFee + _localShip;                  // 개당단가에 배분할 총 부대비CNY
+      const _orderVal  = prodsO.reduce((s, p) => s + ((parseFloat((p.fields||{})['단가CNY'])||0) * (parseFloat((p.fields||{})['수량'])||0)), 0);
       prodsO.forEach((p, i) => {
         const pf = p.fields || {}; const b = 22 + i*4;
-        const dan = parseFloat(pf['단가CNY']) || 0;
-        const comm = parseFloat(pf['구매수수료CNY']) || 0;
-        const loc = parseFloat(pf['현지배송비CNY']) || 0;
-        const cnyUnit = dan + (comm > 0 ? comm : 0) + (loc > 0 ? loc : 0);   // ★조건부: >0만 가산
+        const dan  = parseFloat(pf['단가CNY']) || 0;
+        const qtyP = parseFloat(pf['수량']) || 0;
+        const lineCny = dan * qtyP;                             // 이 품목 합계CNY
+        // 부대비 배분: 품목 몫 = 총부대비 × (합계CNY/주문합계) → 개당 = 몫÷수량
+        const perUnitOverhead = (_orderVal > 0 && qtyP > 0) ? (_overhead * (lineCny / _orderVal)) / qtyP : 0;
+        const cnyUnit = dan + perUnitOverhead;
         row[b]   = pf['통관품명_영문'] || '';                   // 상품명(n)
         row[b+1] = 'PC';                                       // 단위 상수
-        row[b+2] = parseFloat(pf['수량']) || 0;                 // 수량
+        row[b+2] = qtyP;                                       // 수량
         row[b+3] = rateCnyUsd > 0 ? Math.round(cnyUnit * rateCnyUsd * 100)/100 : '';  // 개당단가USD
       });
       // 통관구분(사서함 키 접미)로 분리: 해운→海运 / 항공·특송→空运
