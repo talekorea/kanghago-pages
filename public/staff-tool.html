@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.246</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.247</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -5347,6 +5347,7 @@ function renderProducts() {
         <input type="text" inputmode="numeric" data-field="수량" value="${f['수량']||0}" placeholder="수량" title="수량 (개수)" style="width:46px; text-align:right;${(f['수량']||0)==0?' background:#fff0f0; border:1px solid #cc3333;':''}" />
         ${(f['수량']||0)==0 ? '<div style="font-size:9px; color:#cc3333; font-weight:700; margin-top:2px; white-space:nowrap;" title="수량 0 — 인보이스(CI)·패킹(PL)은 수량>0만 포함하므로 이 제품은 IP에 안 나옵니다. 수량을 입력하세요.">⚠️ 수량 0 — IP 미반영</div>' : ''}
         <button type="button" class="perm-del-btn" title="영구 삭제 — 이 선적에서 뺄 제품(수량 0)을 Airtable에서 완전 삭제(복구 불가, 버튼 눌러야 삭제). 발행/확정 제품은 경고." style="display:${(f['수량']||0)==0?'inline':'none'}; margin-left:3px; padding:1px 5px; border:1px solid #b00020; background:#fff0f2; color:#b00020; border-radius:3px; cursor:pointer; font-size:11px;">❌ 삭제</button>
+        <button type="button" onclick="showQtyHistory('${escAttr(f['상품ID']||'')}')" title="수량 변경 이력 보기 (customs_actions)" style="margin-left:3px; padding:1px 4px; border:1px solid #bbb; background:#f4f4f4; border-radius:3px; cursor:pointer; font-size:10px;">📜</button>
       </td>
       <td class="num" data-cell="합계CNY">¥${(f['합계CNY']||0).toLocaleString()}</td>
       <td class="num"><input type="text" class="usd" readonly value="$0" style="font-weight:600; background:#fcf6e8;" /></td>
@@ -5457,14 +5458,18 @@ function renderProducts() {
       if (inp.dataset.field === '수량') {
         inp.addEventListener('change', async () => {
           if (p._isNew) return;   // [v3.2.144] 미저장 분할행은 temp id라 즉시 PATCH 불가 — saveAll create에서 저장.
-          const q = parseFloat(inp.value) || 0;
+          // [v3.2.247] ★단일 가드 파싱 — 콤마·공백 제거. 해석불가/빈값이면 저장 안 함(기존값 보존, 화면 원복).
+          const _pq = parseQtyInput(inp.value);
+          const _prevQ = parseFloat(f['수량']) || 0;
+          if (!_pq.present) { toastWarn && toastWarn(`수량 "${inp.value}" 해석 불가 — 저장 안 함(기존 ${_prevQ.toLocaleString()} 보존). 숫자만 입력하세요.`, { title: '⚠ 수량 미저장' }); inp.value = _prevQ; return; }
+          const q = _pq.q;
           // [v3.2.245] 수동 0 입력 확인(차단 아님) — 수량 0은 신고 제외. 실수로 0 입력 방지.
-          if (q === 0 && (parseFloat(f['수량']) || 0) > 0) {
-            if (!confirm(`수량 0은 최종IP(신고)에서 제외됩니다.\n${f['상품ID'] || ''} = 0 으로 저장할까요?`)) { inp.value = f['수량']; return; }
+          if (q === 0 && _prevQ > 0) {
+            if (!confirm(`수량 0은 최종IP(신고)에서 제외됩니다.\n${f['상품ID'] || ''} = 0 으로 저장할까요?`)) { inp.value = _prevQ; return; }
           }
           // [v3.2.246] 발행 후 수량 편집 경고(표시만·차단 아님) — 최종IP총수량 채워진(기발행) 사서함이면 신고분과 달라짐 안내.
           const _snapN = parseFloat(((state.shipment && state.shipment.fields) || {})['최종IP총수량']) || 0;
-          if (_snapN > 0 && q !== (parseFloat(f['수량']) || 0)) {
+          if (_snapN > 0 && q !== _prevQ) {
             toastWarn && toastWarn(`최종IP 기발행(${_snapN.toLocaleString()}). 수량 변경 시 신고분과 달라집니다.`, { title: '⚠ 발행 후 수량 편집' });
           }
           const cny = q * (parseFloat(f['단가CNY']) || 0);
@@ -5480,6 +5485,7 @@ function renderProducts() {
             await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields: _qf, typecast: true });
             // 우리 변경이므로 baseline 갱신 — 본인 저장이 stale 가드를 트립하지 않게.
             if (state._prodBaseline) state._prodBaseline[p.id] = _prodFingerprint(f);
+            if (q !== _prevQ) _logQtyChange(f['상품ID'], _prevQ, q, '수동편집');   // [v3.2.247] 이력(값 바뀔 때만, fire-and-forget)
             _flash('✓ 저장됨', 'var(--navy)');
             if (typeof toastSuccess === 'function') toastSuccess(`수량 저장: ${(f['상품ID']||'')} = ${q.toLocaleString()}`);
           } catch (e) {
@@ -6159,6 +6165,15 @@ function updateGroupQtyHeader(gk) {
   }
 }
 // [v3.2.143] 수동분할 플래그 — 필드 없이 상품ID suffix(_s{n})로 파생(스키마 쓰기 불가 대응).
+// [v3.2.247] ★수량 파싱 단일 가드 — 콤마·공백 제거 후 정수화. 빈값/NaN/해석불가 → {present:false}(수량 필드 제외=기존값 보존, 0 안 씀).
+//   명시적 "0"만 {q:0,present:true}. "43,500"→43500, "43 500"→43500. 전 경로(수동편집·saveAll·엑셀·추출기) 공용.
+function parseQtyInput(raw) {
+  if (raw == null) return { q: 0, present: false };
+  const s = String(raw).replace(/[,\s]/g, '').trim();   // 콤마·모든 공백 제거
+  if (s === '') return { q: 0, present: false };         // 빈값 → 보존
+  if (!/^\d+$/.test(s)) return { q: 0, present: false }; // 순수 정수 아님(4만·43.5·문자) → 보존(오파싱 0 방지)
+  return { q: parseInt(s, 10), present: true };          // 명시적 정수(0 포함) → 저장
+}
 function isManualSplit(p) { return /_s\d+$/.test(String(((p && p.fields) || {})['상품ID'] || '')); }
 // [v3.2.147 B] 분할 원본(부모) 판정 — 같은 주문에 {이ID}_s{n} 자식이 있으면 분할에 참여한 원본 → 단가 편집 개방(자식과 동일).
 //   ★분할 안 한 일반 제품(자식 없음)은 false → 매입가 보호(단가 정적) 유지.
@@ -9743,6 +9758,35 @@ function _logInvoiceCopy(mailbox, url, amount) {
       .catch(e => console.warn('[청구서 복사 로그] 예외(복사는 정상):', e.message));
   } catch (e) { console.warn('[청구서 복사 로그] 예외(복사는 정상):', e.message); }
 }
+// [v3.2.247] 수량 변경 이력(customs_actions) — fire-and-forget. 실패해도 수량 저장 무영향(로깅=부수작업).
+//   route: '수동편집'|'분할'|'엑셀업로드'. agent = 로그인 계정(customsAuthHeader 기반, 없으면 unknown).
+function _logQtyChange(productId, before, after, route) {
+  try {
+    const auth = (typeof customsAuthHeader === 'function') ? customsAuthHeader() : null;
+    if (!auth) { console.warn('[수량 이력] 인증 토큰 없음 — 로깅 스킵(저장은 정상)'); return; }
+    const mb = ((state.shipment && state.shipment.fields) || {})['사서함'] || '';
+    let agent = 'unknown';
+    try { const _u = (window.supabase && supabase.auth && typeof supabase.auth.getUser === 'function') ? null : null; agent = (window._staffLoginEmail) || (document.getElementById('staffEmail') && document.getElementById('staffEmail').value.trim()) || 'unknown'; } catch (e) {}
+    const body = { op: 'log_qty_change', productId, before, after, route, mailbox: mb, agent };
+    fetch(AGENT_API_BASE, { method: 'POST', headers: { 'Authorization': auth, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(r => r.json().catch(() => ({})))
+      .then(d => { if (!d || !d.ok) console.warn('[수량 이력] 실패(저장은 정상):', (d && d.error) || 'unknown'); })
+      .catch(e => console.warn('[수량 이력] 예외(저장은 정상):', e.message));
+  } catch (e) { console.warn('[수량 이력] 예외(저장은 정상):', e.message); }
+}
+// [v3.2.247] 수량 변경 이력 조회 — customs_actions에서 stage=qty_change & 상품ID 매칭. 클릭 시 일시/이전→이후/경로/사용자.
+async function showQtyHistory(sid) {
+  if (!sid) return;
+  const auth = (typeof customsAuthHeader === 'function') ? customsAuthHeader() : null;
+  if (!auth) { toastWarn && toastWarn('토큰 필요 — 이력 조회 불가'); return; }
+  try {
+    const r = await fetch(`${AGENT_API_BASE}?op=qty_history&productId=${encodeURIComponent(sid)}`, { headers: { 'Authorization': auth } });
+    const d = await r.json().catch(() => ({}));
+    const rows = (d && d.rows) || [];
+    const body = rows.length ? rows.map(x => `<tr><td style="padding:3px 8px;">${(x.created_at||'').replace('T',' ').slice(0,16)}</td><td style="padding:3px 8px; text-align:right;">${x.before ?? '?'} → <strong>${x.after ?? '?'}</strong></td><td style="padding:3px 8px;">${x.route||'-'}</td><td style="padding:3px 8px; color:#666;">${x.agent||'unknown'}</td></tr>`).join('') : '<tr><td colspan="4" style="padding:10px; color:#888;">이력 없음 (v3.2.247 이후 변경분만 기록)</td></tr>';
+    alert(`📜 수량 변경 이력 — ${sid}\n\n` + (rows.length ? rows.map(x => `${(x.created_at||'').replace('T',' ').slice(0,16)}  ${x.before ?? '?'}→${x.after ?? '?'}  [${x.route||'-'}]  ${x.agent||'unknown'}`).join('\n') : '이력 없음 (v3.2.247 이후 변경분만 기록)'));
+  } catch (e) { toastError && toastError('이력 조회 실패: ' + e.message); }
+}
 async function notifyPreview() {
   const res = document.getElementById('notifyResult');
   res.innerHTML = '<span style="color:#888;">🔎 미리보기 중…</span>';
@@ -11390,9 +11434,12 @@ async function saveAll(skipReload) {
       if (isSplitEditable(p)) {
         const _trc = document.querySelector(`tr[data-record-id="${p.id}"]`);
         const _ucny = parseFloat((_trc && _trc.querySelector('input[data-field="단가CNY"]') && _trc.querySelector('input[data-field="단가CNY"]').value) ?? f['단가CNY']) || 0;
-        const _q = parseInt((_trc && _trc.querySelector('input[data-field="수량"]') && _trc.querySelector('input[data-field="수량"]').value) ?? f['수량'], 10) || 0;
+        // [v3.2.247] ★단일 가드 — DOM값 파싱(콤마 제거). 해석불가/빈값이면 수량 미포함(기존 보존). DOM 없으면 f['수량'] 사용.
+        const _inpEl = _trc && _trc.querySelector('input[data-field="수량"]');
+        const _pq = _inpEl ? parseQtyInput(_inpEl.value) : { q: parseFloat(f['수량']) || 0, present: (f['수량'] != null) };
+        const _q = _pq.present ? _pq.q : (parseFloat(f['수량']) || 0);
         fields['단가CNY'] = _ucny;
-        fields['수량'] = _q;
+        if (_pq.present) fields['수량'] = _q;   // 해석 불가면 수량 필드 제외 → 기존값 보존(0 안 씀)
         fields['합계CNY'] = Math.round(_ucny * _q * 100) / 100;
         fields['단가USD'] = rateCnyUsd ? _ucny * rateCnyUsd : unitUsd;
         fields['합계USD'] = rateCnyUsd ? fields['합계CNY'] * rateCnyUsd : usd;
@@ -16606,7 +16653,8 @@ async function pushExcelToAirtable(rawRows) {
 
   const products = rawRows.map((row, idx) => {
     const unitUsd = parseFloat(row['제품 단가 (USD)']) || 0;
-    const qty = parseInt(row['제품 수량']) || 0;
+    const _pq = parseQtyInput(row['제품 수량']);   // [v3.2.247] ★단일 가드 — 콤마 제거·해석불가/빈값 판정
+    const qty = _pq.q;
     const unitCny = rateCnyUsd > 0 ? Math.round((unitUsd / rateCnyUsd) * 100) / 100 : 0;
     const unitKrw = Math.round(unitUsd * rateUsdKrw);
     const totalCny = Math.round(unitCny * qty * 100) / 100;
@@ -16633,16 +16681,14 @@ async function pushExcelToAirtable(rawRows) {
       'Material': String(row['재질'] || ''),
       '색상사이즈': '',
       '단가CNY': unitCny,
-      '수량': qty,
-      '합계CNY': totalCny,
       '단가KRW': unitKrw,
-      '합계KRW': totalKrw,
       '단가USD': unitUsd,
-      '합계USD': totalUsd,
       '구매수수료CNY': 0,
       '제품링크': String(row['제품 URL'] || ''),
       '이미지URL': imgUrl,
     };
+    // [v3.2.247] ★수량 빈값/해석불가 → 수량·합계 제외(upsert가 기존 Airtable 수량 보존, 0 덮어쓰기 차단). 명시적 정수만 저장.
+    if (_pq.present) { fields['수량'] = qty; fields['합계CNY'] = totalCny; fields['합계KRW'] = totalKrw; fields['합계USD'] = totalUsd; }
     if (imgUrl && /^https?:\/\//i.test(imgUrl)) {
       fields['상품이미지'] = [{ url: imgUrl }];
     }
@@ -16662,6 +16708,8 @@ async function pushExcelToAirtable(rawRows) {
         records: batch,
       });
       stats.products += batch.length;
+      // [v3.2.247] 엑셀업로드 수량 이력 — 수량 present 행만(빈값=보존이라 write 아님). before=null(upsert, 이전값 미조회).
+      batch.forEach(rec => { const bf = rec.fields || {}; if (bf['수량'] != null) { try { _logQtyChange(bf['상품ID'], null, bf['수량'], '엑셀업로드'); } catch (e) {} } });
       console.info(`[v3.2.7 Products[${i}~${i+batch.length-1}] 푸시 성공 — ${resp.records.length}건]`);
     } catch (e) {
       const msg = (e.message || e).substring(0, 400);
@@ -19263,6 +19311,7 @@ async function copyCoRequest() {
       var password = document.getElementById('staffPassword').value;
       var resp = await supabase.auth.signInWithPassword({ email: email, password: password });
       if (resp.error) throw resp.error;
+      try { window._staffLoginEmail = email; } catch (e) {}   // [v3.2.247] 수량 이력 agent 식별용
       var ok = await verifyActiveAndEnter(resp.data.session.access_token);
       if (!ok) { btn.disabled = false; btn.textContent = '로그인'; }
     } catch (err) {

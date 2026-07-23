@@ -1017,6 +1017,21 @@ module.exports = async (req, res) => {
     const authH = req.headers.authorization || req.headers.Authorization || '';
     if (authH.startsWith('Admin ')) {
       verifyAdmin(req);
+      // [v3.2.247] 수량 변경 이력 조회 — customs_actions에서 stage=qty_change & 상품ID 매칭(최근순).
+      if (req.method === 'GET' && req.query.op === 'qty_history') {
+        const sid = String(req.query.productId || '');
+        if (!sid || !SUPABASE_URL) return res.json({ rows: [] });
+        try {
+          const q = `${SUPABASE_URL}/rest/v1/customs_actions?select=created_at,fields_before,fields_after,agent_email&product_id=eq.${encodeURIComponent(sid)}&order=created_at.desc&limit=50`;
+          const cr = await fetch(q, { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
+          const arr = await cr.json().catch(() => []);
+          const rows = (Array.isArray(arr) ? arr : []).filter(a => (a.fields_after || {}).stage === 'qty_change').map(a => ({
+            created_at: a.created_at, before: (a.fields_before || {})['수량'], after: (a.fields_after || {})['수량'],
+            route: (a.fields_after || {})['변경경로'], agent: a.agent_email || 'unknown',
+          }));
+          return res.json({ rows });
+        } catch (e) { return res.json({ rows: [], error: e.message }); }
+      }
       if (req.method === 'GET' && req.query.op === 'admin_list') {
         const agents = await adminListAgents();
         return res.json({ agents });
@@ -1056,6 +1071,14 @@ module.exports = async (req, res) => {
             청구금액_KRW: (body.amount != null && !isNaN(body.amount)) ? Number(body.amount) : undefined,
           });
           return res.json({ ok: true, logged: true, stage: 'invoice_url_copied', 사서함: _mb });
+        }
+        // [v3.2.247] 수량 변경 이력 — customs_actions에 1행(logAction 재사용, 별도 테이블 X). 값 실제 변경 시만 도구가 호출.
+        if (body.op === 'log_qty_change') {
+          await logAction({ id: null, email: String(body.agent || 'unknown') }, null, String(body.productId || ''),
+            { 수량: (body.before != null && !isNaN(body.before)) ? Number(body.before) : undefined },
+            { stage: 'qty_change', 수량: (body.after != null && !isNaN(body.after)) ? Number(body.after) : undefined,
+              상품ID: String(body.productId || ''), 사서함: String(body.mailbox || ''), 변경경로: String(body.route || '') });
+          return res.json({ ok: true, logged: true, stage: 'qty_change' });
         }
         // 직원 관리 op (v3.2.42) — 같은 ADMIN_INVITE_TOKEN, role='staff' 고정 발급
         if (body.op === 'staff_admin_create') {
