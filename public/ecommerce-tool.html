@@ -17536,25 +17536,15 @@ async function generateTyredsManifest() {
       row[19] = '';                                            // T 中文품명 — 미저장 빈칸
       row[20] = p0['Material'] || '';                          // U 규격/모델=재질
       row[21] = String(p0['HS코드']||'').replace(/\./g,'');     // V HS(점 제거)
-      // [구매수수료] 주문 단위 부대비 = 구매수수료(요율표 calcBuyFeeCny) + 현지배송비. 개당단가에 합계CNY 비례 배분.
-      //   ★Products.구매수수료CNY(추출값·전건0)·현지배송비CNY(Products엔 없음) 대신 Orders 값으로 런타임 계산. Airtable 미기록.
-      const _buyCny    = parseFloat(of['총액CNY']) || 0;         // 구매비 = Σ Products 합계CNY(주문)
-      const _localShip = parseFloat(of['현지배송비CNY']) || 0;   // 주문 단위 현지배송비
-      const _buyFee    = calcBuyFeeCny(_buyCny, _localShip);     // 구매수수료(요율표, ceil)
-      const _overhead  = _buyFee + _localShip;                  // 개당단가에 배분할 총 부대비CNY
-      const _orderVal  = prodsO.reduce((s, p) => s + ((parseFloat((p.fields||{})['단가CNY'])||0) * (parseFloat((p.fields||{})['수량'])||0)), 0);
+      // ★매니페스트는 부대비용 제외(물품가만). 부대비(구매수수료·현지배송비) 포함은 청구 트랙 전용. 2026-07-23 확정.
+      //   개당단가USD = 단가CNY(물품가) × 환율. 구매수수료·현지배송비 가산 없음(조건부 가산 구조 삭제 — 재오염 방지).
       prodsO.forEach((p, i) => {
         const pf = p.fields || {}; const b = 22 + i*4;
         const dan  = parseFloat(pf['단가CNY']) || 0;
-        const qtyP = parseFloat(pf['수량']) || 0;
-        const lineCny = dan * qtyP;                             // 이 품목 합계CNY
-        // 부대비 배분: 품목 몫 = 총부대비 × (합계CNY/주문합계) → 개당 = 몫÷수량
-        const perUnitOverhead = (_orderVal > 0 && qtyP > 0) ? (_overhead * (lineCny / _orderVal)) / qtyP : 0;
-        const cnyUnit = dan + perUnitOverhead;
         row[b]   = pf['통관품명_영문'] || '';                   // 상품명(n)
         row[b+1] = 'PC';                                       // 단위 상수
-        row[b+2] = qtyP;                                       // 수량
-        row[b+3] = rateCnyUsd > 0 ? Math.round(cnyUnit * rateCnyUsd * 100)/100 : '';  // 개당단가USD
+        row[b+2] = parseFloat(pf['수량']) || 0;                 // 수량
+        row[b+3] = rateCnyUsd > 0 ? Math.round(dan * rateCnyUsd * 100)/100 : '';  // 개당단가USD = 물품가만
       });
       // 통관구분(사서함 키 접미)로 분리: 해운→海运 / 항공·특송→空运
       (/(항공|특송)/.test(key) ? airRows : (/해운/.test(key) ? seaRows : seaRows)).push(row);
