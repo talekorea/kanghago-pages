@@ -506,6 +506,7 @@
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#e8f7ef; color:#1B2A3B; border:1px solid #2BB673;" onclick="openBookingSummary()" title="선적일 선택 → 그날 사서함 박스 무게·CBM 합계 → 위챗 복사">📦 선적일별 부킹 요약</button>
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#f3ece0; color:#5a4a2a; border:1px solid #c9973a;" onclick="openDispatchMaster()" title="배차 마스터 — 선적일별 전체 배차 운영 현황(읽기전용) + Excel">🚚 배차 마스터</button>
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#eef2fb; color:#1B2A3B; border:1px solid #4A6DA7;" onclick="generateTyredsManifest()" title="포워딩 매니페스트(TYREDS) — 선적일 선택 → 전자상거래 사서함 Order를 海运/空运 파일로. 무역 미포함.">📄 포워딩 매니페스트</button>
+    <button class="secondary" style="padding:6px 12px; font-size:12px; background:#fff7e0; color:#7a5a00; border:1px solid #d9a441;" onclick="showAlicoinDeductions()" title="간이통관 승격(개인 ≥$150 or 품목 2종+) 주문에 ¥15 알리코인 차감 대상 — 표시만(수동 차감). 사업자 제외.">🪙 알리코인 차감 대상</button>
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#fdecef; color:#7a0c28; border:1px solid #e88aa0;" onclick="runContaminationCheck()" title="영문명 broadcast 오염 점검 (READ ONLY 조회) — 비고유 URL·broadcast 클러스터·catch-all HS 쏠림. 주1회 권장.">🔬 오염 점검</button>
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#e8f7ef; border:1px solid #2BB673;" onclick="openNotifyModal()" title="채널톡 고객 알림 — 사서함 직접 입력 가능(주문 없어도)">📨 채널톡 알림</button>
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openAgentAdmin()">👥 관세사 관리</button>
@@ -17412,6 +17413,102 @@ if (typeof window !== 'undefined') {
 // PAT: 기존 api()/apiPaged() 헬퍼 그대로 사용 — sessionStorage 'kanghago_airtable_pat' 경유. 평문 노출 0.
 // 기존 state.*  보존 — 모달은 로컬 bookingState만 사용.
 const bookingState = { rows: [], dateLabel: '', textForCopy: '' };
+
+// ═══════════════════════════════════════════════════════════════════════
+// [ecommerce] 알리코인 차감 대상 — 간이통관 승격 판정(개인 주문만) → ¥15 표시.
+//   승격: A(판정금액 ≥ $150, 부대비 전부 포함) OR B(통관품명_영문 고유 ≥ 2종). 사업자 제외.
+//   ★표시만 — Airtable 금액 쓰기 0. 실 차감은 사장님이 알리피드 관리자에서 주문번호로 수동.
+// ═══════════════════════════════════════════════════════════════════════
+const SIMPLE_CUSTOMS_THRESHOLD_USD = 150;   // 조건 A 기준
+const SIMPLE_CUSTOMS_FEE_CNY = 15;          // 승격 주문당 알리코인 차감액
+async function showAlicoinDeductions() {
+  const pat = (document.getElementById('pat') || {}).value || sessionStorage.getItem('kanghago_airtable_pat') || '';
+  if (!pat) { (typeof toastWarn === 'function' ? toastWarn : alert)('§1에서 PAT를 먼저 입력하세요'); return; }
+  const bd = (document.getElementById('bookingDate') || {}).value;
+  const shipDate = prompt('알리코인 차감 대상 — 선적일 (YYYY-MM-DD)\n개인 전자상거래 주문 중 간이통관 승격(≥$150 or 품목 2종+)만. 사업자 제외.', bd || new Date().toISOString().slice(0,10));
+  if (!shipDate) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(shipDate)) { toastError('날짜 형식 YYYY-MM-DD'); return; }
+  try {
+    toastInfo && toastInfo('알리코인 차감 대상 조회 중…');
+    // (1) 그 선적일 Orders (판정금액·품목 판정용)
+    const oF = `IS_SAME({실제출고요청일},'${shipDate}','day')`;
+    const orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&fields[]=주문번호&fields[]=회원명&fields[]=Shipment&fields[]=총액CNY&fields[]=현지배송비CNY`);
+    if (!orders.length) { toastWarn && toastWarn(`${shipDate} 선적 Orders 0건`); return; }
+    // (2) Shipments — 전자상거래 + 사업자개인 + 환율
+    const shipIds = [...new Set(orders.flatMap(o => (o.fields||{}).Shipment || []))];
+    const ships = (await Promise.all(chunkArray(shipIds, 50).map(async chunk => {
+      const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
+      return apiPaged(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=고객사서함&fields[]=통관트랙&fields[]=사업자개인&fields[]=환율CNY_USD`);
+    }))).flat();
+    const shipById = {};
+    ships.forEach(s => { if (isEcommerce(s)) shipById[s.id] = s; });   // 전자상거래만
+    const ecomOrders = orders.filter(o => ((o.fields||{}).Shipment || []).some(id => shipById[id]));
+    if (!ecomOrders.length) { toastWarn && toastWarn(`${shipDate} 전자상거래 Order 0건`); return; }
+    // (3) Products — 통관품명_영문(품목 종수 판정)
+    const orderById = {}; ecomOrders.forEach(o => orderById[o.id] = o);
+    const onoList = ecomOrders.map(o => String((o.fields||{})['주문번호']||'')).filter(Boolean);
+    let prods = [];
+    for (const chunk of chunkArray(onoList, 30)) {
+      const pf = `OR(${chunk.map(no => `SEARCH('${String(no).replace(/'/g,"\\'")}',ARRAYJOIN({Order}))`).join(',')})`;
+      try { prods = prods.concat(await apiPaged(`/${TABLES.Products}?filterByFormula=${encodeURIComponent(pf)}&fields[]=통관품명_영문&fields[]=Order`)); } catch (e) {}
+    }
+    const prodByOrderId = {};
+    prods.forEach(p => { const oid = ((p.fields||{}).Order || [])[0]; if (oid && orderById[oid]) (prodByOrderId[oid] = prodByOrderId[oid] || []).push(p); });
+    // (4) 주문별 승격 판정 (개인만)
+    const promoted = [], undetermined = []; let emptyNameOrders = 0;
+    ecomOrders.forEach(o => {
+      const of = o.fields || {};
+      const sid = (of.Shipment || []).find(id => shipById[id]);
+      const sf = (shipById[sid] || {}).fields || {};
+      if (String(sf['사업자개인'] || '').trim() !== '개인') return;   // 개인만(사업자·빈값 제외)
+      const 주문번호 = of['주문번호'] || '';
+      const 회원명 = of['회원명'] || (sf['고객사서함'] || '');
+      const buyCny = parseFloat(of['총액CNY']) || 0;
+      const shipCny = parseFloat(of['현지배송비CNY']) || 0;
+      const rate = parseFloat(sf['환율CNY_USD']) || 0;
+      // 품목 종수 = 통관품명_영문 고유(빈값 제외)
+      const namesAll = (prodByOrderId[o.id] || []).map(p => String((p.fields||{})['통관품명_영문'] || '').trim());
+      const emptyN = namesAll.filter(n => !n).length;
+      const uniq = [...new Set(namesAll.filter(Boolean))];
+      const 품목종수 = uniq.length;
+      if (emptyN > 0) emptyNameOrders++;
+      // 조건 A: 판정금액(부대비 전부 포함) ≥ $150 — 환율 없으면 판정불가
+      if (!(rate > 0)) { undetermined.push({ 주문번호, 회원명, 품목종수, emptyN }); return; }
+      const 판정CNY = buyCny + shipCny + calcBuyFeeCny(buyCny, shipCny);
+      const 판정USD = Math.round(판정CNY * rate * 100) / 100;
+      const A = 판정USD >= SIMPLE_CUSTOMS_THRESHOLD_USD;
+      const B = 품목종수 >= 2;
+      if (A || B) promoted.push({ 주문번호, 회원명, 판정USD, 품목종수, 사유: (A && B) ? '금액·품목' : (A ? '금액' : '품목'), emptyN });
+    });
+    _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrders);
+  } catch (e) {
+    console.error('[알리코인 차감]', e);
+    toastError ? toastError('조회 실패: ' + (e.message||e)) : alert('실패: ' + (e.message||e));
+  }
+}
+function _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrders) {
+  const totalCny = promoted.length * SIMPLE_CUSTOMS_FEE_CNY;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const rows = promoted.map(r => `<tr><td style="padding:4px 8px;font-family:ui-monospace,monospace;font-weight:700;">${esc(r.주문번호)}</td><td style="padding:4px 8px;">${esc(r.회원명)}</td><td style="padding:4px 8px;text-align:right;">$${r.판정USD.toLocaleString()}</td><td style="padding:4px 8px;text-align:center;">${r.품목종수}종${r.emptyN?` <span style="color:#c0392b;">(영문명누락${r.emptyN})</span>`:''}</td><td style="padding:4px 8px;">${esc(r.사유)}</td><td style="padding:4px 8px;text-align:right;font-weight:700;">¥${SIMPLE_CUSTOMS_FEE_CNY}</td></tr>`).join('');
+  const undet = undetermined.map(r => `<tr style="color:#999;"><td style="padding:4px 8px;font-family:ui-monospace,monospace;">${esc(r.주문번호)}</td><td style="padding:4px 8px;">${esc(r.회원명)}</td><td colspan="4" style="padding:4px 8px;">⚠ 판정불가(환율 없음)${r.emptyN?` · 영문명누락${r.emptyN}`:''}</td></tr>`).join('');
+  // 복사 텍스트(위챗·메모용) — 주문번호 반드시 포함
+  const copyText = `[알리코인 차감 · ${shipDate}] 간이통관 승격 ${promoted.length}건 · 합계 ¥${totalCny}\n` +
+    promoted.map(r => `${r.주문번호} ${r.회원명} $${r.판정USD} ${r.품목종수}종 [${r.사유}] → ¥${SIMPLE_CUSTOMS_FEE_CNY}`).join('\n') +
+    (undetermined.length ? `\n\n[판정불가 ${undetermined.length}건]\n` + undetermined.map(r => `${r.주문번호} ${r.회원명} (환율없음)`).join('\n') : '');
+  const html = `
+    <div style="margin-bottom:12px;padding:10px 14px;background:#fff7e0;border:1px solid #d9a441;border-radius:6px;">
+      <strong style="color:#7a5a00;">🪙 알리코인 차감 대상 (${shipDate})</strong> — 승격 <strong>${promoted.length}건</strong> · 합계 <strong style="color:#b26a00;">¥${totalCny}</strong>
+      <div style="font-size:11px;color:#888;margin-top:3px;">★표시만 — 알리피드 관리자에서 주문번호로 수동 차감. 사업자·미승격 제외.</div>
+    </div>
+    <div style="text-align:right;margin-bottom:8px;"><button onclick="navigator.clipboard.writeText(this.dataset.t).then(()=>{this.textContent='✅ 복사됨';setTimeout(()=>this.textContent='📋 합계 복사',1500);});" data-t="${esc(copyText)}" style="padding:6px 14px;background:#1B2A3B;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;">📋 합계 복사</button></div>
+    ${promoted.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f4ecd8;"><th style="padding:5px 8px;text-align:left;">주문번호</th><th style="padding:5px 8px;text-align:left;">회원명</th><th style="padding:5px 8px;text-align:right;">판정금액</th><th style="padding:5px 8px;text-align:center;">품목종수</th><th style="padding:5px 8px;text-align:left;">승격사유</th><th style="padding:5px 8px;text-align:right;">차감</th></tr></thead><tbody>${rows}${undet}</tbody></table>` : `<div style="padding:14px;text-align:center;color:#888;">승격 대상 0건${undetermined.length?` (판정불가 ${undetermined.length}건 아래)`:''}</div>${undet?`<table style="width:100%;font-size:12px;"><tbody>${undet}</tbody></table>`:''}`}
+    ${emptyNameOrders ? `<div style="font-size:11px;color:#c0392b;margin-top:8px;">⚠ 영문명 누락 주문 ${emptyNameOrders}건 — 품목종수 판정에서 빈값 제외됨(누락분 확인 권장).</div>` : ''}`;
+  // 부킹요약 모달 재사용(결과 박스에 렌더)
+  document.getElementById('bookingSummaryModal').style.display = 'block';
+  const inp = document.getElementById('bookingDate'); if (inp) inp.value = shipDate;
+  document.getElementById('bookingResultBox').innerHTML = html;
+  document.getElementById('bookingLoadingMsg').textContent = '';
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // [ecommerce v0.4] 포워딩 매니페스트 (TYREDS) — 전자상거래 전용, 행=Order 단위, 海运/空运 분리
