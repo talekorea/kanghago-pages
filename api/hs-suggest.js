@@ -84,7 +84,22 @@ function detectChapterSplit(candidates) {
   return null;
 }
 
-function buildPrompt(mode, nameEn, material, hs10) {
+function buildPrompt(mode, nameEn, material, hs10, nameKr) {
+  if (mode === 'kr2name') {
+    // [전자상거래] 한국어 상품명(알리피드 마케팅명) → 영문 통관품명(세관 신고용 일반명) + HS 후보. 왕복 1회.
+    return `다음 한국어 상품명을 세관 신고용 영문 통관품명으로 번역하고, 한국 HSK 10자리 후보를 함께 제시하라.
+한국어 상품명: ${nameKr || '(미입력)'}
+
+★번역 규칙(통관 신고용 — 매우 중요):
+- 마케팅 문구·브랜드·수식어·용량·색상·"고급/선물용" 등 제거. **물품 자체를 지칭하는 일반명사구**만.
+  예: "고급 스테인리스 보온병 500ml 선물용" → "vacuum flask" / "귀여운 강아지 집 대형" → "pet house" / "스마트폰 악세사리 케이스" → "phone case"
+- 소문자 시작, 짧은 명사구(1~3단어). 영어.
+- 재질을 유추할 수 있으면 영문으로(cotton/plastic/stainless steel 등), 없으면 빈 문자열.
+- HS는 그 물품의 한국 관세율표 10자리 후보 1~2개.
+
+**JSON 배열만 반환** — 설명 텍스트 금지:
+[{"nameEn":"vacuum flask","material":"stainless steel","hs10":"0000000000","reason":"한 줄 근거"}]`;
+  }
   if (mode === 'hs2name') {
     const tariff = TARIFF[hs10];
     const tariffInfo = `공식 세율: A=${tariff.A}% / CN=${tariff.CN}% / E1=${tariff.E1}%`;
@@ -113,12 +128,12 @@ ${tariffInfo}
 - 재질: ${material || '(미입력)'}`;
 }
 
-async function callAnthropic(mode, nameEn, material, hs10) {
+async function callAnthropic(mode, nameEn, material, hs10, nameKr) {
   if (!ANTHROPIC_API_KEY) {
     throw Object.assign(new Error('ANTHROPIC_API_KEY 환경 변수가 설정되지 않았습니다'),
       { hint: 'Vercel 환경 변수에 ANTHROPIC_API_KEY 추가 + 재배포' });
   }
-  const userMsg = buildPrompt(mode, nameEn, material, hs10);
+  const userMsg = buildPrompt(mode, nameEn, material, hs10, nameKr);
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
@@ -196,8 +211,27 @@ module.exports = async (req, res) => {
     const modeIn = String(body.mode || '').trim();
     const nameEn = String(body.nameEn || '').trim();
     const material = String(body.material || '').trim();
+    const nameKr = String(body.nameKr || '').trim();   // [전자상거래] kr2name 입력(한국어 상품명)
     const hs10Raw = String(body.hs10 || '').trim();
     const hs10 = normalize10(hs10Raw);
+
+    // [전자상거래] kr2name — 한국어 상품명 → 영문 통관품명 + HS 후보(왕복 1회). 별도 조기 반환.
+    if (modeIn === 'kr2name') {
+      if (!nameKr) return res.status(400).json({ ok: false, error: '한국어 상품명(nameKr) 필요 (kr2name 모드)' });
+      const aiCands = await callAnthropic('kr2name', '', '', '', nameKr);
+      const arr = Array.isArray(aiCands) ? aiCands : [];
+      if (!arr.length) return res.status(200).json({ ok: true, mode: 'kr2name', nameEn: '', material: '', hsCandidates: [], warning: 'AI 번역 실패 — 수동 입력' });
+      const top = arr[0] || {};
+      // HS 후보는 공식표 유효한 것만 필터(무효는 참고용 제외)
+      const hsCands = arr.map(c => normalize10(String(c.hs10 || ''))).filter(h => h.length === 10 && TARIFF[h]);
+      return res.status(200).json({
+        ok: true, mode: 'kr2name',
+        nameEn: String(top.nameEn || '').trim().toLowerCase(),
+        material: String(top.material || '').trim(),
+        hsCandidates: [...new Set(hsCands)].slice(0, 2).map(h => ({ hs10: h, formatted: `${h.slice(0,4)}.${h.slice(4,6)}-${h.slice(6,10)}`, rates: TARIFF[h] })),
+        reason: String(top.reason || ''),
+      });
+    }
     // v3.2.29: construction 입력 폐기 — AI 프롬프트가 의류 양쪽 후보(61·62) 자동 제시
 
     // mode 결정 (기존 호환: mode 없으면 입력 패턴으로 유추)

@@ -427,6 +427,8 @@
 
   /* role 기반 UI 숨김 — staff 모드는 .admin-only 통째 숨김 */
   body.mode-staff .admin-only { display: none !important; }
+  /* [ecommerce] 전자상거래 도구는 관세사 경로 없음 — 관세사 UI 전부 숨김(포크 유지, 물리 삭제 아님). */
+  .agent-ui { display: none !important; }
   /* v3.2.65: ⚙️ 관리 드롭다운(<details>) 기본 삼각형 마커 제거 (텍스트 ▾ 사용) */
   details.mgmt-menu > summary { list-style: none; }
   details.mgmt-menu > summary::-webkit-details-marker { display: none; }
@@ -509,7 +511,7 @@
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#fff7e0; color:#7a5a00; border:1px solid #d9a441;" onclick="showAlicoinDeductions()" title="간이통관 승격(개인 ≥$150 or 품목 2종+) 주문에 ¥15 알리코인 차감 대상 — 표시만(수동 차감). 사업자 제외.">🪙 알리코인 차감 대상</button>
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#fdecef; color:#7a0c28; border:1px solid #e88aa0;" onclick="runContaminationCheck()" title="영문명 broadcast 오염 점검 (READ ONLY 조회) — 비고유 URL·broadcast 클러스터·catch-all HS 쏠림. 주1회 권장.">🔬 오염 점검</button>
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#e8f7ef; border:1px solid #2BB673;" onclick="openNotifyModal()" title="채널톡 고객 알림 — 사서함 직접 입력 가능(주문 없어도)">📨 채널톡 알림</button>
-    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px;" onclick="openAgentAdmin()">👥 관세사 관리</button>
+    <button class="secondary admin-only agent-ui" style="padding:6px 12px; font-size:12px;" onclick="openAgentAdmin()">👥 관세사 관리</button>
     <!-- 관리/설정 6개 → ⚙️ 관리 드롭다운(admin-only) -->
     <details class="admin-only mgmt-menu" style="position:relative; display:inline-block;">
       <summary style="list-style:none; cursor:pointer; padding:6px 12px; font-size:12px; border:1px solid #ccc; border-radius:6px; background:#f5f5f5; color:#1B2A3B; user-select:none;">⚙️ 관리 ▾</summary>
@@ -773,7 +775,7 @@
       <div id="customsProgressInfo" style="font-size:10px; background:#f8f5ee; padding:6px; border-radius:4px; margin-bottom:8px; display:none;">
         <strong id="customsProgressText">0/0</strong>
       </div>
-      <button class="primary" id="btnRequestCustoms" onclick="requestCustomsConfirmation()" style="background:#C9973A; color:#fff; padding:8px; font-size:12px; font-weight:600; margin-top:auto;" data-i18n="workflow.customs.request">
+      <button class="primary agent-ui" id="btnRequestCustoms" onclick="requestCustomsConfirmation()" style="background:#C9973A; color:#fff; padding:8px; font-size:12px; font-weight:600; margin-top:auto;" data-i18n="workflow.customs.request">
         🏛 관세사 요청
       </button>
       <div style="font-size:9px; color:#888; margin-top:4px; text-align:center;">
@@ -952,6 +954,7 @@
   <h2 data-i18n="section.products">1. 상품 정보 입력</h2>
   <!-- [v3.2.156] 제품 수동 추가 — 주문 귀속·상품ID 자동. _isNew 행 → 입력 → [저장]이 create. -->
   <button type="button" onclick="addProductRow()" title="제품을 수동으로 추가 — 주문 선택 후 빈 행 생성. 영문명/HS/수량/단가 입력 → [Airtable에 저장] → 사진 교체 가능." style="margin:4px 0 8px; padding:6px 14px; background:linear-gradient(135deg,#0a7b40,#0d8f4c); color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">➕ 제품 추가</button>
+  <button type="button" onclick="translateAllBlank()" title="🌐 영문명 빈칸 전체 AI 번역 — 한국어 상품명→영문 통관품명(빈칸만·기존값 보존·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#eef4fb; color:#1B5E9A; border:1px solid #1B5E9A; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">🌐 영문명 빈칸 일괄 번역</button>
   <!-- v3.2.12 #1: 주문별 배송 요청 메모 — 엑셀 '배송 요청 메모' 컬럼 / Orders.배송요청사항 자동 노출 -->
   <div id="orderMemoBox" style="display:none; margin:8px 0 12px; padding:12px 14px; background:#fff8d6; border:1px solid #d4a72c; border-radius:6px; font-size:13px;">
     <div style="font-weight:700; color:#6b5d00; margin-bottom:6px;">📝 배송 요청 메모 (주문별)</div>
@@ -1583,8 +1586,8 @@
       <label style="font-size:12px;"><input type="checkbox" id="payInvFeeSeparate" /> 6% 별도 라인(Service fee) 표시 <span style="color:#999;">(기본: 단가 임베드 · 합계 동일)</span></label>
       <button class="secondary small" onclick="openPaymentInvoicePreview()" style="padding:8px 16px;">👁 미리보기</button>
       <button class="primary small" onclick="downloadPaymentInvoicePdf()" style="padding:8px 18px; background:#1B5E9A; color:#fff;">📄 결제 인보이스 PDF</button>
-      <button class="primary small" onclick="savePaymentInvoiceForAgent()" style="padding:8px 18px; background:#0a7b40; color:#fff;" title="이 PI를 관세사 페이지에 노출되는 제출용으로 저장(최신 1장). 다운로드와 별개.">📤 관세사 제출용 저장</button>
-      <div style="font-size:11px; color:#999; margin-top:4px;">💡 다운로드는 저장 안 됨(테스트·미리보기 안전). 관세사에게 보일 PI는 <strong>[📤 관세사 제출용 저장]</strong>으로만.</div>
+      <button class="primary small agent-ui" onclick="savePaymentInvoiceForAgent()" style="padding:8px 18px; background:#0a7b40; color:#fff;" title="이 PI를 관세사 페이지에 노출되는 제출용으로 저장(최신 1장). 다운로드와 별개.">📤 관세사 제출용 저장</button>
+      <div class="agent-ui" style="font-size:11px; color:#999; margin-top:4px;">💡 다운로드는 저장 안 됨(테스트·미리보기 안전). 관세사에게 보일 PI는 <strong>[📤 관세사 제출용 저장]</strong>으로만.</div>
     </div>
   </div>
 </div>
@@ -1947,6 +1950,56 @@ function lookupHsInDictionary(code) {
 //   API: POST https://kanghago-pages.vercel.app/api/hs-suggest { nameEn, material }
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const HS_SUGGEST_API = 'https://kanghago-pages.vercel.app/api/hs-suggest';
+
+// [전자상거래 B] 한국어 상품명 → 영문 통관품명 AI 번역(kr2name). ★빈칸만 채움·자동확정 금지(노란배경 미확정).
+//   기존 통관품명_영문 있으면 절대 덮지 않음. 결과는 관세사메모='AI번역(미확정)' 마커 + 노란배경.
+async function _translateKrToEn(nameKr) {
+  const r = await fetch(HS_SUGGEST_API, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'kr2name', nameKr }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+  return d;   // { nameEn, material, hsCandidates[], reason }
+}
+async function _applyTranslation(p) {
+  const f = p.fields || {};
+  if (String(f['Description'] || '').trim()) return { skip: '기존 영문명 있음' };   // ★빈칸만
+  const kr = String(f['통관품명_한글'] || '').trim();
+  if (!kr) return { skip: '한국어명 없음' };
+  const d = await _translateKrToEn(kr);
+  const en = String(d.nameEn || '').trim();
+  if (!en) return { skip: '번역 실패' };
+  const fields = { 'Description': en, '통관품명_영문': en, '관세사메모': `AI번역(미확정): "${kr}" → ${en}${d.reason ? ' · ' + d.reason : ''}` };
+  if (!String(f['Material'] || '').trim() && d.material) fields['Material'] = d.material;   // 재질도 빈칸만
+  await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields, typecast: true });
+  Object.assign(f, fields);
+  return { en, material: fields['Material'] || '', hs: (d.hsCandidates || []).map(h => h.formatted).join(', '), kr };
+}
+async function translateOneProduct(pid) {
+  const p = (state.products || []).find(x => x.id === pid);
+  if (!p) { toastWarn && toastWarn('제품을 찾을 수 없습니다'); return; }
+  try {
+    toastInfo && toastInfo('🌐 AI 번역 중…');
+    const res = await _applyTranslation(p);
+    if (res.skip) { toastWarn && toastWarn('번역 안 함: ' + res.skip); return; }
+    if (typeof renderProducts === 'function') renderProducts();
+    toastSuccess && toastSuccess(`🌐 번역(미확정): ${res.kr} → ${res.en}${res.hs ? ' · HS ' + res.hs : ''}`, { title: '확인 후 확정하세요' });
+  } catch (e) { toastError && toastError('번역 실패: ' + (e.message || e)); }
+}
+async function translateAllBlank() {
+  const targets = (state.products || []).filter(p => !String((p.fields||{})['Description'] || '').trim() && String((p.fields||{})['통관품명_한글'] || '').trim());
+  if (!targets.length) { toastWarn && toastWarn('영문명 빈칸 + 한국어명 있는 제품이 없습니다'); return; }
+  if (!confirm(`영문명 빈칸 ${targets.length}건을 AI 번역합니다(빈칸만·기존값 보존·미확정 노란배경). 진행할까요?`)) return;
+  let ok = 0, skip = 0, fail = 0;
+  for (const p of targets) {
+    try { const r = await _applyTranslation(p); r.skip ? skip++ : ok++; }
+    catch (e) { fail++; console.warn('[번역 실패]', (p.fields||{})['상품ID'], e.message); }
+    await sleep(300);   // rate limit
+  }
+  if (typeof renderProducts === 'function') renderProducts();
+  toastSuccess && toastSuccess(`🌐 일괄 번역: 성공 ${ok} · 스킵 ${skip} · 실패 ${fail} — 전부 미확정(노란배경), 확인 후 확정`, { title: 'AI 번역 완료' });
+}
 
 // v3.2.29: construction(편물/직물) 입력 칸 폐기. HS가 편물(61)·직물(62) 자체로 규정.
 //   AI 프롬프트가 양쪽 후보를 자동 제시하므로 별도 UI 칸 불필요.
@@ -5219,6 +5272,9 @@ function renderProducts() {
     // 확정 전: 편집 가능(흰 배경) / 확정 후: readonly(베이지 배경)
     const empAttr = isConfirmed ? 'readonly' : '';
     const empBg = isConfirmed ? 'background:#f4f1ea;' : 'background:#fff;';
+    // [전자상거래 B] AI 번역 미확정 = 노란배경(관세사메모 'AI번역(미확정)' 마커). 확인 후 직원이 저장하면 마커 지워짐.
+    const _aiUnconfirmed = /AI번역\(미확정\)/.test(String(f['관세사메모'] || ''));
+    const descBg = _aiUnconfirmed ? 'background:#fff8d6;border:1px solid #e8c14a;' : empBg;
     const empTitle = isConfirmed
       ? '관세사 확정값 — 수정 불가'
       : '제품 확인 후 직접 입력 (관세사 확정 전까지 편집 가능)';
@@ -5291,7 +5347,9 @@ function renderProducts() {
             : '')}
       </td>
       <td class="desc-cell">
-        <input type="text" data-field="Description" value="${escAttr(f['Description'] || '')}" placeholder="${t('placeholder.eng_name')}" ${empAttr} title="${empTitle}" style="min-width:120px;${empBg}" />
+        <input type="text" data-field="Description" value="${escAttr(f['Description'] || '')}" placeholder="${t('placeholder.eng_name')}" ${empAttr} title="${_aiUnconfirmed ? 'AI 번역(미확정) — 확인 후 [Airtable에 저장]으로 확정. 원문: ' + escAttr(f['관세사메모']||'') : empTitle}" style="min-width:120px;${descBg}" />
+        ${_aiUnconfirmed ? '<div style="font-size:9px;color:#a5820a;text-align:center;margin-top:1px;">🌐 AI번역 미확정</div>' : ''}
+        ${!(f['Description'] || '').trim() && (f['통관품명_한글'] || '').trim() ? `<button type="button" onclick="translateOneProduct('${escAttr(p.id)}')" title="🌐 한국어 상품명 → 영문 통관품명 AI 번역(빈칸만·미확정)" style="display:block;margin:2px auto 0;font-size:10px;padding:1px 7px;background:#eef4fb;color:#1B5E9A;border:1px solid #1B5E9A;border-radius:4px;cursor:pointer;">🌐 번역</button>` : ''}
       </td>
       <td>
         <input type="text" data-field="Material" value="${escAttr(f['Material'] || '')}" placeholder="${t('placeholder.material')}" style="min-width:80px;${empBg}" ${empAttr} title="${empTitle}" />
@@ -6567,6 +6625,8 @@ function _markBoxDirty() {
 function _renderBoxDirtyBanner() {
   const el = document.getElementById('boxDirtyBanner');
   if (!el) return;
+  // [ecommerce] 전자상거래 도구는 관세사 재확정 개념 없음 — 박스변경 재확정 배너 전부 숨김.
+  el.style.display = 'none'; return;
   if (!_isStaffWorkStage()) { el.style.display = 'none'; return; }
   el.style.display = '';
   const confirmed = (state.shipment.fields['상태'] || '') === '관세사확정완료';
@@ -17598,6 +17658,7 @@ async function generateTyredsManifest() {
     } catch (e) {}
     // 행 빌드 (행=Order), 통관구분으로 海运/空运 분리
     const seaRows = [], airRows = []; let truncated = 0;
+    const _warnL = [], _warnM = [];   // [C]L통관고유번호 누락 / [D]M사업자개인 빈값 — 주문번호 목록
     ecomOrders.forEach(o => {
       const of = o.fields || {};
       const sid = (of.Shipment || []).find(id => shipById[id]);
@@ -17624,6 +17685,10 @@ async function generateTyredsManifest() {
       row[10] = of['배송요청사항'] || '';                       // K 배송메모
       row[11] = bizPerson === '사업자' ? (cust['사업자번호']||'') : (bizPerson === '개인' ? (cust['통관고유부호']||'') : '');  // L 통관고유번호
       row[12] = (bizPerson && SAEOP_FLAG[bizPerson] != null) ? SAEOP_FLAG[bizPerson] : '';  // M 플래그
+      // [C] L 통관고유번호 누락 / [D] M 사업자개인 빈값 집계(주문번호+사서함) — 제출 불가 경고용
+      const _ono = `${of['주문번호']||''}(${sf['사서함']||''})`;
+      if (!row[11]) _warnL.push(_ono);
+      if (row[12] === '') _warnM.push(_ono);
       row[13] = p0['제품링크'] || 'https://1688.com/';          // N 상품URL
       row[14] = box.count;                                     // O 박스수(사서함 집계)
       row[15] = box.kg;                                        // P 총중량 kg
@@ -17665,9 +17730,19 @@ async function generateTyredsManifest() {
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
       return rows.length;
     }
+    // [C][D] ★필수칸 누락 경고 — 생성 전 알림(생성은 막지 않음, 초안 확인용). 도구가 못 만드는 값(통관고유번호·사업자개인)은 수동 채움 필요.
+    if (_warnL.length || _warnM.length) {
+      const _lines = [];
+      if (_warnL.length) _lines.push(`⛔ L 통관고유번호 누락 ${_warnL.length}건 — 제출 불가 (Customers에 사업자번호/통관고유부호 등록 필요)\n   ${_warnL.slice(0,8).join(', ')}${_warnL.length>8?' 외':''}`);
+      if (_warnM.length) _lines.push(`⛔ M 통관유형(사업자개인) 빈값 ${_warnM.length}건 — M열 빈칸으로 나감 (Shipments.사업자개인 채움 필요)\n   ${_warnM.slice(0,8).join(', ')}${_warnM.length>8?' 외':''}`);
+      const _msg = `[매니페스트 필수칸 누락 — 초안은 생성됩니다]\n\n${_lines.join('\n\n')}\n\n그대로 생성(초안)할까요?`;
+      if (!confirm(_msg)) { toastWarn && toastWarn('매니페스트 생성 취소 — 누락값 채운 뒤 다시'); return; }
+    }
     const nSea = await buildAndSave(seaRows, '海运');
     const nAir = await buildAndSave(airRows, '空运');
     let msg = `매니페스트 생성: 海运 ${nSea}행 / 空运 ${nAir}행`;
+    if (_warnL.length) msg += ` · ⛔L누락 ${_warnL.length}`;
+    if (_warnM.length) msg += ` · ⛔M빈값 ${_warnM.length}`;
     if (truncated) msg += ` ⚠품목 ${truncated}개 30초과 잘림`;
     (nSea+nAir) ? (toastSuccess ? toastSuccess(msg) : alert(msg)) : (toastWarn ? toastWarn('생성할 전자상거래 행 없음') : alert('행 없음'));
     console.log('[TYREDS]', msg, { seaRows: nSea, airRows: nAir, truncated });
