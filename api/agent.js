@@ -1044,6 +1044,19 @@ module.exports = async (req, res) => {
         const body = await readBody(req);
         // [채널톡 발송 v1] 도구(Admin 토큰) — 공용 핸들러 호출.
         if (body.op === 'notify_customer') return await handleNotifyCustomer(req, res, body, { id: null, email: 'admin' });
+        // [v3.2.238] 청구서 URL '복사' 이력 — customs_actions에 1행(logAction 재사용, 별도 테이블 X).
+        //   ★stage='invoice_url_copied' = 도구에서 URL 생성·복사한 시점. 실제 카톡 발송은 사람이 하므로 '발송' 아님(과장 금지).
+        //   재발송 방지 없음(청구서는 여러 번 가능) → 중복 행 허용. 로깅 실패해도 도구 복사엔 무영향(여기 실패 시 ok:false만 반환).
+        if (body.op === 'log_invoice_copy') {
+          const _sid = body.shipmentId || null;
+          const _mb = String(body.mailbox || body['사서함'] || '');
+          await logAction({ id: null, email: 'admin' }, _sid, null, {}, {
+            stage: 'invoice_url_copied', kind: body.kind || 'invoice_url',
+            청구서URL: String(body.url || ''), 사서함: _mb,
+            청구금액_KRW: (body.amount != null && !isNaN(body.amount)) ? Number(body.amount) : undefined,
+          });
+          return res.json({ ok: true, logged: true, stage: 'invoice_url_copied', 사서함: _mb });
+        }
         // 직원 관리 op (v3.2.42) — 같은 ADMIN_INVITE_TOKEN, role='staff' 고정 발급
         if (body.op === 'staff_admin_create') {
           const { email, name, password } = body;

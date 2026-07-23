@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.237</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.238</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -9671,6 +9671,20 @@ async function _notifyCall(dryRun) {
   if (!r.ok || !d.ok) { const e=new Error(d.error||('HTTP '+r.status)); e.detail=d.detail; throw e; }
   return d;
 }
+// [v3.2.238] 청구서 URL '복사' 이력 기록 — customs_actions(stage=invoice_url_copied). fire-and-forget: 실패해도 복사·업무 무영향.
+//   ★"복사"는 발송 확정 아님(실제 카톡은 사람이) → stage에 _copied 명시. 재발송 방지 없음(중복 허용).
+function _logInvoiceCopy(mailbox, url, amount) {
+  try {
+    const auth = (typeof customsAuthHeader === 'function') ? customsAuthHeader() : null;
+    if (!auth) { console.warn('[청구서 복사 로그] 인증 토큰 없음 — 로깅 스킵(복사는 정상)'); return; }
+    const body = { op: 'log_invoice_copy', mailbox, url, amount, kind: 'invoice_url' };
+    if (state.shipment) body.shipmentId = state.shipment.id;
+    fetch(AGENT_API_BASE, { method: 'POST', headers: { 'Authorization': auth, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(r => r.json().catch(() => ({})))
+      .then(d => { if (!d || !d.ok) console.warn('[청구서 복사 로그] 실패(복사는 정상):', (d && d.error) || 'unknown'); })
+      .catch(e => console.warn('[청구서 복사 로그] 예외(복사는 정상):', e.message));
+  } catch (e) { console.warn('[청구서 복사 로그] 예외(복사는 정상):', e.message); }
+}
 async function notifyPreview() {
   const res = document.getElementById('notifyResult');
   res.innerHTML = '<span style="color:#888;">🔎 미리보기 중…</span>';
@@ -15588,6 +15602,8 @@ async function shareInvoiceViewUrl() {
 
     // 4. 클립보드 복사 + 모달 표시
     try { await navigator.clipboard.writeText(message); } catch (_) {}
+    // [v3.2.238] 청구서 URL 복사 이력 기록(fire-and-forget) — customs_actions. 실패해도 위 복사·아래 모달 무영향.
+    _logInvoiceCopy(mailbox, viewUrl, grandTotalKrw);
 
     // 모달이 없으면 prompt로
     const body = document.getElementById('payappResultBody');
