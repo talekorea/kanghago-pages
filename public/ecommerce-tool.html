@@ -17498,7 +17498,7 @@ async function showAlicoinDeductions() {
     const shipIds = [...new Set(orders.flatMap(o => (o.fields||{}).Shipment || []))];
     const ships = (await Promise.all(chunkArray(shipIds, 50).map(async chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
-      return apiPaged(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=고객사서함&fields[]=통관트랙&fields[]=사업자개인&fields[]=환율CNY_USD`);
+      return apiPaged(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=고객사서함&fields[]=통관트랙&fields[]=사업자개인&fields[]=환율CNY_USD&fields[]=수취_통관부호`);   // [C] 수취_통관부호=L열 폴백
     }))).flat();
     const shipById = {};
     ships.forEach(s => { if (isEcommerce(s)) shipById[s.id] = s; });   // 전자상거래만
@@ -17622,7 +17622,7 @@ async function generateTyredsManifest() {
     const shipIds = [...new Set(orders.flatMap(o => (o.fields||{}).Shipment || []))];
     const ships = (await Promise.all(chunkArray(shipIds, 50).map(async chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
-      return apiPaged(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=고객사서함&fields[]=통관트랙&fields[]=사업자개인&fields[]=환율CNY_USD`);
+      return apiPaged(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=고객사서함&fields[]=통관트랙&fields[]=사업자개인&fields[]=환율CNY_USD&fields[]=수취_통관부호`);   // [C] 수취_통관부호=L열 폴백
     }))).flat();
     const shipById = {};
     ships.forEach(s => { if (String((s.fields||{})['통관트랙']||'').trim() === '전자상거래') shipById[s.id] = s; });
@@ -17683,7 +17683,8 @@ async function generateTyredsManifest() {
       row[8] = '';                                             // I 우편번호 빈칸
       row[9] = of['수취인주소'] || '';                          // J 주소
       row[10] = of['배송요청사항'] || '';                       // K 배송메모
-      row[11] = bizPerson === '사업자' ? (cust['사업자번호']||'') : (bizPerson === '개인' ? (cust['통관고유부호']||'') : '');  // L 통관고유번호
+      // L 통관고유번호 — Customers(수기) 우선, 없으면 Shipments.수취_통관부호(추출값 폴백). [C v2.9.13]
+      row[11] = (bizPerson === '사업자' ? (cust['사업자번호']||'') : (bizPerson === '개인' ? (cust['통관고유부호']||'') : '')) || (sf['수취_통관부호']||'');
       row[12] = (bizPerson && SAEOP_FLAG[bizPerson] != null) ? SAEOP_FLAG[bizPerson] : '';  // M 플래그
       // [C] L 통관고유번호 누락 / [D] M 사업자개인 빈값 집계(주문번호+사서함) — 제출 불가 경고용
       const _ono = `${of['주문번호']||''}(${sf['사서함']||''})`;
