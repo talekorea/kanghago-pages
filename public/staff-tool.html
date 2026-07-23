@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.244</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.245</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3766,6 +3766,7 @@ async function ensureSchema() {
       // [v3.2.93] 마스터 배차표 오른쪽 절반 — 배차 운영 데이터(부킹 요약 모달). 마진·청구 연동은 Phase 2.
       { name: '보세창고', type: 'singleLineText' },                                  // UNIPASS shedNm 자동(빈값일 때만) + 수동 수정
       { name: '배차방식', type: 'singleLineText' },   // [v3.2.199] 화물 독차/합차 인라인 저장 — singleLineText(구 singleSelect+choices는 미생성/422 반복 → 단순 텍스트. 값 '독차'/'합차')
+      { name: '최종IP총수량', type: 'number', options: { precision: 0 } },   // [v3.2.245] 최종IP 발행 스냅샷 총수량(qty>0 합) — 재발행 게이트(스냅샷≠현재 차단)용. PAT schema:write 없으면 수동 생성 필요.
 
       { name: '입항일', type: 'date', options: { dateFormat: { name: 'iso' } } },     // UNIPASS etprDt 자동(항상 최신)
       { name: '한국포워딩사', type: 'singleLineText' },                              // UNIPASS frwrEntsConm 자동(항상 최신)
@@ -5457,6 +5458,10 @@ function renderProducts() {
         inp.addEventListener('change', async () => {
           if (p._isNew) return;   // [v3.2.144] 미저장 분할행은 temp id라 즉시 PATCH 불가 — saveAll create에서 저장.
           const q = parseFloat(inp.value) || 0;
+          // [v3.2.245] 수동 0 입력 확인(차단 아님) — 수량 0은 신고 제외. 실수로 0 입력 방지.
+          if (q === 0 && (parseFloat(f['수량']) || 0) > 0) {
+            if (!confirm(`수량 0은 최종IP(신고)에서 제외됩니다.\n${f['상품ID'] || ''} = 0 으로 저장할까요?`)) { inp.value = f['수량']; return; }
+          }
           const cny = q * (parseFloat(f['단가CNY']) || 0);
           // [v3.2.115] 합계USD도 동반 저장 — saveAll과 동일 규약(합계CNY×환율 = 단가USD×수량). 수량↔합계CNY↔합계USD 행 정합.
           const _rateCnyUsd = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
@@ -6880,6 +6885,13 @@ function _publishGateReason(kind) {
   const matchOk = f['대조확인상태'] === '확인완료';
   const autoMismatch = !!(_coCompareState && !_coCompareState.ok);
   if (autoMismatch) return `BL↔CO↔IP 자동대조 불일치 ${_coCompareState.mismatches}건 — §10에서 해소 후 진행`;
+  // [v3.2.245] ★최종IP 재발행 게이트 — 기발행 스냅샷 총수량 ≠ 현재 Products 총수량이면 하드 차단(발행 후 수량 변동=과소신고 방지).
+  //   최종IP파일 기등록 + 최종IP총수량(스냅샷) 저장돼 있을 때만. 값 없으면 스킵(거짓 차단 X). ★자동 통일·덮어쓰기 없음 — 차단만.
+  const _snapQty = parseFloat(f['최종IP총수량']) || 0;
+  if (_snapQty > 0 && (f['최종IP파일'] && f['최종IP파일'].length)) {
+    const _curQty = (state.products || []).reduce((s, p) => { const q = parseFloat((p.fields || {})['수량']) || 0; return s + (q > 0 ? q : 0); }, 0);
+    if (_curQty !== _snapQty) return `기발행 최종IP ${_snapQty.toLocaleString()} ≠ 현재 ${_curQty.toLocaleString()}, 차이 ${(_snapQty - _curQty).toLocaleString()}. 데이터 확인 필요(재발행 전 수량 정정)`;
+  }
   // [v3.2.189] ★finalIp·payapp 통일 — 대조확인은 특혜세율(한중/RCEP/아태)일 때만 요구. 기본세율/미선택은 CO 특혜 안 받으니 대조 불요.
   //   (이전: payapp만 무조건 대조 요구 → 미선택 사서함이 최종IP는 통과·통합청구서는 차단되는 게이트 불일치. 근본 통일. autoMismatch(위)는 둘 다 항상 차단.)
   const ftaConf = String(f['적용FTA확정'] || '').trim();
@@ -7394,6 +7406,15 @@ async function _snapshotIp(shipmentId, stage, blob, filename) {
     if (atts.length < 1) return { ok: false, error: '업로드 후 GET에 첨부 0장 (저장 실패)' };
     // 낙관적 in-memory 반영(자동저장 훅 재발화 방지)
     try { if (state.shipment && state.shipment.id === shipmentId) state.shipment.fields[NAME] = atts.slice(-1); } catch (e) {}
+    // [v3.2.245] 최종IP 스냅샷 총수량 저장(재발행 게이트용) — 단건 컨텍스트에서만. 필드 미생성 시 422 → 무시(IP는 이미 저장됨).
+    if (stage === 'final' && state.shipment && state.shipment.id === shipmentId) {
+      try {
+        const _tot = (state.products || []).reduce((s, p) => { const q = parseFloat((p.fields || {})['수량']) || 0; return s + (q > 0 ? q : 0); }, 0);
+        const _pv = state._allowSeqWrite; state._allowSeqWrite = true;
+        try { await api('PATCH', `/${TABLES.Shipments}/${shipmentId}`, { fields: { '최종IP총수량': _tot }, typecast: true }); state.shipment.fields['최종IP총수량'] = _tot; }
+        finally { state._allowSeqWrite = _pv; }
+      } catch (e) { console.warn('[최종IP총수량 저장 — 필드 미생성 가능]', e && e.message); }
+    }
     return { ok: true, count: atts.length };
   } catch (e) {
     console.warn('[IP 스냅샷 저장/trim]', stage, shipmentId, e && e.message);

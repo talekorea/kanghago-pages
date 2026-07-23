@@ -1,8 +1,8 @@
 /* ============================================================
-   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.11 (콘솔 fetch 전 페이지 순회)
-   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.11.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
+   알리피드 주문 추출 + Airtable 자동 푸시 v2.9.12 (콘솔 fetch 전 페이지 순회)
+   ★버전 위생(3곳 항상 일치): ① 파일명(alipeed-extractor-v2.9.12.js) ② 이 헤더 버전 ③ EXTRACTOR_VERSION 상수.
 
-   v2.9.11 수정 (2026-07-21): ★전자상거래 주문→사서함 연결 키 불일치 수정(v2.9.9 미스로 §1 제품 0).
+   v2.9.12 수정 (2026-07-21): ★전자상거래 주문→사서함 연결 키 불일치 수정(v2.9.9 미스로 §1 제품 0).
      - v2.9.9가 사서함 생성 키=AP+통관구분으로 바꿨으나, 주문 연결 조회 키는 순수 AP 그대로 → shipIdBySaseom[AP] 미스 →
        전자상거래 주문 Shipment=[] → 사서함에서 §1 제품 안 뜸.
      - 수정: 주문→사서함 조회 키를 그룹핑 키(line 887)와 동일하게 — 전자상거래=AP+통관구분, 무역=순수 AP(무변경).
@@ -155,7 +155,7 @@
   }
 
   // ===== 버전 단일 소스 — 기능 변경 시 헤더 버전과 함께 이 값을 올린다 =====
-  var EXTRACTOR_VERSION = 'v2.9.11';   // ★파일명·헤더와 항상 일치시킬 것
+  var EXTRACTOR_VERSION = 'v2.9.12';   // ★파일명·헤더와 항상 일치시킬 것
   // ===== v2.9.3 선적일 = 추출 주문의 실제출고요청일에서 자동 도출 (prompt 수동입력 폐지) =====
   //   키 = {AP번호}-{선적일YYMMDD}. 선적일은 추출 완료 후 deriveShipDate()가 채운다(아래 후처리 .then).
   //   ★사람이 날짜를 타이핑하지 않음 → 날짜 오타 휴먼에러 근본 차단.
@@ -1274,7 +1274,7 @@
               if (!ex) return;   // 신규 주문 → 이동 아님
               var curLink = ex['Shipment'];
               if (!Array.isArray(curLink) || !curLink.length) return;   // 기존 링크 없음 → 이동 아님
-              // [v2.9.11] 조회 키 = 그룹핑 키(line 887)와 일치 — 전자상거래는 AP+통관구분(분리 사서함 매칭). 무역은 순수 AP.
+              // [v2.9.12] 조회 키 = 그룹핑 키(line 887)와 일치 — 전자상거래는 AP+통관구분(분리 사서함 매칭). 무역은 순수 AP.
               var _oapG = o.사서함 || fallbackSaseom;
               var oSaseom = (o.전자상거래 && o.통관구분) ? (_oapG + '-' + o.통관구분) : _oapG;
               var newShipId = ctx.shipIdBySaseom[oSaseom];
@@ -1291,7 +1291,7 @@
             var orderRecords = orders.map(function(o) {
               var cargo = o.화물입고정보 || {};
               // v2.3: 각 주문이 자기 사서함의 Shipment에 연결되도록
-              // [v2.9.11] ★조회 키 = 그룹핑 키(line 887)와 일치. 전자상거래는 AP+통관구분 → 자기 분리 사서함에 연결.
+              // [v2.9.12] ★조회 키 = 그룹핑 키(line 887)와 일치. 전자상거래는 AP+통관구분 → 자기 분리 사서함에 연결.
               //   무역은 순수 AP(무변경, 회귀0). v2.9.9가 사서함 키만 바꾸고 이 조회 키를 안 바꿔 Shipment=[] → §1 제품 0이던 버그 수정.
               var _oap = o.사서함 || fallbackSaseom;
               var orderSaseom = (o.전자상거래 && o.통관구분) ? (_oap + '-' + o.통관구분) : _oap;
@@ -1572,6 +1572,10 @@
               // 기존 Airtable 데이터는 불변(앞으로 추출분만). push 직전 분기 밖 → 모든 추출 제품이 거침.
               fields['Description'] = String(fields['Description'] || '').replace(/\s*\/\s*$/, '').trim();
               fields['통관품명_영문'] = String(fields['통관품명_영문'] || '').replace(/\s*\/\s*$/, '').trim();
+              // [v2.9.12] ★수량 0/빈값 폴백 차단 — 재추출 시 수량·합계를 0으로 덮어 과소신고되던 근본 차단.
+              //   수량이 0/빈값/undefined면 수량·합계 필드를 페이로드에서 제외 → upsert가 기존 Airtable 값 보존(덮지 않음).
+              //   신규 제품(수량 0)은 해당 필드 없이 생성(빈값). 수동 0 입력은 도구에서 별도 허용.
+              if (!(parseFloat(fields['수량']) > 0)) { delete fields['수량']; delete fields['합계CNY']; delete fields['합계KRW']; }
               allProducts.push({ fields: fields });
             });
           });
