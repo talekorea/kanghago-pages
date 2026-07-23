@@ -85,6 +85,20 @@ function detectChapterSplit(candidates) {
 }
 
 function buildPrompt(mode, nameEn, material, hs10, nameKr) {
+  if (mode === 'name2hs6') {
+    // [전자상거래] 영문 통관품명 → HS 6자리(국제 공통)만. ★10자리 국내 세번 추정 금지(근거 없는 숫자 방지).
+    return `다음 제품의 국제 공통 HS 코드 6자리를 1~2개 후보로 제시하라.
+- 영문 품명: ${nameEn || '(미입력)'}
+- 재질: ${material || '(미입력)'}
+
+★규칙(매우 중요):
+- HS 6자리(국제 공통 분류, Harmonized System)까지만 판정. ★국내 세번 10자리는 절대 추정하지 마라(근거 없는 숫자 = 서류 오류).
+- 분류가 모호하거나 품명만으로 6자리를 확정할 수 없으면 후보를 비워라(억지 추정 금지).
+- 각 후보에 한 줄 근거.
+
+**JSON 배열만 반환** — 설명 텍스트 금지:
+[{"hs6":"630790","reason":"한 줄 근거"}]  (확정 불가면 [])`;
+  }
   if (mode === 'kr2name') {
     // [전자상거래] 한국어 상품명(알리피드 마케팅명) → 영문 통관품명(세관 신고용 일반명) + HS 후보. 왕복 1회.
     return `다음 한국어 상품명을 세관 신고용 영문 통관품명으로 번역하고, 한국 HSK 10자리 후보를 함께 제시하라.
@@ -230,6 +244,19 @@ module.exports = async (req, res) => {
         material: String(top.material || '').trim(),
         hsCandidates: [...new Set(hsCands)].slice(0, 2).map(h => ({ hs10: h, formatted: `${h.slice(0,4)}.${h.slice(4,6)}-${h.slice(6,10)}`, rates: TARIFF[h] })),
         reason: String(top.reason || ''),
+      });
+    }
+
+    // [전자상거래] name2hs6 — 영문명 → HS 6자리(국제 공통)만. 10자리 추정·TARIFF 검증 없음(HS6는 국내표 밖). 조기 반환.
+    if (modeIn === 'name2hs6') {
+      if (!nameEn) return res.status(400).json({ ok: false, error: '영문 품명(nameEn) 필요 (name2hs6 모드)' });
+      const aiCands = await callAnthropic('name2hs6', nameEn, material, '', '');
+      const arr = Array.isArray(aiCands) ? aiCands : [];
+      const hs6 = [...new Set(arr.map(c => String(c.hs6 || '').replace(/\D/g, '')).filter(h => h.length === 6))];
+      return res.status(200).json({
+        ok: true, mode: 'name2hs6',
+        hs6Candidates: hs6.slice(0, 2).map((h, i) => ({ hs6: h, formatted: `${h.slice(0,4)}.${h.slice(4,6)}`, reason: String((arr[i] || {}).reason || '') })),
+        warning: hs6.length ? '' : 'HS 6자리 확정 불가 — 수동 입력(억지 추정 안 함)',
       });
     }
     // v3.2.29: construction 입력 폐기 — AI 프롬프트가 의류 양쪽 후보(61·62) 자동 제시
