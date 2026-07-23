@@ -17672,8 +17672,9 @@ async function generateTyredsManifest() {
       const sid = (of.Shipment || []).find(id => shipById[id]);
       const s = shipById[sid]; const sf = s.fields || {};
       const key = String(sf['사서함'] || '');
-      // [주문단위] 사업자개인 = Orders(주문·수취인 단위) 우선 → 없으면 Shipments(사서함 대표) 폴백. ★한 사서함 사업자·개인 혼재 대응.
-      const bizPerson = String(of['사업자개인'] || sf['사업자개인'] || '').trim();   // '사업자'/'개인'/''
+      // [주문단위] ★사업자개인 = Orders(주문·수취인 단위)만. Shipments(사서함 대표) 폴백 제거 — 혼재 사서함에서 개인 주문에 사업자 플래그 오적용(통관사고) 방지.
+      //   Shipments.사업자개인 필드 자체는 유지(도구 계산·부킹요약·알리코인 판정용) — 여기 매니페스트 읽기에서만 미사용.
+      const bizPerson = String(of['사업자개인'] || '').trim();   // '사업자'/'개인'/'' (M열·L열 Customers분기 공통)
       const rateCnyUsd = parseFloat(sf['환율CNY_USD']) || 0;
       const cust = custByBase[sf['고객사서함']] || {};
       const box = boxByShipId[sid] || { count:'', kg:'', dim:null };
