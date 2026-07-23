@@ -147,16 +147,25 @@ module.exports = async (req, res) => {
       });
     }
 
+    // [v3.2.241] ★stale-cache 폴백 — 업스트림 실패 시 마지막 성공 캐시(만료됐어도) 반환 → 하드 502 방지.
+    //   관세청 적용환율은 주(weekStart~weekEnd) 단위 고정값 → 같은 주 stale = 여전히 정확한 고시환율(오염 아님).
+    //   캐시조차 없을 때만 502(도구는 haveLive=false로 처리 → 0/Mock 미주입, 계산은 사람 재조회 유도).
+    const _staleOr502 = (errMsg) => {
+      const c = _cache[reqWeekKey];
+      if (c && c.result && c.result.rates && c.result.rates.USD > 0) {
+        return res.json({ ...c.result, cached: true, stale: true, staleReason: errMsg });
+      }
+      return res.status(502).json({ error: errMsg, hint: 'mock_fallback' });
+    };
     if (attempt.fetchErr) {
-      return res.status(502).json({ error: '공공데이터포털 연결 실패: ' + attempt.fetchErr.message
-        + (attempt.fetchErr.cause ? ' (' + attempt.fetchErr.cause.code + ')' : ''), hint: 'mock_fallback' });
+      return _staleOr502('공공데이터포털 연결 실패: ' + attempt.fetchErr.message
+        + (attempt.fetchErr.cause ? ' (' + attempt.fetchErr.cause.code + ')' : ''));
     }
     if (!parsed || parsed.resultCode !== '00') {
-      return res.status(502).json({ error: '공공데이터포털 응답 오류: ' + (parsed && parsed.resultMsg || 'resultCode ' + (parsed && parsed.resultCode)),
-        hint: 'mock_fallback' });
+      return _staleOr502('공공데이터포털 응답 오류: ' + (parsed && parsed.resultMsg || 'resultCode ' + (parsed && parsed.resultCode)));
     }
     if (!(parsed.rates.USD > 0)) {
-      return res.status(502).json({ error: '환율 데이터 없음 (USD 0) — ?debug=1로 원본 확인', hint: 'mock_fallback' });
+      return _staleOr502('환율 데이터 없음 (USD 0) — ?debug=1로 원본 확인');
     }
 
     const result = {

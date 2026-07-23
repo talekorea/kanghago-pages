@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.240</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.241</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -9188,38 +9188,33 @@ async function autoMatchProductsFromHistory() {
 
     const match = await matchProduct(productLink, koName);
 
+    // [v3.2.241] ★no-op PATCH 제거 — 실제 빈칸이 채워질 때만 PATCH. 메모가 이미 '추천'이면 재기록 금지(로드마다 재스탬프·착시·rate 소모 차단).
+    //   두 분기 공통: onlyEmpty(빈칸만 채움, 기존값 보존) + 관세사확정=true 제품은 위에서 이미 skip.
+    const _hasRecMemo = /추천/.test(String(f['관세사메모'] || ''));
     if (match.confidence === 'exact' && match.primary) {
-      // [v3.2.150] ★URL 정확 매칭이라도 빈칸만 채움(onlyEmpty) + 관세사확정 자동설정 금지(사람만).
-      //   덮어쓰기·자동확정 폐지 → 공용URL 충돌 시 다른 제품 영문명 broadcast 오염 근본 차단. 자동매칭은 "추천"까지만.
+      // [v3.2.150] ★URL 정확 매칭이라도 빈칸만 채움 + 관세사확정 자동설정 금지(사람만). broadcast 오염 근본 차단.
       const p = match.primary;
       const newFields = {};
       if (!f['통관품명_영문'] && p.영문명) { newFields['통관품명_영문'] = p.영문명; newFields['Description'] = p.영문명; }
       if (!f['HS코드'] && p.HS코드) newFields['HS코드'] = p.HS코드;
       if (!f['Material'] && p.Material) newFields['Material'] = p.Material;
       if (!f['적용FTA'] && p.적용FTA) newFields['적용FTA'] = p.적용FTA;
-      if (Object.keys(newFields).length) {
-        newFields['관세사메모'] = `자동매칭 추천 (이전 ${p.사용횟수}회 · 빈칸만 채움, 관세사 확정 필요)`;
+      if (Object.keys(newFields).length) {   // 실제 채움 있을 때만
+        if (!_hasRecMemo) newFields['관세사메모'] = `자동매칭 추천 (이전 ${p.사용횟수}회 · 빈칸만 채움, 관세사 확정 필요)`;
         updates.push({ id: product.id, fields: newFields });
         Object.assign(product.fields, newFields);
         exactCount++;
       }
     } else if (match.confidence === 'similar' && match.primary) {
-      // Level 2: 키워드 매칭 → 자동 채움 (관세사확정은 false)
+      // Level 2: 키워드 매칭 → 빈칸만 채움(관세사확정은 미설정). ★기존값 보존, 동일값 재전송 금지.
       const p = match.primary;
-      const engName = f['통관품명_영문'] || p.영문명 || '';
-      const newFields = {
-        '통관품명_영문': engName,
-        'Description': engName,   // v2.9.6: 일반 모드 화면 표시 필드 동기화
-        'HS코드': f['HS코드'] || p.HS코드 || '',
-        'Material': f['Material'] || p.Material || '',
-        '적용FTA': f['적용FTA'] || p.적용FTA || '없음',
-        '관세사메모': `유사 매칭 추천 (${Math.round(p.score * 100)}% 일치) - 확인 필요`
-      };
-      // 빈 칸만 채움 (기존 값 보호)
-      const hasChange = (!f['통관품명_영문'] && p.영문명) ||
-                        (!f['HS코드'] && p.HS코드) ||
-                        (!f['Material'] && p.Material);
-      if (hasChange) {
+      const newFields = {};
+      if (!f['통관품명_영문'] && p.영문명) { newFields['통관품명_영문'] = p.영문명; newFields['Description'] = p.영문명; }
+      if (!f['HS코드'] && p.HS코드) newFields['HS코드'] = p.HS코드;
+      if (!f['Material'] && p.Material) newFields['Material'] = p.Material;
+      if (!f['적용FTA'] && p.적용FTA) newFields['적용FTA'] = p.적용FTA;
+      if (Object.keys(newFields).length) {   // 실제 빈칸 채움 있을 때만 PATCH(no-op 제거)
+        if (!_hasRecMemo) newFields['관세사메모'] = `유사 매칭 추천 (${Math.round(p.score * 100)}% 일치) - 확인 필요`;
         updates.push({ id: product.id, fields: newFields });
         Object.assign(product.fields, newFields);
         similarCount++;
