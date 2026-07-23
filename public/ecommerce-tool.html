@@ -17492,7 +17492,11 @@ async function showAlicoinDeductions() {
     toastInfo && toastInfo('알리코인 차감 대상 조회 중…');
     // (1) 그 선적일 Orders (판정금액·품목 판정용)
     const oF = `IS_SAME({실제출고요청일},'${shipDate}','day')`;
-    const orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&fields[]=주문번호&fields[]=회원명&fields[]=Shipment&fields[]=총액CNY&fields[]=현지배송비CNY`);
+    // [주문단위] 사업자개인 = Orders 단위. 필드 미생성 시 422 → try/catch 빈값 폴백.
+    const _oaBase = `fields[]=주문번호&fields[]=회원명&fields[]=Shipment&fields[]=총액CNY&fields[]=현지배송비CNY`;
+    let orders;
+    try { orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&${_oaBase}&fields[]=${encodeURIComponent('사업자개인')}`); }
+    catch (e) { console.warn('[알리코인] Orders.사업자개인 미생성 — 빈값 처리:', e.message); orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&${_oaBase}`); }
     if (!orders.length) { toastWarn && toastWarn(`${shipDate} 선적 Orders 0건`); return; }
     // (2) Shipments — 전자상거래 + 사업자개인 + 환율
     const shipIds = [...new Set(orders.flatMap(o => (o.fields||{}).Shipment || []))];
@@ -17515,12 +17519,15 @@ async function showAlicoinDeductions() {
     const prodByOrderId = {};
     prods.forEach(p => { const oid = ((p.fields||{}).Order || [])[0]; if (oid && orderById[oid]) (prodByOrderId[oid] = prodByOrderId[oid] || []).push(p); });
     // (4) 주문별 승격 판정 (개인만)
-    const promoted = [], undetermined = []; let emptyNameOrders = 0;
+    const promoted = [], undetermined = []; let emptyNameOrders = 0, unknownBiz = 0;
     ecomOrders.forEach(o => {
       const of = o.fields || {};
       const sid = (of.Shipment || []).find(id => shipById[id]);
       const sf = (shipById[sid] || {}).fields || {};
-      if (String(sf['사업자개인'] || '').trim() !== '개인') return;   // 개인만(사업자·빈값 제외)
+      // ★사업자개인 = Orders(주문·수취인 단위)만. Shipments 대표값 폴백 제거 — 혼재 사서함 개인 누락/사업자 오부과 방지.
+      const _bp = String(of['사업자개인'] || '').trim();
+      if (_bp === '사업자') return;   // 사업자 = 대상 아님
+      if (_bp !== '개인') { unknownBiz++; return; }   // 빈값·미상 = 판별불가(임의 대입 금지)
       const 주문번호 = of['주문번호'] || '';
       const 회원명 = of['회원명'] || (sf['고객사서함'] || '');
       const buyCny = parseFloat(of['총액CNY']) || 0;
@@ -17540,13 +17547,13 @@ async function showAlicoinDeductions() {
       const B = 품목종수 >= 2;
       if (A || B) promoted.push({ 주문번호, 회원명, 판정USD, 품목종수, 사유: (A && B) ? '금액·품목' : (A ? '금액' : '품목'), emptyN });
     });
-    _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrders);
+    _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrders, unknownBiz);
   } catch (e) {
     console.error('[알리코인 차감]', e);
     toastError ? toastError('조회 실패: ' + (e.message||e)) : alert('실패: ' + (e.message||e));
   }
 }
-function _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrders) {
+function _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrders, unknownBiz) {
   const totalCny = promoted.length * SIMPLE_CUSTOMS_FEE_CNY;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const rows = promoted.map(r => `<tr><td style="padding:4px 8px;font-family:ui-monospace,monospace;font-weight:700;">${esc(r.주문번호)}</td><td style="padding:4px 8px;">${esc(r.회원명)}</td><td style="padding:4px 8px;text-align:right;">$${r.판정USD.toLocaleString()}</td><td style="padding:4px 8px;text-align:center;">${r.품목종수}종${r.emptyN?` <span style="color:#c0392b;">(영문명누락${r.emptyN})</span>`:''}</td><td style="padding:4px 8px;">${esc(r.사유)}</td><td style="padding:4px 8px;text-align:right;font-weight:700;">¥${SIMPLE_CUSTOMS_FEE_CNY}</td></tr>`).join('');
@@ -17562,7 +17569,8 @@ function _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrd
     </div>
     <div style="text-align:right;margin-bottom:8px;"><button onclick="navigator.clipboard.writeText(this.dataset.t).then(()=>{this.textContent='✅ 복사됨';setTimeout(()=>this.textContent='📋 합계 복사',1500);});" data-t="${esc(copyText)}" style="padding:6px 14px;background:#1B2A3B;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;">📋 합계 복사</button></div>
     ${promoted.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f4ecd8;"><th style="padding:5px 8px;text-align:left;">주문번호</th><th style="padding:5px 8px;text-align:left;">회원명</th><th style="padding:5px 8px;text-align:right;">판정금액</th><th style="padding:5px 8px;text-align:center;">품목종수</th><th style="padding:5px 8px;text-align:left;">승격사유</th><th style="padding:5px 8px;text-align:right;">차감</th></tr></thead><tbody>${rows}${undet}</tbody></table>` : `<div style="padding:14px;text-align:center;color:#888;">승격 대상 0건${undetermined.length?` (판정불가 ${undetermined.length}건 아래)`:''}</div>${undet?`<table style="width:100%;font-size:12px;"><tbody>${undet}</tbody></table>`:''}`}
-    ${emptyNameOrders ? `<div style="font-size:11px;color:#c0392b;margin-top:8px;">⚠ 영문명 누락 주문 ${emptyNameOrders}건 — 품목종수 판정에서 빈값 제외됨(누락분 확인 권장).</div>` : ''}`;
+    ${emptyNameOrders ? `<div style="font-size:11px;color:#c0392b;margin-top:8px;">⚠ 영문명 누락 주문 ${emptyNameOrders}건 — 품목종수 판정에서 빈값 제외됨(누락분 확인 권장).</div>` : ''}
+    ${unknownBiz ? `<div style="font-size:11px;color:#a5820a;margin-top:6px;">⚠ 사업자개인 판별불가 ${unknownBiz}건 — Orders.사업자개인 빈값(백필 필요). 승격 판정 제외됨(사서함 대표값 미사용).</div>` : ''}`;
   // 부킹요약 모달 재사용(결과 박스에 렌더)
   document.getElementById('bookingSummaryModal').style.display = 'block';
   const inp = document.getElementById('bookingDate'); if (inp) inp.value = shipDate;
