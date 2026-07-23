@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.242</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.243</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -956,6 +956,8 @@
       각 제품의 기본/한중 세율 중 <strong style="color:#0a7b40;">가장 낮은 세율</strong>로 자동 설정 (수동 변경 가능)
     </span>
   </div>
+  <!-- [v3.2.243] 배지↔제품 정합 경고 — 상태='관세사확정완료'인데 미확정 제품 있으면 표시(표시만, 자동확정 금지) -->
+  <div id="confirmMismatchBadge" style="display:none; margin:0 0 10px; padding:9px 13px; background:#fff3e0; border:1px solid #e8a33d; border-left:4px solid #d97706; border-radius:6px; color:#7a3e00; font-size:13px; font-weight:700;"></div>
   <div class="table-wrap" id="productsTableWrap">
     <table id="productsTable">
       <thead>
@@ -5106,6 +5108,15 @@ function renderProducts() {
   const _dispSeqMap = buildDisplaySeqMap(state.products);   // [D v3.2.50] §1 표시번호 = 패킹 Order No 접미 단일 출처
   let _curGroupKey = null;
 
+  // [v3.2.243] 배지↔제품 정합 — 상태='관세사확정완료'인데 관세사확정 빈 제품 집계(★표시만·자동확정 절대 금지).
+  const _confStage = (((state.shipment && state.shipment.fields) || {})['상태']) === '관세사확정완료';
+  (function () {
+    const bd = document.getElementById('confirmMismatchBadge'); if (!bd) return;
+    const un = (state.products || []).filter(p => ((p.fields || {})['관세사확정']) !== true).length;
+    if (_confStage && un > 0) { bd.textContent = `⚠ 관세사확정완료인데 미확정 제품 ${un}건 — 관세사 재확인 필요 (자동확정 안 함, 아래 주황 강조 행)`; bd.style.display = 'block'; }
+    else { bd.style.display = 'none'; }
+  })();
+  let _unconfN = 0;
   ordered.forEach(p => {
     const f = p.fields;
     // 주문번호 그룹 헤더(접기/펴기) — 그룹키가 바뀔 때 삽입. 기본 전체 접힘.
@@ -5119,6 +5130,8 @@ function renderProducts() {
     tr.dataset.recordId = p.id;
     tr.dataset.group = _gk;
     tr.style.display = 'none';   // 기본 접힘 (헤더 클릭 시 펼침)
+    // [v3.2.243] 확정완료 단계인데 이 제품 미확정 → 행 하이라이트(표시만)
+    if (_confStage && f['관세사확정'] !== true) { _unconfN++; tr.style.background = '#fff7ec'; tr.style.borderLeft = '3px solid #d97706'; tr.dataset.unconfirmed = '1'; }
 
     // HS 자동완성 시도
     const key = makeHsKey(f['Description'], f['Material']);

@@ -151,6 +151,8 @@
     </div>
     <!-- [v3.2.168] HS 입력 필요 주문 배너 + 점프(순회) -->
     <div id="hsNeedBanner"><span id="hsNeedText"></span> <button type="button" onclick="jumpToNextHsNeed()">📍 미입력 주문으로 이동</button></div>
+    <!-- [v3.2.243] 배지↔제품 정합 경고 — 확정완료인데 미확정 제품 있음(표시만) -->
+    <div id="confirmMismatchBadge" style="display:none; margin:0 0 10px; padding:9px 13px; background:#fff3e0; border:1px solid #e8a33d; border-left:4px solid #d97706; border-radius:6px; color:#7a3e00; font-size:13px; font-weight:700;"></div>
     <table id="prodTable">
       <thead>
         <tr>
@@ -1250,6 +1252,14 @@
   function renderProducts() {
     const tbody = document.getElementById('prodBody');
     const ordered = buildGroupedOrder(products);
+    // [v3.2.243] 배지↔제품 정합 — 확정완료인데 미확정 제품(★표시만·자동확정 금지)
+    const _confStage = !!(shipment && shipment.fields && shipment.fields['상태'] === '관세사확정완료');
+    (function () {
+      const bd = document.getElementById('confirmMismatchBadge'); if (!bd) return;
+      const un = (products || []).filter(p => ((p.fields || {})['관세사확정']) !== true).length;
+      if (_confStage && un > 0) { bd.textContent = `⚠ 관세사확정완료인데 미확정 제품 ${un}건 — 재확인 필요 (주황 강조 행)`; bd.style.display = 'block'; }
+      else { bd.style.display = 'none'; }
+    })();
     let _curGroup = null, _seqInGroup = 0, _html = '';
     ordered.forEach((p) => {
       const f = p.fields || {};
@@ -1292,7 +1302,7 @@
       const linkCell = link1688
         ? `<a href="${escapeAttr(link1688)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:3px;font-size:10px;padding:2px 6px;border:1px solid var(--gold);border-radius:4px;color:var(--gold);text-decoration:none;">제품 확인 ↗</a>`
         : `<span style="display:block;margin-top:3px;font-size:10px;color:#bbb;">링크 없음</span>`;
-      _html += `<tr data-id="${p.id}" data-group="${_gk}" style="display:none;">
+      _html += `<tr data-id="${p.id}" data-group="${_gk}" style="display:none;${(_confStage && !confirmed) ? 'background:#fff7ec;box-shadow:inset 3px 0 0 #d97706;' : ''}">
         <td>${_seqInGroup}</td>
         <td style="text-align:center;">${imgCell}</td>
         <td style="font-family:'SF Mono',Consolas,monospace; font-size:11px;">${escapeHtml(f['상품ID'] || '-')}<br/>${linkCell}</td>
