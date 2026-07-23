@@ -17891,12 +17891,12 @@ async function fetchDispatchMaster(daysOverride) {
     const _dispCore = ['배송방식','포워딩사','보세창고','입항일','한국포워딩사','배차견적액','실제배차비','세관창고료','차량번호','기사전화번호','배차완료일','배차상태','통관완료일'];
     const _dispQ = _dispCore.concat(['배차방식', '배송유형']).map(n => '&fields[]=' + encodeURIComponent(n)).join('');   // [v3.2.226] 배송유형(고객) 추가
     const _dispQCore = _dispCore.map(n => '&fields[]=' + encodeURIComponent(n)).join('');
-    const baseQ = ['사서함','고객사서함','상태','BL번호','테이프색상','메모','수취_주소','수취_전화','도착지주소'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');
+    const baseQ = ['사서함','고객사서함','상태','BL번호','테이프색상','메모','수취_주소','수취_전화','도착지주소','통관트랙'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');   // [ecommerce] 통관트랙 = 무역 혼입 차단 판정용
     const ships = (await Promise.all(chunkArray(shipIds, 50).map(async chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
       const u = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}` + baseQ;
       try { return await apiPaged(u + _dispQ); } catch (e) { try { return await apiPaged(u + _dispQCore); } catch (e2) { return await apiPaged(u); } }   // [v3.2.193] 배차방식 미생성 시 core만(422 폴백)
-    }))).flat();
+    }))).flat().filter(s => isEcommerce(s));   // [ecommerce] ★무역 혼입 차단 — 전자상거래만(통관트랙 빈값=무역 제외)
     // (3) Boxes per ship + rows
     const rows = await Promise.all(ships.map(async s => {
       const sf = s.fields || {}, mailbox = sf['사서함'] || '';
@@ -18116,7 +18116,8 @@ async function fetchBookingSummary(mode) {
       try { return await apiPaged(base + _dispQ); }
       catch (e) { return await apiPaged(base); }   // 배차 필드 미생성 → 폴백
     }));
-    const ships = shipResults.flat();
+    // [ecommerce] ★무역 혼입 차단 — 부킹요약도 전자상거래만(isEcommerce 단일소스). 통관트랙 빈값=무역 → 제외.
+    const ships = shipResults.flat().filter(s => isEcommerce(s));
 
     loading.textContent = `⏳ ${ships.length}개 사서함의 박스 조회 중...`;
 
@@ -18557,9 +18558,9 @@ async function downloadTransportExcel(forCourier) {
     const shipChunks = chunkArray(shipIds, 50);
     const shipRes = await Promise.all(shipChunks.map(c => {
       const f = `OR(${c.map(id => `RECORD_ID()='${id}'`).join(',')})`;
-      return apiPaged(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=고객사서함&fields[]=BL번호&fields[]=테이프색상`);
+      return apiPaged(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=고객사서함&fields[]=BL번호&fields[]=테이프색상&fields[]=통관트랙`);   // [ecommerce] 통관트랙 = 무역 혼입 차단
     }));
-    const ships = shipRes.flat();
+    const ships = shipRes.flat().filter(s => isEcommerce(s));   // [ecommerce] ★무역 혼입 차단 — 전자상거래만(배차 엑셀)
     // (2) Orders(선적일)에서 수취인이름·연락처·수취인주소·배송요청사항 → shipId별 첫 비어있지 않은 값
     const days = bookingState.days || [];
     const recvByShip = {};
