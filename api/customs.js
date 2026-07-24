@@ -250,7 +250,7 @@ async function learnFromConfirmation(products, customsName, today, shipName) {
         const fields = {
           'HS코드': code,
           '영문명': eng,
-          '한국어명': p.한국어명 || '',
+          '통관품명_한글': p.한국어명 || '',
           'Material': mat,
           '사용횟수': 1,
           '첫사용일': today,
