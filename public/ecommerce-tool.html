@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.8</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.9</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -509,7 +509,7 @@
     <!-- 일상용 — 노출 유지 -->
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#e8f7ef; color:#1B2A3B; border:1px solid #2BB673;" onclick="openBookingSummary()" title="선적일 선택 → 그날 사서함 박스 무게·CBM 합계 → 위챗 복사">📦 선적일별 부킹 요약</button>
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#f3ece0; color:#5a4a2a; border:1px solid #c9973a;" onclick="openDispatchMaster()" title="배차 마스터 — 선적일별 전체 배차 운영 현황(읽기전용) + Excel">🚚 배차 마스터</button>
-    <button class="secondary" style="padding:6px 12px; font-size:12px; background:#eef2fb; color:#1B2A3B; border:1px solid #4A6DA7;" onclick="generateTyredsManifest()" title="포워딩 매니페스트(TYREDS) — 선적일 선택 → 전자상거래 사서함 Order를 海运/空运 파일로. 무역 미포함.">📄 포워딩 매니페스트</button>
+    <button class="secondary" style="padding:6px 12px; font-size:12px; background:#eef2fb; color:#1B2A3B; border:1px solid #4A6DA7;" onclick="openManifestModal()" title="포워딩 매니페스트(TYREDS) — 선적일 선택 → 전자상거래 사서함 Order를 海运/空运/특송 파일로. 무역 미포함.">📄 포워딩 매니페스트</button>
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#fff7e0; color:#7a5a00; border:1px solid #d9a441;" onclick="showAlicoinDeductions()" title="간이통관 승격(개인 금액≥$150 or 동일제품 수량2개+) 주문에 ¥15 알리코인 차감 대상 — 표시만(수동 차감). 사업자 제외.">🪙 알리코인 차감 대상</button>
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#fdecef; color:#7a0c28; border:1px solid #e88aa0;" onclick="runContaminationCheck()" title="영문명 broadcast 오염 점검 (READ ONLY 조회) — 비고유 URL·broadcast 클러스터·catch-all HS 쏠림. 주1회 권장.">🔬 오염 점검</button>
     <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#e8f7ef; border:1px solid #2BB673;" onclick="openNotifyModal()" title="채널톡 고객 알림 — 사서함 직접 입력 가능(주문 없어도)">📨 채널톡 알림</button>
@@ -1757,6 +1757,29 @@
       <span id="bookingLoadingMsg" style="font-size:11px; color:#888;"></span>
     </div>
     <div id="bookingResultBox" style="min-height:60px;"></div>
+  </div>
+</div>
+
+<!-- [ecom-v0.9] 포워딩 매니페스트 모달 — 부킹요약 모달과 동일 패턴(조회/생성 분리, prompt() 폐기) -->
+<div id="manifestModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.7); z-index:9999; padding:20px; overflow-y:auto;">
+  <div style="max-width:780px; margin:30px auto; background:#fff; border-radius:10px; padding:20px; box-shadow:0 10px 40px rgba(0,0,0,0.4);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:10px; border-bottom:2px solid #1B2A3B;">
+      <h3 style="margin:0; font-size:17px; color:#1B2A3B;">📄 포워딩 매니페스트 (TYREDS)</h3>
+      <button onclick="closeManifestModal()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888;">×</button>
+    </div>
+    <div style="font-size:12px; color:#666; margin-bottom:12px; line-height:1.5;">
+      💡 전자상거래 사서함만 대상(무역 제외). 통관구분 해운→海运 / 항공·특송→空运.
+    </div>
+    <div style="display:flex; gap:8px; align-items:end; flex-wrap:wrap; padding:12px; background:#fafaf5; border-radius:6px; margin-bottom:12px;">
+      <div>
+        <label style="display:block; font-size:11px; font-weight:600; color:#444; margin-bottom:4px;">선적일</label>
+        <input type="date" id="manifestDate" style="padding:7px 10px; border:1px solid #d4c5a8; border-radius:5px; font-size:13px;" />
+      </div>
+      <button class="primary" onclick="fetchManifestPreview()" style="padding:8px 14px; font-size:13px;">📅 그날만 조회</button>
+      <span style="flex:1;"></span>
+      <span id="manifestLoadingMsg" style="font-size:11px; color:#888;"></span>
+    </div>
+    <div id="manifestResultBox" style="min-height:60px;"></div>
   </div>
 </div>
 
@@ -17608,12 +17631,13 @@ async function showAlicoinDeductions() {
     let prods = [];
     for (const chunk of chunkArray(onoList, 30)) {
       const pf = `OR(${chunk.map(no => `SEARCH('${String(no).replace(/'/g,"\\'")}',ARRAYJOIN({Order}))`).join(',')})`;
-      try { prods = prods.concat(await apiPaged(`/${TABLES.Products}?filterByFormula=${encodeURIComponent(pf)}&fields[]=통관품명_영문&fields[]=Order&fields[]=단가CNY&fields[]=수량&fields[]=구매수수료CNY&fields[]=현지배송비CNY&fields[]=HS코드`)); } catch (e) {}
+      // [ecom-v0.9] ★422 수정: '현지배송비CNY'는 Products에 없음(Orders 전용, _oaBase로 이미 fetch 중) — 제거.
+      try { prods = prods.concat(await apiPaged(`/${TABLES.Products}?filterByFormula=${encodeURIComponent(pf)}&fields[]=통관품명_영문&fields[]=Order&fields[]=단가CNY&fields[]=수량&fields[]=구매수수료CNY&fields[]=HS코드`)); } catch (e) {}
     }
     const prodByOrderId = {};
     prods.forEach(p => { const oid = ((p.fields||{}).Order || [])[0]; if (oid && orderById[oid]) (prodByOrderId[oid] = prodByOrderId[oid] || []).push(p); });
-    // (4) 주문별 승격 판정 (개인만)
-    const promoted = [], undetermined = []; let emptyNameOrders = 0, unknownBiz = 0;
+    // (4) 주문별 승격 판정 (개인만) — [ecom-v0.9] 판정 단위 = 주문(Order), TYREDS 1행=1주문·M열과 일치.
+    const promoted = [], undetermined = []; let emptyNameOrders = 0, unknownBiz = 0, zeroFeeTotal = 0;
     ecomOrders.forEach(o => {
       const of = o.fields || {};
       const sid = (of.Shipment || []).find(id => shipById[id]);
@@ -17633,20 +17657,23 @@ async function showAlicoinDeductions() {
       if (emptyN > 0) emptyNameOrders++;
       // 환율 없으면 판정불가(청구 트랙 고유 UX — calcCustomsFlag 호출 전 가드, 함수 자체의 '안전측2'와 별개)
       if (!(rate > 0)) { undetermined.push({ 주문번호, 회원명, 품목종수, emptyN }); return; }
-      // [ecommerce v0.7] 청구 트랙 = includeAncillary:true(구매수수료·현지배송비 가산) — 매니페스트와 판정로직 통일, 금액 베이스만 다름.
-      const result = calcCustomsFlag('개인', prodsO, rate, { includeAncillary: true });
+      // [ecom-v0.9] 청구 트랙 = includeAncillary:true. 현지배송비는 "주문" 단위 값(of['현지배송비CNY'])을
+      //   1회만 가산 — Products엔 그 필드가 없고, 제품별로 반복 가산하면 이중계상이 됨.
+      const orderAncillaryCny = parseFloat(of['현지배송비CNY']) || 0;
+      const result = calcCustomsFlag('개인', prodsO, rate, { includeAncillary: true, orderAncillaryCny });
+      if (result.zeroFeeCount) zeroFeeTotal += result.zeroFeeCount;
       if (result.flag === 2) {
         const 판정USD = Math.round((result.usd || 0) * 100) / 100;
         promoted.push({ 주문번호, 회원명, 판정USD, 품목종수, 사유: result.reason || '', emptyN });
       }
     });
-    _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrders, unknownBiz);
+    _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrders, unknownBiz, zeroFeeTotal);
   } catch (e) {
     console.error('[알리코인 차감]', e);
     toastError ? toastError('조회 실패: ' + (e.message||e)) : alert('실패: ' + (e.message||e));
   }
 }
-function _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrders, unknownBiz) {
+function _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrders, unknownBiz, zeroFeeTotal) {
   const totalCny = promoted.length * SIMPLE_CUSTOMS_FEE_CNY;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const rows = promoted.map(r => `<tr><td style="padding:4px 8px;font-family:ui-monospace,monospace;font-weight:700;">${esc(r.주문번호)}</td><td style="padding:4px 8px;">${esc(r.회원명)}</td><td style="padding:4px 8px;text-align:right;">$${r.판정USD.toLocaleString()}</td><td style="padding:4px 8px;text-align:center;">${r.품목종수}종${r.emptyN?` <span style="color:#c0392b;">(영문명누락${r.emptyN})</span>`:''}</td><td style="padding:4px 8px;">${esc(r.사유)}</td><td style="padding:4px 8px;text-align:right;font-weight:700;">¥${SIMPLE_CUSTOMS_FEE_CNY}</td></tr>`).join('');
@@ -17663,7 +17690,8 @@ function _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrd
     <div style="text-align:right;margin-bottom:8px;"><button onclick="navigator.clipboard.writeText(this.dataset.t).then(()=>{this.textContent='✅ 복사됨';setTimeout(()=>this.textContent='📋 합계 복사',1500);});" data-t="${esc(copyText)}" style="padding:6px 14px;background:#1B2A3B;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;">📋 합계 복사</button></div>
     ${promoted.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f4ecd8;"><th style="padding:5px 8px;text-align:left;">주문번호</th><th style="padding:5px 8px;text-align:left;">회원명</th><th style="padding:5px 8px;text-align:right;">판정금액</th><th style="padding:5px 8px;text-align:center;">품목종수</th><th style="padding:5px 8px;text-align:left;">승격사유</th><th style="padding:5px 8px;text-align:right;">차감</th></tr></thead><tbody>${rows}${undet}</tbody></table>` : `<div style="padding:14px;text-align:center;color:#888;">승격 대상 0건${undetermined.length?` (판정불가 ${undetermined.length}건 아래)`:''}</div>${undet?`<table style="width:100%;font-size:12px;"><tbody>${undet}</tbody></table>`:''}`}
     ${emptyNameOrders ? `<div style="font-size:11px;color:#c0392b;margin-top:8px;">⚠ 영문명 누락 주문 ${emptyNameOrders}건 — 품목종수 판정에서 빈값 제외됨(누락분 확인 권장).</div>` : ''}
-    ${unknownBiz ? `<div style="font-size:11px;color:#a5820a;margin-top:6px;">⚠ 사업자개인 판별불가 ${unknownBiz}건 — Orders.사업자개인 빈값(백필 필요). 승격 판정 제외됨(사서함 대표값 미사용).</div>` : ''}`;
+    ${unknownBiz ? `<div style="font-size:11px;color:#a5820a;margin-top:6px;">⚠ 사업자개인 판별불가 ${unknownBiz}건 — Orders.사업자개인 빈값(백필 필요). 승격 판정 제외됨(사서함 대표값 미사용).</div>` : ''}
+    ${zeroFeeTotal ? `<div style="font-size:11px;color:#c0392b;margin-top:6px;">⚠ 구매수수료 미반영 ${zeroFeeTotal}건 — 실제 부대비포함금액은 이보다 클 수 있음(승격 누락 위험). 판정 자체는 현재 값으로 진행됨.</div>` : ''}`;
   // 부킹요약 모달 재사용(결과 박스에 렌더)
   document.getElementById('bookingSummaryModal').style.display = 'block';
   const inp = document.getElementById('bookingDate'); if (inp) inp.value = shipDate;
@@ -17686,18 +17714,21 @@ const MANIFEST_FILES = { sea: '海运', air: '空运', express: '★특송_확�
 // [ecom-v0.8] 통관품명 총칭 블랙리스트 — 정확일치(소문자·trim)만 차단. 단어수 기준 금지(Sprayer·Scooters·beads 오차단 방지).
 const VAGUE_NAMES = ['food','goods','item','items','product','products','misc','other','others','gift','sundries','accessory','snack','snacks'];
 
-// [ecommerce v0.7] 통관유형(M열/청구) 승격 판정 — 단일 함수. 2026-07-24 00-결정로그 확정.
+// [ecommerce v0.9] 통관유형(M열/청구) 승격 판정 — 단일 함수. 2026-07-24 00-결정로그 확정, 주문단위 재설계.
 //   두 트랙 차이 = 금액 베이스뿐(includeAncillary). 사업자=3 고정.
-//   개인: ①금액(물품가[+구매수수료+현지배송비]) USD환산 ≥150 → 2
+//   개인: ①금액(물품가+구매수수료[제품단위]+현지배송비[★주문단위 1회]) USD환산 ≥150 → 2
 //   ②동일제품(영문명 소문자trim + HS6) 수량합 ≥2 → 2  ③그 외 1.
 //   ★환율 미확보 시 안전측 2(과소신고 방지) + 경고 반환 — 조용한 폴백 금지.
+//   ★현지배송비CNY는 Products에 없는 필드(Orders 전용) — opts.orderAncillaryCny로 주문당 1회만 받는다(제품 반복 가산=이중계상 금지).
 function calcCustomsFlag(bizPerson, prodsO, rateCnyUsd, opts) {
   const includeAncillary = !!(opts && opts.includeAncillary);
+  const orderAncillaryCny = includeAncillary ? ((opts && parseFloat(opts.orderAncillaryCny)) || 0) : 0;
   if (bizPerson === '사업자') return { flag: 3 };
   if (bizPerson !== '개인') return { flag: '' };   // 미상 — _warnM/undetermined 대상(호출측에서 처리)
   if (!(rateCnyUsd > 0)) return { flag: 2, warn: '환율 미확보 — 안전측 2(간이통관) 처리' };
 
   let totalCny = 0;
+  let zeroFeeCount = 0;   // [ecom-v0.9] 구매수수료 0(미반영) 제품 수 — B-4 경고용
   const groups = {};
   (prodsO || []).forEach(p => {
     const pf = p.fields || {};
@@ -17705,18 +17736,21 @@ function calcCustomsFlag(bizPerson, prodsO, rateCnyUsd, opts) {
     const qty = parseFloat(pf['수량']) || 0;
     totalCny += dan * qty;
     if (includeAncillary) {
-      totalCny += (parseFloat(pf['구매수수료CNY']) || 0) + (parseFloat(pf['현지배송비CNY']) || 0);
+      const fee = parseFloat(pf['구매수수료CNY']) || 0;
+      if (fee === 0) zeroFeeCount++;
+      totalCny += fee;   // 구매수수료=제품 단위(실존 필드) — 그대로 합산
     }
     const en = String(pf['통관품명_영문'] || '').trim().toLowerCase();
     const hs6 = String(pf['HS코드'] || '').replace(/\D/g, '').slice(0, 6);
     const gk = en + '|' + hs6;
     groups[gk] = (groups[gk] || 0) + qty;
   });
+  if (includeAncillary) totalCny += orderAncillaryCny;   // 현지배송비=주문 1건당 1회만(제품 수만큼 반복 가산 금지)
   const totalUsd = totalCny * rateCnyUsd;
-  if (totalUsd >= 150) return { flag: 2, usd: totalUsd, reason: `물품가 $${totalUsd.toFixed(2)} ≥ $150` };
+  if (totalUsd >= 150) return { flag: 2, usd: totalUsd, zeroFeeCount, reason: `물품가 $${totalUsd.toFixed(2)} ≥ $150` };
   const maxGroupQty = Object.values(groups).reduce((m, v) => Math.max(m, v), 0);
-  if (maxGroupQty >= 2) return { flag: 2, usd: totalUsd, reason: `동일제품(영문명+HS6) 수량 ${maxGroupQty}개 ≥ 2` };
-  return { flag: 1, usd: totalUsd };
+  if (maxGroupQty >= 2) return { flag: 2, usd: totalUsd, zeroFeeCount, reason: `동일제품(영문명+HS6) 수량 ${maxGroupQty}개 ≥ 2` };
+  return { flag: 1, usd: totalUsd, zeroFeeCount };
 }
 // [ecommerce v0.6] 매니페스트 M열 — calcCustomsFlag 위임(동작 불변, 부대비 제외 고정).
 function calcManifestFlag(bizPerson, prodsO, rateCnyUsd) {
@@ -17745,202 +17779,272 @@ function calcBuyFeeCny(buyCny, localShipCny) {
   return kind === 'flat' ? val : Math.ceil(Number((base * val).toFixed(6)));
 }
 
-async function generateTyredsManifest() {
+// [ecom-v0.9] 매니페스트 데이터 빌더 — 조회 전용(순수 계산+조회). alert·confirm·파일쓰기 없음. UI는 fetchManifestPreview가 담당.
+async function buildManifestData(shipDate) {
+  const yyyymmdd = shipDate.replace(/-/g, '');
+  // (1) 그 선적일 Orders
+  const oF = `IS_SAME({실제출고요청일},'${shipDate}','day')`;
+  // [주문단위 L·M] Orders.수취_통관부호·사업자개인 = 주문(수취인) 단위 값. 필드 미생성 시 422 → try/catch로 빈값 폴백.
+  // [ecom-v0.9] ★422 수정: '운송장번호'는 Orders에 없음(스키마 실측) — 정답은 '트래킹번호'.
+  const _ordFieldsBase = `fields[]=주문번호&fields[]=수취인&fields[]=연락처&fields[]=수취인주소&fields[]=배송요청사항&fields[]=트래킹번호&fields[]=Shipment&fields[]=총액CNY&fields[]=현지배송비CNY`;
+  let orders;
+  try {
+    orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&${_ordFieldsBase}&fields[]=${encodeURIComponent('수취_통관부호')}&fields[]=${encodeURIComponent('사업자개인')}`);
+  } catch (e) {   // 필드 미생성(422) → 기본 필드만(값 빈칸 처리). 생성 후 자동으로 위 경로가 읽음.
+    console.warn('[매니페스트] Orders.수취_통관부호/사업자개인 미생성 — 빈값 처리:', e.message);
+    orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&${_ordFieldsBase}`);
+  }
+  if (!orders.length) return { ok: false, reason: 'no-orders', yyyymmdd };
+  // (2) Shipments — 전자상거래만
+  const shipIds = [...new Set(orders.flatMap(o => (o.fields||{}).Shipment || []))];
+  const ships = (await Promise.all(chunkArray(shipIds, 50).map(async chunk => {
+    const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
+    return apiPaged(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=고객사서함&fields[]=통관트랙&fields[]=사업자개인&fields[]=환율CNY_USD&fields[]=수취_통관부호`);   // [C] 수취_통관부호=L열 폴백
+  }))).flat();
+  const shipById = {};
+  ships.forEach(s => { if (String((s.fields||{})['통관트랙']||'').trim() === '전자상거래') shipById[s.id] = s; });
+  // 전자상거래 사서함에 붙은 Order만
+  const ecomOrders = orders.filter(o => ((o.fields||{}).Shipment || []).some(id => shipById[id]));
+  if (!ecomOrders.length) return { ok: false, reason: 'no-ecom-orders', yyyymmdd };
+  // (3) Products — 그 Order들에 연결된 것 (Order 링크 rec id로 매핑)
+  const orderById = {}; ecomOrders.forEach(o => orderById[o.id] = o);
+  const onoList = ecomOrders.map(o => String((o.fields||{})['주문번호']||'')).filter(Boolean);
+  let prods = [];
+  for (const chunk of chunkArray(onoList, 30)) {
+    const pf = `OR(${chunk.map(no => `SEARCH('${String(no).replace(/'/g,"\\'")}',ARRAYJOIN({Order}))`).join(',')})`;
+    // [ecom-v0.9] ★422 수정: '현지배송비CNY'는 Products에 없음(Orders 전용 필드) — 매니페스트는 원래도 안 씀(죽은 fetch), 제거.
+    try { prods = prods.concat(await apiPaged(`/${TABLES.Products}?filterByFormula=${encodeURIComponent(pf)}&fields[]=통관품명_영문&fields[]=통관품명_한글&fields[]=수량&fields[]=단가CNY&fields[]=구매수수료CNY&fields[]=Material&fields[]=HS코드&fields[]=제품링크&fields[]=pro_seq&fields[]=Order`)); } catch (e) {}
+  }
+  const prodByOrderId = {};
+  prods.forEach(p => { const oid = ((p.fields||{}).Order || [])[0]; if (oid && orderById[oid]) (prodByOrderId[oid] = prodByOrderId[oid] || []).push(p); });
+  Object.values(prodByOrderId).forEach(arr => arr.sort((a,b) => (parseInt((a.fields||{}).pro_seq,10)||0) - (parseInt((b.fields||{}).pro_seq,10)||0)));
+  // (4) Boxes per shipment (O/P/Q/R/S) — 사서함 단위 집계
+  const boxByShipId = {};
+  await Promise.all(ships.filter(s=>shipById[s.id]).map(async s => {
+    const mailbox = (s.fields||{})['사서함'] || '';
+    let boxes = [];
+    try { boxes = await apiPaged(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=무게KG&fields[]=부피CBM&fields[]=가로cm&fields[]=세로cm&fields[]=높이cm`); } catch (e) {}
+    let kg = 0, maxCbm = -1, dim = null;
+    boxes.forEach(b => { const bf = b.fields||{}; kg += parseFloat(bf['무게KG'])||0; const cb = parseFloat(bf['부피CBM'])||0; if (cb > maxCbm) { maxCbm = cb; const w=parseFloat(bf['가로cm'])||0,h=parseFloat(bf['세로cm'])||0,d=parseFloat(bf['높이cm'])||0; dim = (w||h||d)?[w,h,d]:null; } });
+    boxByShipId[s.id] = { count: boxes.length, kg: Math.round(kg*100)/100, dim };   // dim=[cm,cm,cm] 최대박스
+  }));
+  // (5) Customers — base AP → 사업자번호/통관고유부호
+  const custByBase = {};
+  try {
+    const custs = await apiPaged(`/${TABLES.Customers}?fields[]=사서함번호&fields[]=사업자번호&fields[]=통관고유부호`);
+    custs.forEach(c => { const k = (c.fields||{})['사서함번호']; if (k) custByBase[k] = c.fields; });
+  } catch (e) {}
+  // 행 빌드 (행=Order), 통관구분(사서함 키)으로 해운/항공/항공특송 3분리
+  const seaRows = [], airRows = [], expressRows = []; let truncated = 0;
+  const _warnL = [], _warnM = [], _warnUnconf = [], _warnRate = [], _warnVague = [];   // [C]L누락 / [D]M빈값 / AI 미확정 / 환율미확보 / [ecom-v0.8]총칭품명
+  const _excludedShip = {};   // [ecom-v0.8] 통관구분 분류 불가 사서함(캐치올 폐지) — key -> 제외 건수
+  const _shipSummary = {};    // [ecom-v0.9] 모달 미리보기용 — key -> {bucket, orderCount}
+  ecomOrders.forEach(o => {
+    const of = o.fields || {};
+    const sid = (of.Shipment || []).find(id => shipById[id]);
+    const s = shipById[sid]; const sf = s.fields || {};
+    const key = String(sf['사서함'] || '');
+    // [ecom-v0.8] 통관구분 3분리 — 캐치올(무조건 海运) 폐지. 분류 불가 사서함은 여기서 제외(조용한 오분류 차단).
+    let _bucket = null;
+    if (/항공특송|특송/.test(key)) _bucket = 'express';
+    else if (/항공/.test(key)) _bucket = 'air';
+    else if (/해운/.test(key)) _bucket = 'sea';
+    _shipSummary[key] = _shipSummary[key] || { bucket: _bucket, orderCount: 0 };
+    _shipSummary[key].orderCount++;
+    if (!_bucket) { _excludedShip[key] = (_excludedShip[key] || 0) + 1; return; }
+    // [주문단위] ★사업자개인 = Orders(주문·수취인 단위)만. Shipments(사서함 대표) 폴백 제거 — 혼재 사서함에서 개인 주문에 사업자 플래그 오적용(통관사고) 방지.
+    //   Shipments.사업자개인 필드 자체는 유지(도구 계산·부킹요약·알리코인 판정용) — 여기 매니페스트 읽기에서만 미사용.
+    const bizPerson = String(of['사업자개인'] || '').trim();   // '사업자'/'개인'/'' (M열·L열 Customers분기 공통)
+    const rateCnyUsd = parseFloat(sf['환율CNY_USD']) || 0;
+    const cust = custByBase[sf['고객사서함']] || {};
+    const box = boxByShipId[sid] || { count:'', kg:'', dim:null };
+    const prodsO = (prodByOrderId[o.id] || []).slice();
+    if (prodsO.length > TYREDS_MAX_ITEMS) { truncated += prodsO.length - TYREDS_MAX_ITEMS; prodsO.length = TYREDS_MAX_ITEMS; }
+    const p0 = (prodsO[0] || {}).fields || {};
+    const row = new Array(142).fill('');
+    row[0] = 0;                                              // A NO — 뒤에서 재부여
+    row[1] = `${of['주문번호']||''} ${sf['고객사서함']||''}`.trim();  // B 주문번호+AP
+    row[2] = of['트래킹번호'] || '';                          // C HBL [ecom-v0.9] 422 수정(운송장번호→트래킹번호)
+    row[3] = 'weihai';                                       // D POL 상수
+    row[4] = '';                                             // E 발송인 빈칸
+    row[5] = 'weihai';                                       // F 발송인주소 상수
+    row[6] = of['수취인'] || '';                              // G 수취인
+    row[7] = of['연락처'] || '';                              // H 연락처
+    row[8] = '';                                             // I 우편번호 빈칸
+    row[9] = of['수취인주소'] || '';                          // J 주소
+    row[10] = of['배송요청사항'] || '';                       // K 배송메모
+    // L 통관고유번호 — ★주문(수취인) 단위: Orders.수취_통관부호 우선 → Customers(회원 수기) → 빈칸.
+    //   ★Shipments.수취_통관부호(사서함 대표값) 폴백 제거 — 다른 수취인 부호 오적용=통관사고 방지.
+    row[11] = String(of['수취_통관부호'] || '').trim()
+            || (bizPerson === '사업자' ? (cust['사업자번호']||'') : (bizPerson === '개인' ? (cust['통관고유부호']||'') : ''));
+    // [ecom-v0.6] M 플래그 — 단일 판정함수(계산 로직 단일화). prodsO는 아래에서 재사용(30건 초과 절단 전 시점).
+    const _mResult = calcManifestFlag(bizPerson, prodsO, rateCnyUsd);
+    row[12] = _mResult.flag;
+    // [C] L 통관고유번호 누락 / [D] M 사업자개인 빈값 집계(주문번호+사서함) — 제출 불가 경고용
+    const _ono = `${of['주문번호']||''}(${sf['사서함']||''})`;
+    if (!row[11]) _warnL.push(_ono);
+    if (row[12] === '') _warnM.push(_ono);
+    if (_mResult.warn) _warnRate.push(`${_ono}: ${_mResult.warn}`);
+    row[13] = p0['제품링크'] || 'https://1688.com/';          // N 상품URL
+    row[14] = box.count;                                     // O 박스수(사서함 집계)
+    row[15] = box.kg;                                        // P 총중량 kg
+    row[16] = box.dim ? Math.round(box.dim[0]/100*1000)/1000 : '';  // Q 가로 m (cm÷100)
+    row[17] = box.dim ? Math.round(box.dim[1]/100*1000)/1000 : '';  // R 세로 m
+    row[18] = box.dim ? Math.round(box.dim[2]/100*1000)/1000 : '';  // S 높이 m
+    row[19] = '';                                            // T 中文품명 — 미저장 빈칸
+    row[20] = p0['Material'] || '';                          // U 규격/모델=재질
+    row[21] = String(p0['HS코드']||'').replace(/\./g,'');     // V HS(점 제거)
+    // ★매니페스트는 부대비용 제외(물품가만). 부대비(구매수수료·현지배송비) 포함은 청구 트랙 전용. 2026-07-23 확정.
+    //   개당단가USD = 단가CNY(물품가) × 환율. 구매수수료·현지배송비 가산 없음(조건부 가산 구조 삭제 — 재오염 방지).
+    prodsO.forEach((p, i) => {
+      const pf = p.fields || {}; const b = 22 + i*4;
+      const dan  = parseFloat(pf['단가CNY']) || 0;
+      if (/AI번역\(미확정\)|AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(String(pf['관세사메모'] || ''))) _warnUnconf.push(`${of['주문번호']||''}:${pf['상품ID']||''}`);   // [C] AI 미확정 제품
+      // [ecom-v0.8] 통관품명 총칭 하드차단 — 정확일치만(부분일치 금지: seafood·food processor는 통과).
+      const _engLower = String(pf['통관품명_영문'] || '').trim().toLowerCase();
+      if (VAGUE_NAMES.includes(_engLower)) _warnVague.push(`${of['주문번호']||''}:${pf['상품ID']||''}(${pf['통관품명_영문']})`);
+      row[b]   = pf['통관품명_영문'] || '';                   // 상품명(n)
+      row[b+1] = 'PC';                                       // 단위 상수
+      row[b+2] = parseFloat(pf['수량']) || 0;                 // 수량
+      row[b+3] = rateCnyUsd > 0 ? Math.round(dan * rateCnyUsd * 100)/100 : '';  // 개당단가USD = 물품가만
+    });
+    ({ sea: seaRows, air: airRows, express: expressRows })[_bucket].push(row);
+  });
+  // NO 재부여
+  seaRows.forEach((r,i) => r[0] = i+1);
+  airRows.forEach((r,i) => r[0] = i+1);
+  expressRows.forEach((r,i) => r[0] = i+1);
+  return {
+    ok: true, shipDate, yyyymmdd,
+    seaRows, airRows, expressRows, truncated,
+    warnL: _warnL, warnM: _warnM, warnUnconf: _warnUnconf, warnRate: _warnRate, warnVague: _warnVague,
+    excludedShip: _excludedShip, shipSummary: _shipSummary,
+  };
+}
+
+// [ecom-v0.9] 모달 열기 — prompt() 폐기, 부킹요약 모달과 동일 패턴.
+function openManifestModal() {
   const pat = (document.getElementById('pat') || {}).value || sessionStorage.getItem('kanghago_airtable_pat') || '';
   if (!pat) { (typeof toastWarn === 'function' ? toastWarn : alert)('§1에서 PAT를 먼저 입력하세요'); return; }
-  if (typeof ExcelJS === 'undefined') { toastError('ExcelJS 로딩 실패 — 새로고침'); return; }
+  document.getElementById('manifestModal').style.display = 'block';
   const bd = (document.getElementById('bookingDate') || {}).value;
-  const shipDate = prompt('포워딩 매니페스트 — 선적일 (YYYY-MM-DD)\n전자상거래 사서함만 대상(무역 제외). 통관구분 해운→海运 / 항공·특송→空运.', bd || new Date().toISOString().slice(0,10));
-  if (!shipDate) return;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(shipDate)) { toastError('날짜 형식 YYYY-MM-DD'); return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const inp = document.getElementById('manifestDate');
+  if (inp && !inp.value) inp.value = bd || today;
+  document.getElementById('manifestResultBox').innerHTML =
+    '<div style="padding:18px; text-align:center; color:#999; font-size:13px;">선적일 선택 후 [그날만 조회]를 클릭하세요.</div>';
+  document.getElementById('manifestLoadingMsg').textContent = '';
+  state._manifestPreview = null;
+}
+function closeManifestModal() {
+  document.getElementById('manifestModal').style.display = 'none';
+}
+
+// [ecom-v0.9] 조회 — 데이터만 가져와 모달에 미리보기 렌더. 파일은 아직 안 만듦(조회/생성 분리).
+async function fetchManifestPreview() {
+  const shipDate = (document.getElementById('manifestDate') || {}).value;
+  if (!shipDate) { toastError && toastError('선적일을 선택하세요'); return; }
   const yyyymmdd = shipDate.replace(/-/g, '');
+  document.getElementById('manifestLoadingMsg').textContent = '조회 중…';
+  document.getElementById('manifestResultBox').innerHTML =
+    '<div style="padding:18px; text-align:center; color:#999; font-size:13px;">조회 중…</div>';
   try {
-    toastInfo && toastInfo('매니페스트 생성 중… 데이터 조회');
-    // (1) 그 선적일 Orders
-    const oF = `IS_SAME({실제출고요청일},'${shipDate}','day')`;
-    // [주문단위 L·M] Orders.수취_통관부호·사업자개인 = 주문(수취인) 단위 값. 필드 미생성 시 422 → try/catch로 빈값 폴백.
-    const _ordFieldsBase = `fields[]=주문번호&fields[]=수취인&fields[]=연락처&fields[]=수취인주소&fields[]=배송요청사항&fields[]=운송장번호&fields[]=Shipment&fields[]=총액CNY&fields[]=현지배송비CNY`;
-    let orders;
-    try {
-      orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&${_ordFieldsBase}&fields[]=${encodeURIComponent('수취_통관부호')}&fields[]=${encodeURIComponent('사업자개인')}`);
-    } catch (e) {   // 필드 미생성(422) → 기본 필드만(값 빈칸 처리). 생성 후 자동으로 위 경로가 읽음.
-      console.warn('[매니페스트] Orders.수취_통관부호/사업자개인 미생성 — 빈값 처리:', e.message);
-      orders = await apiPaged(`/${TABLES.Orders}?filterByFormula=${encodeURIComponent(oF)}&${_ordFieldsBase}`);
-    }
-    if (!orders.length) { toastWarn && toastWarn(`${shipDate} 선적 Orders 0건`); return; }
-    // (2) Shipments — 전자상거래만
-    const shipIds = [...new Set(orders.flatMap(o => (o.fields||{}).Shipment || []))];
-    const ships = (await Promise.all(chunkArray(shipIds, 50).map(async chunk => {
-      const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
-      return apiPaged(`/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}&fields[]=사서함&fields[]=고객사서함&fields[]=통관트랙&fields[]=사업자개인&fields[]=환율CNY_USD&fields[]=수취_통관부호`);   // [C] 수취_통관부호=L열 폴백
-    }))).flat();
-    const shipById = {};
-    ships.forEach(s => { if (String((s.fields||{})['통관트랙']||'').trim() === '전자상거래') shipById[s.id] = s; });
-    // 전자상거래 사서함에 붙은 Order만
-    const ecomOrders = orders.filter(o => ((o.fields||{}).Shipment || []).some(id => shipById[id]));
-    if (!ecomOrders.length) { toastWarn && toastWarn(`${shipDate} 전자상거래 Order 0건(무역만)`); return; }
-    // (3) Products — 그 Order들에 연결된 것 (Order 링크 rec id로 매핑)
-    const orderById = {}; ecomOrders.forEach(o => orderById[o.id] = o);
-    const onoList = ecomOrders.map(o => String((o.fields||{})['주문번호']||'')).filter(Boolean);
-    let prods = [];
-    for (const chunk of chunkArray(onoList, 30)) {
-      const pf = `OR(${chunk.map(no => `SEARCH('${String(no).replace(/'/g,"\\'")}',ARRAYJOIN({Order}))`).join(',')})`;
-      try { prods = prods.concat(await apiPaged(`/${TABLES.Products}?filterByFormula=${encodeURIComponent(pf)}&fields[]=통관품명_영문&fields[]=통관품명_한글&fields[]=수량&fields[]=단가CNY&fields[]=구매수수료CNY&fields[]=현지배송비CNY&fields[]=Material&fields[]=HS코드&fields[]=제품링크&fields[]=pro_seq&fields[]=Order`)); } catch (e) {}
-    }
-    const prodByOrderId = {};
-    prods.forEach(p => { const oid = ((p.fields||{}).Order || [])[0]; if (oid && orderById[oid]) (prodByOrderId[oid] = prodByOrderId[oid] || []).push(p); });
-    Object.values(prodByOrderId).forEach(arr => arr.sort((a,b) => (parseInt((a.fields||{}).pro_seq,10)||0) - (parseInt((b.fields||{}).pro_seq,10)||0)));
-    // (4) Boxes per shipment (O/P/Q/R/S) — 사서함 단위 집계
-    const boxByShipId = {};
-    await Promise.all(ships.filter(s=>shipById[s.id]).map(async s => {
-      const mailbox = (s.fields||{})['사서함'] || '';
-      let boxes = [];
-      try { boxes = await apiPaged(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=무게KG&fields[]=부피CBM&fields[]=가로cm&fields[]=세로cm&fields[]=높이cm`); } catch (e) {}
-      let kg = 0, maxCbm = -1, dim = null;
-      boxes.forEach(b => { const bf = b.fields||{}; kg += parseFloat(bf['무게KG'])||0; const cb = parseFloat(bf['부피CBM'])||0; if (cb > maxCbm) { maxCbm = cb; const w=parseFloat(bf['가로cm'])||0,h=parseFloat(bf['세로cm'])||0,d=parseFloat(bf['높이cm'])||0; dim = (w||h||d)?[w,h,d]:null; } });
-      boxByShipId[s.id] = { count: boxes.length, kg: Math.round(kg*100)/100, dim };   // dim=[cm,cm,cm] 최대박스
-    }));
-    // (5) Customers — base AP → 사업자번호/통관고유부호
-    const custByBase = {};
-    try {
-      const custs = await apiPaged(`/${TABLES.Customers}?fields[]=사서함번호&fields[]=사업자번호&fields[]=통관고유부호`);
-      custs.forEach(c => { const k = (c.fields||{})['사서함번호']; if (k) custByBase[k] = c.fields; });
-    } catch (e) {}
-    // 행 빌드 (행=Order), 통관구분(사서함 키)으로 해운/항공/항공특송 3분리
-    const seaRows = [], airRows = [], expressRows = []; let truncated = 0;
-    const _warnL = [], _warnM = [], _warnUnconf = [], _warnRate = [], _warnVague = [];   // [C]L누락 / [D]M빈값 / AI 미확정 / 환율미확보 / [ecom-v0.8]총칭품명
-    const _excludedShip = {};   // [ecom-v0.8] 통관구분 분류 불가 사서함(캐치올 폐지) — key -> 제외 건수
-    ecomOrders.forEach(o => {
-      const of = o.fields || {};
-      const sid = (of.Shipment || []).find(id => shipById[id]);
-      const s = shipById[sid]; const sf = s.fields || {};
-      const key = String(sf['사서함'] || '');
-      // [ecom-v0.8] 통관구분 3분리 — 캐치올(무조건 海运) 폐지. 분류 불가 사서함은 여기서 제외(조용한 오분류 차단).
-      let _bucket = null;
-      if (/항공특송|특송/.test(key)) _bucket = 'express';
-      else if (/항공/.test(key)) _bucket = 'air';
-      else if (/해운/.test(key)) _bucket = 'sea';
-      if (!_bucket) { _excludedShip[key] = (_excludedShip[key] || 0) + 1; return; }
-      // [주문단위] ★사업자개인 = Orders(주문·수취인 단위)만. Shipments(사서함 대표) 폴백 제거 — 혼재 사서함에서 개인 주문에 사업자 플래그 오적용(통관사고) 방지.
-      //   Shipments.사업자개인 필드 자체는 유지(도구 계산·부킹요약·알리코인 판정용) — 여기 매니페스트 읽기에서만 미사용.
-      const bizPerson = String(of['사업자개인'] || '').trim();   // '사업자'/'개인'/'' (M열·L열 Customers분기 공통)
-      const rateCnyUsd = parseFloat(sf['환율CNY_USD']) || 0;
-      const cust = custByBase[sf['고객사서함']] || {};
-      const box = boxByShipId[sid] || { count:'', kg:'', dim:null };
-      const prodsO = (prodByOrderId[o.id] || []).slice();
-      if (prodsO.length > TYREDS_MAX_ITEMS) { truncated += prodsO.length - TYREDS_MAX_ITEMS; prodsO.length = TYREDS_MAX_ITEMS; }
-      const p0 = (prodsO[0] || {}).fields || {};
-      const row = new Array(142).fill('');
-      row[0] = 0;                                              // A NO — 뒤에서 재부여
-      row[1] = `${of['주문번호']||''} ${sf['고객사서함']||''}`.trim();  // B 주문번호+AP
-      row[2] = of['운송장번호'] || '';                          // C HBL
-      row[3] = 'weihai';                                       // D POL 상수
-      row[4] = '';                                             // E 발송인 빈칸
-      row[5] = 'weihai';                                       // F 발송인주소 상수
-      row[6] = of['수취인'] || '';                              // G 수취인
-      row[7] = of['연락처'] || '';                              // H 연락처
-      row[8] = '';                                             // I 우편번호 빈칸
-      row[9] = of['수취인주소'] || '';                          // J 주소
-      row[10] = of['배송요청사항'] || '';                       // K 배송메모
-      // L 통관고유번호 — ★주문(수취인) 단위: Orders.수취_통관부호 우선 → Customers(회원 수기) → 빈칸.
-      //   ★Shipments.수취_통관부호(사서함 대표값) 폴백 제거 — 다른 수취인 부호 오적용=통관사고 방지.
-      row[11] = String(of['수취_통관부호'] || '').trim()
-              || (bizPerson === '사업자' ? (cust['사업자번호']||'') : (bizPerson === '개인' ? (cust['통관고유부호']||'') : ''));
-      // [ecom-v0.6] M 플래그 — 단일 판정함수(계산 로직 단일화). prodsO는 아래에서 재사용(30건 초과 절단 전 시점).
-      const _mResult = calcManifestFlag(bizPerson, prodsO, rateCnyUsd);
-      row[12] = _mResult.flag;
-      // [C] L 통관고유번호 누락 / [D] M 사업자개인 빈값 집계(주문번호+사서함) — 제출 불가 경고용
-      const _ono = `${of['주문번호']||''}(${sf['사서함']||''})`;
-      if (!row[11]) _warnL.push(_ono);
-      if (row[12] === '') _warnM.push(_ono);
-      if (_mResult.warn) _warnRate.push(`${_ono}: ${_mResult.warn}`);
-      row[13] = p0['제품링크'] || 'https://1688.com/';          // N 상품URL
-      row[14] = box.count;                                     // O 박스수(사서함 집계)
-      row[15] = box.kg;                                        // P 총중량 kg
-      row[16] = box.dim ? Math.round(box.dim[0]/100*1000)/1000 : '';  // Q 가로 m (cm÷100)
-      row[17] = box.dim ? Math.round(box.dim[1]/100*1000)/1000 : '';  // R 세로 m
-      row[18] = box.dim ? Math.round(box.dim[2]/100*1000)/1000 : '';  // S 높이 m
-      row[19] = '';                                            // T 中文품명 — 미저장 빈칸
-      row[20] = p0['Material'] || '';                          // U 규격/모델=재질
-      row[21] = String(p0['HS코드']||'').replace(/\./g,'');     // V HS(점 제거)
-      // ★매니페스트는 부대비용 제외(물품가만). 부대비(구매수수료·현지배송비) 포함은 청구 트랙 전용. 2026-07-23 확정.
-      //   개당단가USD = 단가CNY(물품가) × 환율. 구매수수료·현지배송비 가산 없음(조건부 가산 구조 삭제 — 재오염 방지).
-      prodsO.forEach((p, i) => {
-        const pf = p.fields || {}; const b = 22 + i*4;
-        const dan  = parseFloat(pf['단가CNY']) || 0;
-        if (/AI번역\(미확정\)|AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(String(pf['관세사메모'] || ''))) _warnUnconf.push(`${of['주문번호']||''}:${pf['상품ID']||''}`);   // [C] AI 미확정 제품
-        // [ecom-v0.8] 통관품명 총칭 하드차단 — 정확일치만(부분일치 금지: seafood·food processor는 통과).
-        const _engLower = String(pf['통관품명_영문'] || '').trim().toLowerCase();
-        if (VAGUE_NAMES.includes(_engLower)) _warnVague.push(`${of['주문번호']||''}:${pf['상품ID']||''}(${pf['통관품명_영문']})`);
-        row[b]   = pf['통관품명_영문'] || '';                   // 상품명(n)
-        row[b+1] = 'PC';                                       // 단위 상수
-        row[b+2] = parseFloat(pf['수량']) || 0;                 // 수량
-        row[b+3] = rateCnyUsd > 0 ? Math.round(dan * rateCnyUsd * 100)/100 : '';  // 개당단가USD = 물품가만
-      });
-      ({ sea: seaRows, air: airRows, express: expressRows })[_bucket].push(row);
-    });
-    // NO 재부여
-    seaRows.forEach((r,i) => r[0] = i+1);
-    airRows.forEach((r,i) => r[0] = i+1);
-    expressRows.forEach((r,i) => r[0] = i+1);
-    // 엑셀 생성 + 다운로드
-    async function buildAndSave(rows, tag) {
-      if (!rows.length) return 0;
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet('Sheet1');
-      ws.addRow(TYREDS_HEADERS);
-      ws.getRow(1).alignment = { wrapText: true, vertical: 'middle' };
-      rows.forEach(r => ws.addRow(r));
-      const buf = await wb.xlsx.writeBuffer();
-      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = `TYREDS_${yyyymmdd}_${tag}.xlsx`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      return rows.length;
-    }
-    // [ecom-v0.8] 통관구분 분류 불가 사서함 — 제외 통지(생성 차단은 아님, 해당 사서함만 빠지고 나머지는 정상 진행).
-    const _excludedKeys = Object.keys(_excludedShip);
-    if (_excludedKeys.length) {
-      const _exMsg = _excludedKeys.map(k => `${k} (${_excludedShip[k]}건)`).join(', ');
-      toastWarn && toastWarn(`⚠ 통관구분 불명 사서함 ${_excludedKeys.length}건 제외: ${_exMsg}`, { title: '매니페스트 제외' });
-      console.warn('[TYREDS] 통관구분 분류 불가로 제외:', _excludedShip);
-    }
-    // [ecom-v0.7] ★M 통관유형(사업자개인) 미상 = 하드 차단(2026-07-24 확정) — 사업자를 2로 오신고할 안전측이 없어
-    //   과소신고와 반대로 위험할 수 있음(대신 확정 못 함). confirm() 우회 경로 없음 — 생성 자체를 막는다.
-    if (_warnM.length) {
-      alert(`⛔ 통관유형(개인/사업자) 미확정 주문 ${_warnM.length}건 — 생성 불가.\n해당 주문의 사업자개인을 먼저 채우세요.\n\n${_warnM.slice(0,20).join(', ')}${_warnM.length>20?' 외':''}`);
-      toastWarn && toastWarn(`매니페스트 생성 차단 — 통관유형 미확정 ${_warnM.length}건`);
+    const data = await buildManifestData(shipDate);
+    document.getElementById('manifestLoadingMsg').textContent = '';
+    if (!data.ok) {
+      // [D] 사람이 읽는 안내 — raw 에러 없음. 0건 사유는 둘 다 결과적으로 "전자상거래 사서함 없음"이라 동일 문구.
+      document.getElementById('manifestResultBox').innerHTML =
+        `<div style="padding:18px; text-align:center; color:#999; font-size:13px;">${yyyymmdd} 선적분에 전자상거래 사서함이 없습니다.</div>`;
+      state._manifestPreview = null;
       return;
     }
-    // [ecom-v0.8] ★통관품명 총칭(food·goods 등) = 하드 차단 — 신고서류에 총칭 품명 불가.
-    if (_warnVague.length) {
-      alert(`⛔ 통관품명이 불충분합니다(총칭) ${_warnVague.length}건 — 생성 불가.\n1688 링크에서 실제 품명을 확인해 채우세요.\n\n${_warnVague.slice(0,20).join(', ')}${_warnVague.length>20?' 외':''}`);
-      toastWarn && toastWarn(`매니페스트 생성 차단 — 총칭 품명 ${_warnVague.length}건`);
-      return;
-    }
-    // [C] ★필수칸 누락 경고 — 생성 전 알림(생성은 막지 않음, 초안 확인용). 도구가 못 만드는 값(통관고유번호)은 수동 채움 필요.
-    if (_warnL.length || _warnUnconf.length || _warnRate.length) {
-      const _lines = [];
-      if (_warnL.length) _lines.push(`⛔ L 통관고유번호 누락 ${_warnL.length}건 — 제출 불가 (Customers에 사업자번호/통관고유부호 등록 필요)\n   ${_warnL.slice(0,8).join(', ')}${_warnL.length>8?' 외':''}`);
-      if (_warnRate.length) _lines.push(`⚠ M 승격판정 환율 미확보 ${_warnRate.length}건 — 안전측 2(간이통관) 처리됨(과소신고 방지). 환율 확보 후 재생성 권장\n   ${_warnRate.slice(0,8).join(', ')}${_warnRate.length>8?' 외':''}`);
-      if (_warnUnconf.length) _lines.push(`⚠ AI 추천 미확정 제품 ${_warnUnconf.length}건 — [✓ 확정] 검토 권장 (영문명·HS 노란배경)\n   ${_warnUnconf.slice(0,8).join(', ')}${_warnUnconf.length>8?' 외':''}`);
-      const _msg = `[매니페스트 필수칸 누락 — 초안은 생성됩니다]\n\n${_lines.join('\n\n')}\n\n그대로 생성(초안)할까요?`;
-      if (!confirm(_msg)) { toastWarn && toastWarn('매니페스트 생성 취소 — 누락값 채운 뒤 다시'); return; }
-    }
-    // [ecom-v0.8] 3분리 파일 — buildAndSave는 rows.length===0이면 파일 미생성(기존 동작 유지).
-    const nSea = await buildAndSave(seaRows, MANIFEST_FILES.sea);
-    const nAir = await buildAndSave(airRows, MANIFEST_FILES.air);
-    const nExpress = await buildAndSave(expressRows, MANIFEST_FILES.express);
-    let msg = `매니페스트 생성: ${MANIFEST_FILES.sea} ${nSea}행 / ${MANIFEST_FILES.air} ${nAir}행 / ${MANIFEST_FILES.express} ${nExpress}행`;
-    if (_excludedKeys.length) msg += ` · ⚠제외 ${_excludedKeys.length}건`;
-    if (_warnL.length) msg += ` · ⛔L누락 ${_warnL.length}`;
-    if (_warnRate.length) msg += ` · ⚠환율미확보(안전측2) ${_warnRate.length}`;
-    if (truncated) msg += ` ⚠품목 ${truncated}개 30초과 잘림`;
-    (nSea+nAir+nExpress) ? (toastSuccess ? toastSuccess(msg) : alert(msg)) : (toastWarn ? toastWarn('생성할 전자상거래 행 없음') : alert('행 없음'));
-    console.log('[TYREDS]', msg, { seaRows: nSea, airRows: nAir, expressRows: nExpress, excluded: _excludedShip, truncated });
+    state._manifestPreview = data;
+    renderManifestPreview(data);
   } catch (e) {
-    console.error('[TYREDS] 실패', e);
+    console.error('[매니페스트] 조회 실패', e);   // 원문은 콘솔에만
+    document.getElementById('manifestLoadingMsg').textContent = '';
+    document.getElementById('manifestResultBox').innerHTML =
+      `<div style="padding:18px; text-align:center; color:#c0392b; font-size:13px;">조회 실패: ${escAttr(e.message || String(e))}</div>`;
+    state._manifestPreview = null;
+  }
+}
+
+// [ecom-v0.9] 미리보기 렌더 — 사서함 목록+분류+건수+차단사유. 차단 시 생성 버튼 숨김(조회/생성 분리).
+function renderManifestPreview(data) {
+  const BUCKET_LABEL = { sea: '해운(海运)', air: '항공(空运)', express: '특송' };
+  const shipRows = Object.entries(data.shipSummary).map(([key, info]) => {
+    const label = info.bucket ? BUCKET_LABEL[info.bucket] : '★분류불가(제외)';
+    const color = info.bucket ? '#1B2A3B' : '#c0392b';
+    return `<tr><td style="padding:4px 8px;font-family:ui-monospace,monospace;">${escAttr(key)}</td><td style="padding:4px 8px;color:${color};">${label}</td><td style="padding:4px 8px;text-align:right;">${info.orderCount}건</td></tr>`;
+  }).join('');
+
+  let blockHtml = '';
+  let showGenerate = true;
+  // [ecom-v0.9] ★M 통관유형 미상 = 하드 차단(2026-07-24 확정, 사업자를 2로 오신고할 안전측 없음).
+  if (data.warnM.length) {
+    showGenerate = false;
+    blockHtml += `<div style="padding:10px 14px;background:#fdecef;border:1px solid #e88aa0;border-radius:6px;margin-bottom:10px;color:#7a0c28;font-size:12px;">⛔ 통관유형(개인/사업자) 미확정 ${data.warnM.length}건으로 생성 불가 — 해당 주문의 사업자개인을 먼저 채우세요.<br>${data.warnM.map(x=>escAttr(x)).join(', ')}</div>`;
+  }
+  // [ecom-v0.8] ★통관품명 총칭 = 하드 차단.
+  if (data.warnVague.length) {
+    showGenerate = false;
+    blockHtml += `<div style="padding:10px 14px;background:#fdecef;border:1px solid #e88aa0;border-radius:6px;margin-bottom:10px;color:#7a0c28;font-size:12px;">⛔ 총칭 품명 ${data.warnVague.length}건으로 생성 차단 — 1688 링크에서 실제 품명을 확인해 채우세요.<br>${data.warnVague.map(x=>escAttr(x)).join(', ')}</div>`;
+  }
+
+  let softHtml = '';
+  const _excludedKeys = Object.keys(data.excludedShip || {});
+  if (_excludedKeys.length) {
+    softHtml += `<div style="font-size:11px;color:#a5820a;margin-top:6px;">⚠ 통관구분 불명 사서함 제외: ${escAttr(_excludedKeys.map(k => `${k}(${data.excludedShip[k]}건)`).join(', '))}</div>`;
+  }
+  if (data.warnL.length) softHtml += `<div style="font-size:11px;color:#c0392b;margin-top:6px;">⛔ L 통관고유번호 누락 ${data.warnL.length}건 — 제출 불가(Customers 등록 필요): ${escAttr(data.warnL.slice(0,8).join(', '))}${data.warnL.length>8?' 외':''}</div>`;
+  if (data.warnRate.length) softHtml += `<div style="font-size:11px;color:#a5820a;margin-top:6px;">⚠ 승격판정 환율 미확보 ${data.warnRate.length}건 — 안전측 2(간이통관)로 처리됨(과소신고 방지)</div>`;
+  if (data.warnUnconf.length) softHtml += `<div style="font-size:11px;color:#a5820a;margin-top:6px;">⚠ AI 추천 미확정 제품 ${data.warnUnconf.length}건 — [✓ 확정] 검토 권장</div>`;
+  if (data.truncated) softHtml += `<div style="font-size:11px;color:#a5820a;margin-top:6px;">⚠ 품목 ${data.truncated}개 30초과 잘림</div>`;
+
+  const html = `
+    <div style="margin-bottom:10px;padding:10px 14px;background:#eef2fb;border:1px solid #4A6DA7;border-radius:6px;">
+      <strong style="color:#1B2A3B;">${escAttr(data.shipDate)} 조회 결과</strong> — 해운(海运) ${data.seaRows.length}건 · 항공(空运) ${data.airRows.length}건 · 특송 ${data.expressRows.length}건
+    </div>
+    ${blockHtml}
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;"><thead><tr style="background:#f4ecd8;"><th style="padding:5px 8px;text-align:left;">사서함</th><th style="padding:5px 8px;text-align:left;">분류</th><th style="padding:5px 8px;text-align:right;">건수</th></tr></thead><tbody>${shipRows}</tbody></table>
+    ${softHtml}
+    ${showGenerate
+      ? `<div style="text-align:right;margin-top:10px;"><button class="primary" onclick="confirmGenerateManifest()" style="padding:8px 16px;font-size:13px;">📄 매니페스트 생성</button></div>`
+      : `<div style="text-align:center;margin-top:10px;color:#999;font-size:12px;">위 사유를 해결한 뒤 다시 조회하세요.</div>`}
+  `;
+  document.getElementById('manifestResultBox').innerHTML = html;
+}
+
+// [ecom-v0.9] 생성 — 미리보기에서 이미 계산된 데이터로 xlsx만 만든다(재조회 없음, 조회/생성 분리).
+async function confirmGenerateManifest() {
+  const data = state._manifestPreview;
+  if (!data || !data.ok) { toastError && toastError('먼저 조회하세요'); return; }
+  if (typeof ExcelJS === 'undefined') { toastError('ExcelJS 로딩 실패 — 새로고침'); return; }
+  const yyyymmdd = data.yyyymmdd;
+  async function buildAndSave(rows, tag) {
+    if (!rows.length) return 0;   // [ecom-v0.8] 빈 버킷은 파일 미생성
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Sheet1');
+    ws.addRow(TYREDS_HEADERS);
+    ws.getRow(1).alignment = { wrapText: true, vertical: 'middle' };
+    rows.forEach(r => ws.addRow(r));
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `TYREDS_${yyyymmdd}_${tag}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    return rows.length;
+  }
+  try {
+    const nSea = await buildAndSave(data.seaRows, MANIFEST_FILES.sea);
+    const nAir = await buildAndSave(data.airRows, MANIFEST_FILES.air);
+    const nExpress = await buildAndSave(data.expressRows, MANIFEST_FILES.express);
+    let msg = `매니페스트 생성: ${MANIFEST_FILES.sea} ${nSea}행 / ${MANIFEST_FILES.air} ${nAir}행 / ${MANIFEST_FILES.express} ${nExpress}행`;
+    (nSea+nAir+nExpress) ? (toastSuccess ? toastSuccess(msg) : alert(msg)) : (toastWarn ? toastWarn('생성할 전자상거래 행 없음') : alert('행 없음'));
+    console.log('[TYREDS]', msg, { seaRows: nSea, airRows: nAir, expressRows: nExpress });
+  } catch (e) {
+    console.error('[TYREDS] 생성 실패', e);   // 원문은 콘솔에만
     toastError ? toastError('매니페스트 생성 실패: ' + (e.message||e)) : alert('실패: ' + (e.message||e));
   }
 }
