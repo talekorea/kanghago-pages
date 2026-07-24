@@ -17902,7 +17902,7 @@ async function buildManifestData(shipDate) {
       if (/AI번역\(미확정\)|AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(String(pf['관세사메모'] || ''))) _warnUnconf.push(`${of['주문번호']||''}:${pf['상품ID']||''}`);   // [C] AI 미확정 제품
       // [ecom-v0.8] 통관품명 총칭 하드차단 — 정확일치만(부분일치 금지: seafood·food processor는 통과).
       const _engLower = String(pf['통관품명_영문'] || '').trim().toLowerCase();
-      if (VAGUE_NAMES.includes(_engLower)) _warnVague.push(`${of['주문번호']||''}:${pf['상품ID']||''}(${pf['통관품명_영문']})`);
+      if (VAGUE_NAMES.includes(_engLower)) _warnVague.push(`${sf['사서함']||''}/${of['주문번호']||''}:${pf['상품ID']||''}(${pf['통관품명_영문']})`);   // [ecom-v0.9] 사서함까지 명시(요건: 대상 특정 가능해야 함)
       row[b]   = pf['통관품명_영문'] || '';                   // 상품명(n)
       row[b+1] = 'PC';                                       // 단위 상수
       row[b+2] = parseFloat(pf['수량']) || 0;                 // 수량
