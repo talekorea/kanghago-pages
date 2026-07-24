@@ -2036,10 +2036,12 @@ async function _suggestHs6(p) {
   if (!top) return { skip: 'HS6 확정 불가(억지 추정 안 함)' };   // 빈칸 유지
   const hs6 = top.formatted;   // '0000.00'
   const memo = String(f['관세사메모'] || '');
-  const fields = { 'HS코드': hs6, '관세사메모': (memo ? memo + ' / ' : '') + `AI-HS추천(미확정): ${en} → ${hs6}${top.reason ? ' · ' + top.reason : ''}` };
+  // v3.2.248: verified(공식 HS6 집합 대조)에 따라 마커 분기 — true=실존코드(노랑) / false=미검증(빨강)
+  const marker = top.verified ? 'AI-HS추천(미확정)' : 'AI-HS추천(미검증)';
+  const fields = { 'HS코드': hs6, '관세사메모': (memo ? memo + ' / ' : '') + `${marker}: ${en} → ${hs6}${top.reason ? ' · ' + top.reason : ''}` };
   await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields, typecast: true });
   Object.assign(f, fields);
-  return { hs6, en, source: 'ai' };
+  return { hs6, en, source: 'ai', verified: !!top.verified };
 }
 async function suggestHs6AllBlank() {
   const targets = (state.products || []).filter(p => !String((p.fields||{})['HS코드'] || '').replace(/[^0-9]/g, '') && String((p.fields||{})['Description'] || (p.fields||{})['통관품명_영문'] || '').trim());
@@ -2059,8 +2061,12 @@ async function suggestHs6AllBlank() {
 async function _confirmProduct(p) {
   const f = p.fields || {};
   const memo = String(f['관세사메모'] || '');
-  if (!/AI번역\(미확정\)|AI-HS추천\(미확정\)/.test(memo)) return { skip: '미확정 아님' };
-  const cleaned = memo.split(' / ').filter(seg => !/AI번역\(미확정\)|AI-HS추천\(미확정\)/.test(seg)).join(' / ');
+  if (!/AI번역\(미확정\)|AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(memo)) return { skip: '미확정 아님' };
+  // v3.2.248: 미검증(공식표에 없는 코드) 확정 시 1회 경고 게이트 — 취소하면 마커 유지(확정 안 함)
+  if (/AI-HS추천\(미검증\)/.test(memo)) {
+    if (!confirm('관세청 공식표에 존재하지 않는 코드입니다. 관세사 확정 전 신고 금지.')) return { skip: '사용자 취소(미검증)' };
+  }
+  const cleaned = memo.split(' / ').filter(seg => !/AI번역\(미확정\)|AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(seg)).join(' / ');
   await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields: { '관세사메모': cleaned }, typecast: true });
   f['관세사메모'] = cleaned;
   return { ok: true };
@@ -2071,7 +2077,7 @@ async function confirmOneProduct(pid) {
   catch (e) { toastError && toastError('확정 실패: ' + (e.message || e)); }
 }
 async function confirmAllUnconfirmed() {
-  const targets = (state.products || []).filter(p => /AI번역\(미확정\)|AI-HS추천\(미확정\)/.test(String((p.fields||{})['관세사메모'] || '')));
+  const targets = (state.products || []).filter(p => /AI번역\(미확정\)|AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(String((p.fields||{})['관세사메모'] || '')));
   if (!targets.length) { toastWarn && toastWarn('미확정(노란배경) 제품이 없습니다'); return; }
   if (!confirm(`AI 추천 미확정 ${targets.length}건을 확정합니다(값은 그대로, 노란 표시만 해제). 검토 후 진행하세요.`)) return;
   let ok = 0, fail = 0;
@@ -5353,9 +5359,10 @@ function renderProducts() {
     const empBg = isConfirmed ? 'background:#f4f1ea;' : 'background:#fff;';
     // [전자상거래 B·C] AI 미확정 = 노란배경(관세사메모 마커). 영문명 번역 or HS6 추천. [✓ 확정] 시 마커 제거.
     const _aiUnconfEn = /AI번역\(미확정\)/.test(String(f['관세사메모'] || ''));
-    const _aiUnconfHs = /AI-HS추천\(미확정\)/.test(String(f['관세사메모'] || ''));
+    const _aiUnconfHs = /AI-HS추천\(미확정\)/.test(String(f['관세사메모'] || ''));   // AI + verified:true(공식 HS6표 존재) — 노랑
+    const _aiUnverifiedHs = /AI-HS추천\(미검증\)/.test(String(f['관세사메모'] || ''));   // v3.2.248: AI + verified:false(공식표에 없음) — 빨강
     const _learnedHs = /📚학습HS/.test(String(f['관세사메모'] || ''));   // [B] 학습 유래 HS(관세사 확정 누적) — 신뢰, 노란배경 아님
-    const _aiUnconfirmed = _aiUnconfEn || _aiUnconfHs;
+    const _aiUnconfirmed = _aiUnconfEn || _aiUnconfHs || _aiUnverifiedHs;
     const descBg = _aiUnconfEn ? 'background:#fff8d6;border:1px solid #e8c14a;' : empBg;
     const empTitle = isConfirmed
       ? '관세사 확정값 — 수정 불가'
@@ -5438,8 +5445,10 @@ function renderProducts() {
       </td>
       <td style="min-width:140px;">
         <!-- v3.2.46 ②-a: 관세사확정 전이면 직원이 제품별 HS 직접 입력 가능 (세율은 읽기전용·공식표 자동). 확정 후엔 관세사 값 보호. -->
-        <input type="text" class="hs" data-field="HS코드" value="${escAttr(hsValue)}" placeholder="0000.00-0000" ${isConfirmed ? 'readonly title="관세사 확정값 — 수정 불가" style="background:#f4f1ea; width:112px;"' : `title="제품별 HS 직접 입력. 전자상거래는 6자리(0000.00)면 충분" style="width:112px;${_aiUnconfHs ? 'background:#fff8d6;border:1px solid #e8c14a;' : ''}"`} />
-        ${_aiUnconfHs ? `<div style="font-size:9px;color:#a5820a;text-align:center;margin-top:1px;">🤖 HS추천 미확정</div>` : (_learnedHs ? `<div style="font-size:9px;color:#0a5a2e;text-align:center;margin-top:1px;">📚 학습(관세사 확정)</div>` : '')}
+        <input type="text" class="hs" data-field="HS코드" value="${escAttr(hsValue)}" placeholder="0000.00-0000" ${isConfirmed ? 'readonly title="관세사 확정값 — 수정 불가" style="background:#f4f1ea; width:112px;"' : `title="제품별 HS 직접 입력. 전자상거래는 6자리(0000.00)면 충분" style="width:112px;${_aiUnverifiedHs ? 'background:#fde8e8;border:1px solid #c94a4a;' : (_aiUnconfHs ? 'background:#fff8d6;border:1px solid #e8c14a;' : '')}"`} />
+        ${_aiUnverifiedHs ? `<div style="font-size:9px;color:#a02020;text-align:center;margin-top:1px;">⚠️ AI 제안 · 미검증(공식표에 없음)</div>`
+          : (_aiUnconfHs ? `<div style="font-size:9px;color:#a5820a;text-align:center;margin-top:1px;">🤖 AI 제안 · 실존코드(미확정)</div>`
+          : (_learnedHs ? `<div style="font-size:9px;color:#0a5a2e;text-align:center;margin-top:1px;">✅ 학습됨(관세사 확정)</div>` : ''))}
         ${_aiUnconfirmed ? `<button type="button" onclick="confirmOneProduct('${escAttr(p.id)}')" title="✓ 이 제품 AI추천 확정(미확정 표시 해제)" style="display:block;margin:2px auto 0;font-size:10px;padding:1px 7px;background:#e8f7ef;color:#0a5a2e;border:1px solid #0a7b40;border-radius:4px;cursor:pointer;">✓ 확정</button>` : ''}
         ${isConfirmed ? '' : `<button type="button" class="row-hs-suggest" data-pid="${escAttr(p.id)}" title="🤖 HS 추천 (영문명·재질 → 학습/AI)" style="margin-top:3px; font-size:10px; padding:2px 7px; background:linear-gradient(135deg,#1B5E9A,#2872B5); color:#fff; border:none; border-radius:4px; cursor:pointer;">🤖 추천</button>`}
         ${autoFilled ? '<div style="font-size:9px;color:var(--blue);margin-top:2px;">' + (currentLang==='ko'?'자동':currentLang==='zh'?'自动':'auto') + '</div>' : ''}
@@ -17808,7 +17817,7 @@ async function generateTyredsManifest() {
       prodsO.forEach((p, i) => {
         const pf = p.fields || {}; const b = 22 + i*4;
         const dan  = parseFloat(pf['단가CNY']) || 0;
-        if (/AI번역\(미확정\)|AI-HS추천\(미확정\)/.test(String(pf['관세사메모'] || ''))) _warnUnconf.push(`${of['주문번호']||''}:${pf['상품ID']||''}`);   // [C] AI 미확정 제품
+        if (/AI번역\(미확정\)|AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(String(pf['관세사메모'] || ''))) _warnUnconf.push(`${of['주문번호']||''}:${pf['상품ID']||''}`);   // [C] AI 미확정 제품
         row[b]   = pf['통관품명_영문'] || '';                   // 상품명(n)
         row[b+1] = 'PC';                                       // 단위 상수
         row[b+2] = parseFloat(pf['수량']) || 0;                 // 수량

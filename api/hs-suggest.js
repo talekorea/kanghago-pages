@@ -11,6 +11,8 @@
 const { handleCors, readBody } = require('./_lib');
 // v3.2.33: tariff.json → public/data/로 이동 (Vercel은 public/만 정적 서빙). api 경로도 동기화.
 const TARIFF = require('../public/data/tariff.json');
+// v3.2.248: HS6 공식 검증용 — TARIFF(10자리 11,326건)를 6자리로 절단한 집합. 모듈 스코프 1회 생성(요청마다 재생성 금지).
+const HS6_SET = new Set(Object.keys(TARIFF).map(k => String(k).replace(/\D/g, '').slice(0, 6)).filter(x => x.length === 6));
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = 'claude-sonnet-4-5';
@@ -247,15 +249,27 @@ module.exports = async (req, res) => {
       });
     }
 
-    // [전자상거래] name2hs6 — 영문명 → HS 6자리(국제 공통)만. 10자리 추정·TARIFF 검증 없음(HS6는 국내표 밖). 조기 반환.
+    // [전자상거래] name2hs6 — 영문명 → HS 6자리(국제 공통)만. 10자리 추정 없음(HS6는 국내표 밖).
+    //   v3.2.248: TARIFF 10자리를 6자리로 절단한 HS6_SET으로 교차검증 — 삭제·필터링 없이 verified 플래그만 부착.
     if (modeIn === 'name2hs6') {
       if (!nameEn) return res.status(400).json({ ok: false, error: '영문 품명(nameEn) 필요 (name2hs6 모드)' });
       const aiCands = await callAnthropic('name2hs6', nameEn, material, '', '');
       const arr = Array.isArray(aiCands) ? aiCands : [];
       const hs6 = [...new Set(arr.map(c => String(c.hs6 || '').replace(/\D/g, '')).filter(h => h.length === 6))];
+      const hs6Candidates = hs6.slice(0, 2).map((h, i) => ({
+        hs6: h,
+        formatted: `${h.slice(0,4)}.${h.slice(4,6)}`,
+        reason: String((arr[i] || {}).reason || ''),
+        verified: HS6_SET.has(h),
+      }));
+      // verified:true 안정정렬 우선(동순위 원순서 보존) — 후보 삭제 금지, 순서만 재배치
+      const sorted = hs6Candidates
+        .map((c, i) => ({ c, i }))
+        .sort((a, b) => (b.c.verified === a.c.verified ? a.i - b.i : (b.c.verified ? 1 : -1)))
+        .map(x => x.c);
       return res.status(200).json({
         ok: true, mode: 'name2hs6',
-        hs6Candidates: hs6.slice(0, 2).map((h, i) => ({ hs6: h, formatted: `${h.slice(0,4)}.${h.slice(4,6)}`, reason: String((arr[i] || {}).reason || '') })),
+        hs6Candidates: sorted,
         warning: hs6.length ? '' : 'HS 6자리 확정 불가 — 수동 입력(억지 추정 안 함)',
       });
     }
