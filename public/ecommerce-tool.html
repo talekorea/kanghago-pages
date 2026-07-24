@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.5</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.6</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -17678,9 +17678,37 @@ function _renderAlicoinDeductions(shipDate, promoted, undetermined, emptyNameOrd
 // ═══════════════════════════════════════════════════════════════════════
 // 원본 142칸 헤더(海运=空运 동일). 공백·개행 원본 그대로 — 절대 정규화·재생성 금지.
 const TYREDS_HEADERS = ["NO", "주문번호", "운송장번호\n(H.BL NO#)", "발송지역\n(POL)", "발송인", "발송인주소", "수취인", "수취인연락처", "우편번호", "\n주소\n\n", "\n배송(송장출력)메모\n", "통관고유번호\n(사업자등록번호)", "1:목록(면세)                          2:일반(간이)", "\n상품 URL\n\n", "총포장갯수\n(Box수량)", "총중량\n(Kg)", "가로(m)", "세로(m)", "높이(m)", "ITEM (中文品名)", "규격/모델", "HS CODE", "\n상품명(1)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(2)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(3)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(4)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(5)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(6)\n\n", "\n단위\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(7)\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(8)\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(9)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(10)\n\n", "\n단위\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(11)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(12)\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(13)\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(14)\n\n", "\n단위\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(15)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(16)\n\n", "\n단위\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(17)\n\n", "\n단위\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(18)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(19)\n\n", "\n단위\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(20)\n", "\n단위\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(21)\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(22)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(23)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(24)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(25)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(26)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(27)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(28)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(29)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)", "\n상품명(30)\n\n", "\n단위\n\n", "수량      (내품갯수)", "개당단가           (USD)"];
-// M열 플래그(포워더 참고값) — 1=개인 목록통관 / 2=개인 간이통관(매니페스트에선 미사용) / 3=사업자 통관. 승격 판정은 청구 트랙에만 존재.
+// M열 플래그(포워더 참고값) — 1=개인 목록통관 / 2=개인 간이통관(물품가 $150 이상 OR 동일제품 수량 2개 이상 시 승격) / 3=사업자 통관.
 const SAEOP_FLAG = { '개인': 1, '사업자': 3 };
 const TYREDS_MAX_ITEMS = 30;   // 품목 슬롯(가로전개 W~EL). 초과 시 잘림 + 경고.
+
+// [ecommerce v0.6] M열 승격 판정 — 단일 함수(계산 로직 단일화). 2026-07-24 00-결정로그 확정.
+//   사업자=3 고정. 개인: ①물품가(부대비 제외, 매니페스트 트랙 원칙)USD환산 ≥150 → 2
+//   ②동일제품(영문명 소문자trim + HS6) 수량합 ≥2 → 2  ③그 외 1.
+//   ★환율 미확보 시 안전측 2(과소신고 방지) + 경고 반환 — 조용한 폴백 금지.
+function calcManifestFlag(bizPerson, prodsO, rateCnyUsd) {
+  if (bizPerson === '사업자') return { flag: 3 };
+  if (bizPerson !== '개인') return { flag: '' };   // 미상 — 기존과 동일(빈값, _warnM 대상)
+  if (!(rateCnyUsd > 0)) return { flag: 2, warn: '환율 미확보 — 안전측 2(간이통관) 처리' };
+
+  let totalCny = 0;
+  const groups = {};
+  (prodsO || []).forEach(p => {
+    const pf = p.fields || {};
+    const dan = parseFloat(pf['단가CNY']) || 0;
+    const qty = parseFloat(pf['수량']) || 0;
+    totalCny += dan * qty;
+    const en = String(pf['통관품명_영문'] || '').trim().toLowerCase();
+    const hs6 = String(pf['HS코드'] || '').replace(/\D/g, '').slice(0, 6);
+    const gk = en + '|' + hs6;
+    groups[gk] = (groups[gk] || 0) + qty;
+  });
+  const totalUsd = totalCny * rateCnyUsd;
+  if (totalUsd >= 150) return { flag: 2, reason: `물품가 $${totalUsd.toFixed(2)} ≥ $150` };
+  const maxGroupQty = Object.values(groups).reduce((m, v) => Math.max(m, v), 0);
+  if (maxGroupQty >= 2) return { flag: 2, reason: `동일제품(영문명+HS6) 수량 ${maxGroupQty}개 ≥ 2` };
+  return { flag: 1 };
+}
 // [ecommerce] 알리피드 구매수수료 요율표 — 구간 판정 = (구매비 + 현지배송비) 합계 CNY. ★반례 발견 시 여기만 수정.
 //   [하한, 상한(포함), kind, 값] · kind='flat'=정액¥ / 'rate'=비율. 반올림=올림(ceil, 0자리).
 //   실측 검증: 260719001 (1260+25=1285) → 8% → ceil(102.8)=103 (팝업값 일치).
@@ -17767,7 +17795,7 @@ async function generateTyredsManifest() {
     } catch (e) {}
     // 행 빌드 (행=Order), 통관구분으로 海运/空运 분리
     const seaRows = [], airRows = []; let truncated = 0;
-    const _warnL = [], _warnM = [], _warnUnconf = [];   // [C]L누락 / [D]M빈값 / [전자상거래C]AI 미확정 제품 — 목록
+    const _warnL = [], _warnM = [], _warnUnconf = [], _warnRate = [];   // [C]L누락 / [D]M빈값 / [전자상거래C]AI 미확정 제품 / [ecom-v0.6]M 환율미확보 — 목록
     ecomOrders.forEach(o => {
       const of = o.fields || {};
       const sid = (of.Shipment || []).find(id => shipById[id]);
@@ -17798,11 +17826,14 @@ async function generateTyredsManifest() {
       //   ★Shipments.수취_통관부호(사서함 대표값) 폴백 제거 — 다른 수취인 부호 오적용=통관사고 방지.
       row[11] = String(of['수취_통관부호'] || '').trim()
               || (bizPerson === '사업자' ? (cust['사업자번호']||'') : (bizPerson === '개인' ? (cust['통관고유부호']||'') : ''));
-      row[12] = (bizPerson && SAEOP_FLAG[bizPerson] != null) ? SAEOP_FLAG[bizPerson] : '';  // M 플래그(주문단위 bizPerson)
+      // [ecom-v0.6] M 플래그 — 단일 판정함수(계산 로직 단일화). prodsO는 아래에서 재사용(30건 초과 절단 전 시점).
+      const _mResult = calcManifestFlag(bizPerson, prodsO, rateCnyUsd);
+      row[12] = _mResult.flag;
       // [C] L 통관고유번호 누락 / [D] M 사업자개인 빈값 집계(주문번호+사서함) — 제출 불가 경고용
       const _ono = `${of['주문번호']||''}(${sf['사서함']||''})`;
       if (!row[11]) _warnL.push(_ono);
       if (row[12] === '') _warnM.push(_ono);
+      if (_mResult.warn) _warnRate.push(`${_ono}: ${_mResult.warn}`);
       row[13] = p0['제품링크'] || 'https://1688.com/';          // N 상품URL
       row[14] = box.count;                                     // O 박스수(사서함 집계)
       row[15] = box.kg;                                        // P 총중량 kg
@@ -17846,10 +17877,11 @@ async function generateTyredsManifest() {
       return rows.length;
     }
     // [C][D] ★필수칸 누락 경고 — 생성 전 알림(생성은 막지 않음, 초안 확인용). 도구가 못 만드는 값(통관고유번호·사업자개인)은 수동 채움 필요.
-    if (_warnL.length || _warnM.length || _warnUnconf.length) {
+    if (_warnL.length || _warnM.length || _warnUnconf.length || _warnRate.length) {
       const _lines = [];
       if (_warnL.length) _lines.push(`⛔ L 통관고유번호 누락 ${_warnL.length}건 — 제출 불가 (Customers에 사업자번호/통관고유부호 등록 필요)\n   ${_warnL.slice(0,8).join(', ')}${_warnL.length>8?' 외':''}`);
       if (_warnM.length) _lines.push(`⛔ M 통관유형(사업자개인) 빈값 ${_warnM.length}건 — M열 빈칸으로 나감 (Shipments.사업자개인 채움 필요)\n   ${_warnM.slice(0,8).join(', ')}${_warnM.length>8?' 외':''}`);
+      if (_warnRate.length) _lines.push(`⚠ M 승격판정 환율 미확보 ${_warnRate.length}건 — 안전측 2(간이통관) 처리됨(과소신고 방지). 환율 확보 후 재생성 권장\n   ${_warnRate.slice(0,8).join(', ')}${_warnRate.length>8?' 외':''}`);
       if (_warnUnconf.length) _lines.push(`⚠ AI 추천 미확정 제품 ${_warnUnconf.length}건 — [✓ 확정] 검토 권장 (영문명·HS 노란배경)\n   ${_warnUnconf.slice(0,8).join(', ')}${_warnUnconf.length>8?' 외':''}`);
       const _msg = `[매니페스트 필수칸 누락 — 초안은 생성됩니다]\n\n${_lines.join('\n\n')}\n\n그대로 생성(초안)할까요?`;
       if (!confirm(_msg)) { toastWarn && toastWarn('매니페스트 생성 취소 — 누락값 채운 뒤 다시'); return; }
@@ -17859,6 +17891,7 @@ async function generateTyredsManifest() {
     let msg = `매니페스트 생성: 海运 ${nSea}행 / 空运 ${nAir}행`;
     if (_warnL.length) msg += ` · ⛔L누락 ${_warnL.length}`;
     if (_warnM.length) msg += ` · ⛔M빈값 ${_warnM.length}`;
+    if (_warnRate.length) msg += ` · ⚠환율미확보(안전측2) ${_warnRate.length}`;
     if (truncated) msg += ` ⚠품목 ${truncated}개 30초과 잘림`;
     (nSea+nAir) ? (toastSuccess ? toastSuccess(msg) : alert(msg)) : (toastWarn ? toastWarn('생성할 전자상거래 행 없음') : alert('행 없음'));
     console.log('[TYREDS]', msg, { seaRows: nSea, airRows: nAir, truncated });
