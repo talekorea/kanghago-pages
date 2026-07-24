@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.13</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.14</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -17859,6 +17859,15 @@ function calcEcomFreightCny(box, mode) {
 
 // 사서함 전체 청구액(CNY) — shipment={ mode:'해운'|'항공'|'특송', bizPerson:'개인'|'사업자',
 //   rateCnyUsd, recipients:[{ name, boxes:[{boxId,무게KG,가로cm,세로cm,높이cm}], products:[{fields:{...}}] }] }
+// [ecom-v0.14] 수취인 동일성 키 — 이름만으로 판단 금지(동명이인 오판 방지).
+//   통관부호 있으면 최우선(가장 신뢰). 없으면 이름+연락처+주소 정규화(공백·하이픈 제거) 조합.
+//   ★수취인별 소계 묶음(buildManifestData)과 G3 혼재 판정(calcEcomBillingCny)이 반드시 이 함수를 공유.
+function ecomRecipientKey(of) {
+  const norm = s => String(s || '').replace(/[\s\-]/g, '').trim();
+  const code = norm(of && of['수취_통관부호']);
+  if (code) return 'CODE:' + code;
+  return 'NM:' + norm(of && of['수취인']) + '|PH:' + norm(of && of['연락처']) + '|AD:' + norm(of && of['수취인주소']);
+}
 // G2: recipient.boxes가 비어있음 → 그 수취인 "박스 미지정"(미확정).
 // G3: 같은 boxId가 2명 이상 수취인에 걸쳐 있으면 "박스 혼재" 하드 차단(전체 미확정, 안분 안 함).
 // 특송: 요율표 없음 → 계산 자체를 하지 않고 즉시 미확정 반환(해운·항공 대체 금지).
@@ -17870,16 +17879,21 @@ function calcEcomBillingCny(shipment) {
   const recipients = (shipment && shipment.recipients) || [];
 
   // G3: 박스 혼재 사전검사(전 수취인 스캔) — 안분 없이 하드 차단.
-  //   ★소유자 키 = 수취인 인덱스(고유 식별자), r.name 금지 — 동명이인(같은 수취인명, 다른 주문)이면
-  //   name 기준 Set이 size=1로 붕괴해 혼재를 놓친다(실 E2E 테스트로 발견된 실측 버그, 2026-07-25 수정).
+  //   ★소유자 키 = r.recipientKey(호출측이 ecomRecipientKey로 계산해 넘김) 우선.
+  //   r.name 금지(동명이인 다른 사람을 같은 사람으로 오판) — index만 쓰면 반대로 동일인 다주문 합포장을
+  //   거짓양성(혼재)으로 오판(2026-07-25 실측 발견). recipientKey 없으면(구 호출부·단위테스트 호환)
+  //   인덱스로 폴백해 최소한 "이 호출 안에서 서로 다른 항목"만 구분.
   const boxOwners = {};
   recipients.forEach((r, idx) => (r.boxes || []).forEach(b => {
     if (!b || !b.boxId) return;
-    (boxOwners[b.boxId] || (boxOwners[b.boxId] = new Set())).add(idx);
+    const ownerKey = r.recipientKey != null ? r.recipientKey : `idx:${idx}`;
+    (boxOwners[b.boxId] || (boxOwners[b.boxId] = new Set())).add(ownerKey);
   }));
   const mixedBoxIds = Object.keys(boxOwners).filter(id => boxOwners[id].size > 1);
   if (mixedBoxIds.length) {
-    const names = [...new Set(mixedBoxIds.flatMap(id => [...boxOwners[id]].map(idx => recipients[idx].name)))];
+    const ownerKeyToName = {};
+    recipients.forEach((r, idx) => { ownerKeyToName[r.recipientKey != null ? r.recipientKey : `idx:${idx}`] = r.name; });
+    const names = [...new Set(mixedBoxIds.flatMap(id => [...boxOwners[id]].map(k => ownerKeyToName[k])))];
     return { ok: false, reason: `박스 혼재(수취인 2명 이상): 박스 ${mixedBoxIds.join(', ')} — 관련 수취인 ${names.join(', ')} — 안분 금지, 전체 미확정` };
   }
 
@@ -18074,9 +18088,18 @@ async function buildManifestData(shipDate) {
     const rateCnyUsd = parseFloat(sf['환율CNY_USD']) || 0;
     const ordersInShip = ecomOrders.filter(o => ((o.fields||{}).Shipment || []).includes(sid));
     const boxesByNum = (boxByShipId[sid] || {}).byNumber || {};
-    const myRecipients = ordersInShip.map(o => {
+    // [ecom-v0.14] ★수취인 동일성 = ecomRecipientKey(같은 사람의 여러 주문 = 정상 합포장, G3 오탐 방지).
+    //   같은 키의 주문들을 하나의 recipient로 병합(제품·박스 합산) — G3는 병합된 배열 위에서 자연히 정확해짐.
+    const groupsByKey = {};
+    ordersInShip.forEach(o => {
       const of = o.fields || {};
-      const prodsO = prodByOrderId[o.id] || [];
+      const key = ecomRecipientKey(of);
+      if (!groupsByKey[key]) groupsByKey[key] = { key, name: of['수취인'] || of['주문번호'] || o.id, orders: [] };
+      groupsByKey[key].orders.push(o);
+    });
+    const myRecipients = Object.values(groupsByKey).map(g => {
+      const prodsO = g.orders.flatMap(o => prodByOrderId[o.id] || []);
+      const orderNos = g.orders.map(o => (o.fields||{})['주문번호'] || '').filter(Boolean);
       const allBoxed = prodsO.length > 0 && prodsO.every(p => String((p.fields||{})['박스번호']||'').trim());
       let boxes = [], boxDetail = [];
       if (allBoxed) {
@@ -18090,7 +18113,7 @@ async function buildManifestData(shipDate) {
           return { boxId: b.boxId, actualKg: parseFloat(b.무게KG)||0, billKg: fr.billKg, volKg: fr.volKg, ok: fr.ok, reason: fr.reason };
         });
       }
-      return { name: of['수취인'] || of['주문번호'] || o.id, orderNo: of['주문번호'] || '', boxes, products: prodsO, _boxDetail: boxDetail };
+      return { name: g.name, recipientKey: g.key, orderNo: orderNos.join(', '), boxes, products: prodsO, _boxDetail: boxDetail };
     });
     const billingResult = calcEcomBillingCny({ mode, bizPerson: bizPersonShip, rateCnyUsd, recipients: myRecipients });
     // ★특송(요율 미정) 등 shipment-level 즉시반환은 recipients 자체가 undefined — []로 대체하면 렌더가
