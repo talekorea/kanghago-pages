@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.12</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.13</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -17870,14 +17870,17 @@ function calcEcomBillingCny(shipment) {
   const recipients = (shipment && shipment.recipients) || [];
 
   // G3: 박스 혼재 사전검사(전 수취인 스캔) — 안분 없이 하드 차단.
+  //   ★소유자 키 = 수취인 인덱스(고유 식별자), r.name 금지 — 동명이인(같은 수취인명, 다른 주문)이면
+  //   name 기준 Set이 size=1로 붕괴해 혼재를 놓친다(실 E2E 테스트로 발견된 실측 버그, 2026-07-25 수정).
   const boxOwners = {};
-  recipients.forEach(r => (r.boxes || []).forEach(b => {
+  recipients.forEach((r, idx) => (r.boxes || []).forEach(b => {
     if (!b || !b.boxId) return;
-    (boxOwners[b.boxId] || (boxOwners[b.boxId] = new Set())).add(r.name);
+    (boxOwners[b.boxId] || (boxOwners[b.boxId] = new Set())).add(idx);
   }));
   const mixedBoxIds = Object.keys(boxOwners).filter(id => boxOwners[id].size > 1);
   if (mixedBoxIds.length) {
-    return { ok: false, reason: `박스 혼재(수취인 2명 이상): ${mixedBoxIds.join(', ')} — 안분 금지, 전체 미확정` };
+    const names = [...new Set(mixedBoxIds.flatMap(id => [...boxOwners[id]].map(idx => recipients[idx].name)))];
+    return { ok: false, reason: `박스 혼재(수취인 2명 이상): 박스 ${mixedBoxIds.join(', ')} — 관련 수취인 ${names.join(', ')} — 안분 금지, 전체 미확정` };
   }
 
   const recipientResults = [];
@@ -17954,7 +17957,7 @@ async function buildManifestData(shipDate) {
   for (const chunk of chunkArray(onoList, 30)) {
     const pf = `OR(${chunk.map(no => `SEARCH('${String(no).replace(/'/g,"\\'")}',ARRAYJOIN({Order}))`).join(',')})`;
     // [ecom-v0.9] ★422 수정: '현지배송비CNY'는 Products에 없음(Orders 전용 필드) — 매니페스트는 원래도 안 씀(죽은 fetch), 제거.
-    try { prods = prods.concat(await apiPaged(`/${TABLES.Products}?filterByFormula=${encodeURIComponent(pf)}&fields[]=통관품명_영문&fields[]=통관품명_한글&fields[]=수량&fields[]=단가CNY&fields[]=구매수수료CNY&fields[]=Material&fields[]=HS코드&fields[]=제품링크&fields[]=pro_seq&fields[]=Order`)); } catch (e) {}
+    try { prods = prods.concat(await apiPaged(`/${TABLES.Products}?filterByFormula=${encodeURIComponent(pf)}&fields[]=통관품명_영문&fields[]=통관품명_한글&fields[]=수량&fields[]=단가CNY&fields[]=구매수수료CNY&fields[]=Material&fields[]=HS코드&fields[]=제품링크&fields[]=pro_seq&fields[]=Order&fields[]=박스번호`)); } catch (e) {}   // [ecom-v0.13] 박스번호 추가(Phase1-B 청구 매핑용)
   }
   const prodByOrderId = {};
   prods.forEach(p => { const oid = ((p.fields||{}).Order || [])[0]; if (oid && orderById[oid]) (prodByOrderId[oid] = prodByOrderId[oid] || []).push(p); });
@@ -17964,10 +17967,11 @@ async function buildManifestData(shipDate) {
   await Promise.all(ships.filter(s=>shipById[s.id]).map(async s => {
     const mailbox = (s.fields||{})['사서함'] || '';
     let boxes = [];
-    try { boxes = await apiPaged(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=무게KG&fields[]=부피CBM&fields[]=가로cm&fields[]=세로cm&fields[]=높이cm`); } catch (e) {}
+    try { boxes = await apiPaged(`/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${mailbox}',ARRAYJOIN({Shipment}))`)}&fields[]=무게KG&fields[]=부피CBM&fields[]=가로cm&fields[]=세로cm&fields[]=높이cm&fields[]=박스번호`); } catch (e) {}   // [ecom-v0.13] 박스번호 추가
     let kg = 0, maxCbm = -1, dim = null;
-    boxes.forEach(b => { const bf = b.fields||{}; kg += parseFloat(bf['무게KG'])||0; const cb = parseFloat(bf['부피CBM'])||0; if (cb > maxCbm) { maxCbm = cb; const w=parseFloat(bf['가로cm'])||0,h=parseFloat(bf['세로cm'])||0,d=parseFloat(bf['높이cm'])||0; dim = (w||h||d)?[w,h,d]:null; } });
-    boxByShipId[s.id] = { count: boxes.length, kg: Math.round(kg*100)/100, dim };   // dim=[cm,cm,cm] 최대박스
+    const byNumber = {};   // [ecom-v0.13] Phase1-B 청구 매핑 — 박스번호(text key) → 박스 fields
+    boxes.forEach(b => { const bf = b.fields||{}; kg += parseFloat(bf['무게KG'])||0; const cb = parseFloat(bf['부피CBM'])||0; if (cb > maxCbm) { maxCbm = cb; const w=parseFloat(bf['가로cm'])||0,h=parseFloat(bf['세로cm'])||0,d=parseFloat(bf['높이cm'])||0; dim = (w||h||d)?[w,h,d]:null; } const bn = String(bf['박스번호']||'').trim(); if (bn) byNumber[bn] = bf; });
+    boxByShipId[s.id] = { count: boxes.length, kg: Math.round(kg*100)/100, dim, byNumber };   // dim=[cm,cm,cm] 최대박스
   }));
   // (5) Customers — base AP → 사업자번호/통관고유부호
   const custByBase = {};
@@ -18055,11 +18059,56 @@ async function buildManifestData(shipDate) {
   seaRows.forEach((r,i) => r[0] = i+1);
   airRows.forEach((r,i) => r[0] = i+1);
   expressRows.forEach((r,i) => r[0] = i+1);
+
+  // (6) [ecom-v0.13 Phase1-B] 사서함별 예상 청구(알리코인 차감) — Phase1-A 엔진(calcEcomFreightCny/calcEcomBillingCny) 재사용, 조회 전용.
+  //   ★박스↔수취인 매핑 = Products.박스번호(수기) → Boxes.박스번호 텍스트 매칭이 유일 경로(BoxAssignments 0건 확정, 00-결정로그 참조).
+  const _bucketMode = { sea: '해운', air: '항공', express: '특송' };
+  const shipBilling = {};
+  Object.keys(shipById).forEach(sid => {
+    const sf = shipById[sid].fields || {};
+    const key = sf['사서함'] || '';
+    const bucket = (_shipSummary[key] || {}).bucket;
+    if (!bucket) return;   // 분류 불가 사서함(이미 _excludedShip에 집계) — 청구도 스킵
+    const mode = _bucketMode[bucket];
+    const bizPersonShip = String(sf['사업자개인'] || '').trim();   // ★핸들링·전체판정 = 사서함 대표값(주문단위 M-flag와 별개)
+    const rateCnyUsd = parseFloat(sf['환율CNY_USD']) || 0;
+    const ordersInShip = ecomOrders.filter(o => ((o.fields||{}).Shipment || []).includes(sid));
+    const boxesByNum = (boxByShipId[sid] || {}).byNumber || {};
+    const myRecipients = ordersInShip.map(o => {
+      const of = o.fields || {};
+      const prodsO = prodByOrderId[o.id] || [];
+      const allBoxed = prodsO.length > 0 && prodsO.every(p => String((p.fields||{})['박스번호']||'').trim());
+      let boxes = [], boxDetail = [];
+      if (allBoxed) {
+        const boxNums = [...new Set(prodsO.map(p => String((p.fields||{})['박스번호']||'').trim()))];
+        boxes = boxNums.map(bn => {
+          const bf = boxesByNum[bn] || {};
+          return { boxId: bn, 무게KG: bf['무게KG'], 가로cm: bf['가로cm'], 세로cm: bf['세로cm'], 높이cm: bf['높이cm'] };
+        });
+        boxDetail = boxes.map(b => {
+          const fr = calcEcomFreightCny(b, mode);   // ★같은 함수 재호출(재구현 아님) — billKg/volKg 표시용 상세만 추출
+          return { boxId: b.boxId, actualKg: parseFloat(b.무게KG)||0, billKg: fr.billKg, volKg: fr.volKg, ok: fr.ok, reason: fr.reason };
+        });
+      }
+      return { name: of['수취인'] || of['주문번호'] || o.id, orderNo: of['주문번호'] || '', boxes, products: prodsO, _boxDetail: boxDetail };
+    });
+    const billingResult = calcEcomBillingCny({ mode, bizPerson: bizPersonShip, rateCnyUsd, recipients: myRecipients });
+    // ★특송(요율 미정) 등 shipment-level 즉시반환은 recipients 자체가 undefined — []로 대체하면 렌더가
+    //   "정상인데 수취인 0명"과 구분 못 함(빈 배열은 truthy). undefined는 그대로 보존.
+    const recipientsOut = billingResult.recipients
+      ? billingResult.recipients.map((r, i) => Object.assign({}, r, {
+          orderNo: myRecipients[i].orderNo, boxDetail: myRecipients[i]._boxDetail,
+        }))
+      : undefined;
+    shipBilling[key] = { mode, bizPerson: bizPersonShip, ok: billingResult.ok, reason: billingResult.reason,
+      handlingCny: billingResult.handlingCny, totalCny: billingResult.totalCny, recipients: recipientsOut };
+  });
+
   return {
     ok: true, shipDate, yyyymmdd,
     seaRows, airRows, expressRows, truncated,
     warnL: _warnL, warnM: _warnM, warnUnconf: _warnUnconf, warnRate: _warnRate, warnVague: _warnVague,
-    excludedShip: _excludedShip, shipSummary: _shipSummary,
+    excludedShip: _excludedShip, shipSummary: _shipSummary, shipBilling,
   };
 }
 
@@ -18110,6 +18159,74 @@ async function fetchManifestPreview() {
   }
 }
 
+// [ecom-v0.13 Phase1-B] 가드 사유 → 화면 표시 문구 매핑(계산 로직 불변, 표시 전용).
+function _ecomGuardLabel(reason) {
+  if (!reason) return '';
+  if (/미계량/.test(reason)) return '박스 미계량 (무게·치수 입력 필요)';
+  if (/박스 미지정/.test(reason)) return '박스번호 미지정 (§1 제품 박스번호 입력 필요)';
+  if (/혼재/.test(reason)) return '박스 혼재 (수취인 2명 이상 — 박스 분리 필요)';
+  if (/특송|요율 미정/.test(reason)) return '요율 미정 (포워더 요율표 대기)';
+  return reason;
+}
+// [ecom-v0.13 Phase1-B] 사서함별 예상 청구 블록 — data.shipBilling(buildManifestData 결과) 그대로 사용, 재조회 없음.
+function _renderEcomBillingBlock(shipBilling) {
+  const keys = Object.keys(shipBilling || {});
+  if (!keys.length) return '';
+  let grandUnconfirmedCount = 0, grandTotalCny = 0;
+
+  const blocks = keys.map(key => {
+    const sb = shipBilling[key];
+    if (!sb.recipients) {   // 특송 등 사서함(shipment) 단위 즉시 미확정
+      grandUnconfirmedCount++;
+      return `<div style="margin:10px 0;padding:10px 14px;background:#fdecef;border:1px solid #e88aa0;border-radius:6px;">
+        <div style="font-weight:700;color:#1B2A3B;margin-bottom:4px;">${escAttr(key)} <span style="font-weight:400;color:#888;">(${escAttr(sb.mode)}·${escAttr(sb.bizPerson||'미상')})</span></div>
+        <div style="color:#7a0c28;font-size:12px;">⛔ ${escAttr(_ecomGuardLabel(sb.reason))}</div>
+      </div>`;
+    }
+    const rows = sb.recipients.map(r => {
+      if (!r.ok) {
+        grandUnconfirmedCount++;
+        return `<tr><td style="padding:4px 8px;">${escAttr(r.name)}${r.orderNo?` <span style="color:#999;font-size:10px;">(${escAttr(r.orderNo)})</span>`:''}</td><td colspan="4" style="padding:4px 8px;color:#7a0c28;">⛔ ${escAttr(_ecomGuardLabel(r.reason))}</td></tr>`;
+      }
+      const weightLabel = (r.boxDetail||[]).map(d => `${d.billKg}kg(${d.volKg > d.actualKg ? '부피' : '실중량'})`).join(' + ');
+      return `<tr>
+        <td style="padding:4px 8px;">${escAttr(r.name)}${r.orderNo?` <span style="color:#999;font-size:10px;">(${escAttr(r.orderNo)})</span>`:''}</td>
+        <td style="padding:4px 8px;text-align:right;">${(r.boxDetail||[]).length}</td>
+        <td style="padding:4px 8px;text-align:right;font-family:ui-monospace,monospace;">${escAttr(weightLabel)}</td>
+        <td style="padding:4px 8px;text-align:right;font-family:ui-monospace,monospace;">¥${r.freightCny.toFixed(2)}</td>
+        <td style="padding:4px 8px;text-align:right;font-family:ui-monospace,monospace;">${r.promoFeeCny ? ('¥'+r.promoFeeCny.toFixed(2)) : '—'}</td>
+        <td style="padding:4px 8px;text-align:right;font-family:ui-monospace,monospace;font-weight:700;">¥${r.subtotalCny.toFixed(2)}</td>
+      </tr>`;
+    }).join('');
+    const unconfirmedInShip = sb.recipients.filter(r => !r.ok).length;
+    const totalLine = sb.ok
+      ? `<div style="text-align:right;margin-top:6px;font-weight:700;color:#1B2A3B;">사서함 합계 ¥${sb.totalCny.toFixed(2)}</div>`
+      : `<div style="text-align:right;margin-top:6px;font-weight:700;color:#c0392b;">미확정 ${unconfirmedInShip}건 — 합계 산출 불가</div>`;
+    if (sb.ok) grandTotalCny += sb.totalCny;
+    return `<div style="margin:10px 0;padding:10px 14px;background:#f9f9f9;border:1px solid #ddd;border-radius:6px;">
+      <div style="font-weight:700;color:#1B2A3B;margin-bottom:6px;">${escAttr(key)} <span style="font-weight:400;color:#888;">(${escAttr(sb.mode)}·${escAttr(sb.bizPerson||'미상')})</span></div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="color:#888;"><th style="text-align:left;padding:4px 8px;">수취인</th><th style="text-align:right;padding:4px 8px;">박스수</th><th style="text-align:right;padding:4px 8px;">적용중량</th><th style="text-align:right;padding:4px 8px;">운송비</th><th style="text-align:right;padding:4px 8px;">승격료</th><th style="text-align:right;padding:4px 8px;">소계</th></tr></thead><tbody>${rows}</tbody></table>
+      <div style="text-align:right;margin-top:4px;font-size:11px;color:#999;">핸들링 ¥${sb.handlingCny.toFixed(2)} (사서함당 1회)</div>
+      ${totalLine}
+    </div>`;
+  });
+
+  const grandLine = grandUnconfirmedCount
+    ? `<div style="text-align:right;margin-top:10px;font-weight:800;color:#c0392b;font-size:14px;">전체 합계: 미확정 ${grandUnconfirmedCount}건 — 합계 산출 불가</div>`
+    : `<div style="text-align:right;margin-top:10px;font-weight:800;color:#1B2A3B;font-size:14px;">전체 합계 ¥${grandTotalCny.toFixed(2)}</div>`;
+
+  return `
+    <div style="margin-top:16px;padding:12px 14px;background:#fff;border:2px solid #C9973A;border-radius:8px;">
+      <div style="font-weight:800;color:#1B2A3B;font-size:14px;margin-bottom:8px;">💰 예상 청구 (알리코인 차감)</div>
+      ${blocks.join('')}
+      ${grandLine}
+      <div style="margin-top:10px;font-size:11px;color:#999;line-height:1.6;">
+        국내배송비 포함 요율입니다.<br>
+        이형화물은 CJ대한통운 → 경동택배 이관, 착불입니다. 착불 요금은 강하고와 무관합니다.
+      </div>
+    </div>
+  `;
+}
 // [ecom-v0.9] 미리보기 렌더 — 사서함 목록+분류+건수+차단사유. 차단 시 생성 버튼 숨김(조회/생성 분리).
 function renderManifestPreview(data) {
   const BUCKET_LABEL = { sea: '해운(海运)', air: '항공(空运)', express: '특송' };
@@ -18149,6 +18266,7 @@ function renderManifestPreview(data) {
     ${blockHtml}
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;"><thead><tr style="background:#f4ecd8;"><th style="padding:5px 8px;text-align:left;">사서함</th><th style="padding:5px 8px;text-align:left;">분류</th><th style="padding:5px 8px;text-align:right;">건수</th></tr></thead><tbody>${shipRows}</tbody></table>
     ${softHtml}
+    ${_renderEcomBillingBlock(data.shipBilling)}
     ${showGenerate
       ? `<div style="text-align:right;margin-top:10px;"><button class="primary" onclick="confirmGenerateManifest()" style="padding:8px 16px;font-size:13px;">📄 매니페스트 생성</button></div>`
       : `<div style="text-align:center;margin-top:10px;color:#999;font-size:12px;">위 사유를 해결한 뒤 다시 조회하세요.</div>`}
