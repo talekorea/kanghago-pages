@@ -44,7 +44,7 @@ async function fetchOfferDetail(offerId) {
   try {
     r = await fetch(`${ALIBABA_PROXY_URL}/api/product`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ALIBABA_PROXY_TOKEN}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ALIBABA_PROXY_TOKEN}`, 'X-Caller': 'invoice' },
       body: JSON.stringify({ offerId }),
       signal: controller.signal,
     });
