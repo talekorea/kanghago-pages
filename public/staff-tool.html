@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.247</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.248</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -19133,16 +19133,51 @@ async function copyBookingText() {
 const _CO_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 function _coPortToken(s){ return String(s||'').split(',')[0].trim().toUpperCase(); }   // "SHIDAO, CHINA" → "SHIDAO"
 function _coMostCommon(arr){ const m={}; let best='', bn=0; arr.forEach(v=>{ if(!v) return; m[v]=(m[v]||0)+1; if(m[v]>bn){bn=m[v];best=v;} }); return best; }
-function buildCoRequestText() {
+// [v3.2.248] ★CO 요청 문구 = 발급 대상만(전체 화물 아님). 발급판정은 기존 calcCoCny()
+//   (절세연동 3단계: ≥¥200→200/≥¥100→100/<¥100→미발급) 그대로 재사용 — 새 판정 작성 금지.
+//   calcCoCny()는 단건 로드 전제(state.products/boxes/DOM rate) → 부킹 배치 IP(17643~)와 동일하게
+//   _batchMode로 사서함마다 loadShipment() 후 판정, 끝나면 원래 사서함 복원.
+async function buildCoRequestText() {
   const rows = (bookingState.rows || []);
   const warnings = [];
   if (!rows.length) return { text: '', warnings: ['선적일을 먼저 조회하세요'] };
   // 화물만 (택배 제외). 밀크런 등은 CO(해상 LCL) 대상 아님 — '화물'/'cargo'만.
   const cargo = rows.filter(r => r.shipMethod === '화물' || r.shipMethod === 'cargo');
   if (!cargo.length) return { text: '', warnings: ['이 선적일에 화물 사서함이 없습니다 (택배만)'] };
-  // 선적일별 그룹 (range7이면 날짜별 블록)
+
+  const origShipId = (state.shipment && state.shipment.id) || '';
+  const eligible = [];
+  const rateFailMailboxes = [];
+  state._batchMode = true; state._batchWriteBlocked = 0;
+  if (typeof _batchProgress !== 'undefined' && _batchProgress.show) _batchProgress.show('CO 발급 대상 판정 중');
+  try {
+    for (let i = 0; i < cargo.length; i++) {
+      const r = cargo[i];
+      if (typeof _batchProgress !== 'undefined' && _batchProgress.step) _batchProgress.step(`CO 발급판정 중… — ${r.mailbox}`, i + 1, cargo.length);
+      try {
+        await loadShipment(r.id);
+        const _rate = parseFloat((document.getElementById('rateCnyKrw') || {}).value) || 0;
+        if (!(_rate > 0)) { rateFailMailboxes.push(r.mailbox); continue; }   // 판정불가 → 안전측 제외(임의 포함 금지)
+        const _co = (typeof calcCoCny === 'function') ? calcCoCny() : 0;   // ★기존 판정함수 그대로 호출
+        if (_co > 0) eligible.push(r);
+      } catch (e) { rateFailMailboxes.push(r.mailbox); }
+    }
+  } finally {
+    state._batchMode = false;
+    if (origShipId) { try { await loadShipment(origShipId); } catch (e) {} }   // ★작업 사서함 복원(화면 원복)
+    if (typeof _batchProgress !== 'undefined' && _batchProgress.hide) _batchProgress.hide();
+  }
+  if (rateFailMailboxes.length) warnings.push(`환율 미로드로 판정 불가 ${rateFailMailboxes.length}건(${rateFailMailboxes.join(', ')}) — CO 요청에서 제외됨, 별도 확인 필요`);
+
+  if (!eligible.length) {
+    return { text: '', warnings: [`발급 대상 없음(전체 절세액 기준 미달) — 화물 ${cargo.length}건 중 발급 대상 0건`, ...warnings] };
+  }
+
+  // 선적일별 그룹 (range7이면 날짜별 블록) — ★대상만 eligible로 교체, 문구 산식은 불변.
   const byDate = {};
-  cargo.forEach(r => { const d = r.shipDate || ''; (byDate[d] = byDate[d] || []).push(r); });
+  eligible.forEach(r => { const d = r.shipDate || ''; (byDate[d] = byDate[d] || []).push(r); });
+  const totalByDate = {};
+  cargo.forEach(r => { const d = r.shipDate || ''; totalByDate[d] = (totalByDate[d] || 0) + 1; });
   const blocks = [];
   Object.keys(byDate).sort().forEach(d => {
     const grp = byDate[d];
@@ -19165,6 +19200,8 @@ function buildCoRequestText() {
     const arrival = 'INCHON';   // 도착항 필드 없음 → 기본
     const kind = 'LCL';         // FCL 구분 필드 없음 → LCL 고정
     const cnt = grp.length;
+    const total = totalByDate[d] || cnt;
+    if (total > cnt) warnings.push(`[${mD}] 전체 ${total}건 중 ${cnt}건 발급 대상 — 나머지 ${total - cnt}건 제외(절세 기준 미달)`);
     blocks.push(
       `您好~\n` +
       `${mD} ${kind} ${cnt}票，麻烦帮忙出一下CO~\n` +
@@ -19176,7 +19213,7 @@ function buildCoRequestText() {
   return { text: blocks.join('\n\n'), warnings: [...new Set(warnings)] };
 }
 async function copyCoRequest() {
-  const { text, warnings } = buildCoRequestText();
+  const { text, warnings } = await buildCoRequestText();
   if (!text) { if (typeof toastWarn === 'function') toastWarn(warnings[0] || 'CO 요청 메시지를 만들 수 없습니다'); else alert(warnings[0] || 'CO 요청 생성 불가'); return; }
   try {
     await navigator.clipboard.writeText(text);
