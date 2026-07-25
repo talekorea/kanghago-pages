@@ -18,6 +18,57 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = 'claude-sonnet-4-5';
 const MAX_TOKENS = 1024;
 
+// [ecom-v0.16 Phase2] link2en — 1688 링크(offerId) → 실제 중문 상품명/재질 → 영문 통관품명 변환.
+//   ★ALIBABA_PROXY_TOKEN은 사장님이 Vercel 대시보드에서 직접 등록(코드에 값 없음).
+const ALIBABA_PROXY_URL = process.env.ALIBABA_PROXY_URL || 'http://198.13.44.43:3688';
+const ALIBABA_PROXY_TOKEN = process.env.ALIBABA_PROXY_TOKEN;
+const PROXY_TIMEOUT_MS = 15000;
+const AI_TIMEOUT_MS = 30000;
+
+function extractOfferId(link) {
+  const s = String(link || '');
+  const m = s.match(/1688\.com\/offer\/(\d+)/) || s.match(/[?&]offerId=(\d+)/);
+  return m ? m[1] : null;
+}
+
+// 1688 프록시(POST /api/product) 호출 — 중문 상품명(subject) + 재질(材质 속성) 추출.
+//   ★재질 속성이 없는 리스팅(실측 6/12)은 실패가 아님 — materialCn=''로 정상 반환.
+async function fetchOfferDetail(offerId) {
+  if (!ALIBABA_PROXY_TOKEN) {
+    throw Object.assign(new Error('ALIBABA_PROXY_TOKEN 환경 변수가 설정되지 않았습니다'),
+      { hint: 'Vercel 대시보드(kanghago-pages) 환경 변수에 ALIBABA_PROXY_TOKEN 추가 + 재배포', stage: 'proxy' });
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+  let r;
+  try {
+    r = await fetch(`${ALIBABA_PROXY_URL}/api/product`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ALIBABA_PROXY_TOKEN}` },
+      body: JSON.stringify({ offerId }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    throw Object.assign(new Error('1688 프록시 연결 실패(타임아웃/네트워크)'), { hint: e.message, stage: 'proxy' });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!r.ok) throw Object.assign(new Error(`1688 프록시 HTTP ${r.status}`), { stage: 'proxy' });
+  const data = await r.json().catch(() => null);
+  const res = data && data.result;
+  if (!res || res.success !== true || !res.result) {
+    throw Object.assign(new Error((res && res.message) || '1688 상품 조회 실패(존재하지 않거나 비공개)'), { stage: 'proxy' });
+  }
+  const inner = res.result;
+  const subject = String(inner.subject || '').trim();
+  if (!subject) throw Object.assign(new Error('1688 응답에 상품명(subject) 없음'), { stage: 'proxy' });
+  let materialCn = '';
+  for (const a of (inner.productAttribute || [])) {
+    if (a.attributeName === '材质') { materialCn = String(a.value || '').trim(); break; }
+  }
+  return { subject, materialCn };
+}
+
 function normalize10(hsRaw) {
   const d = String(hsRaw || '').replace(/\D/g, '');
   return d.length === 10 ? d : (d.length > 10 ? d.slice(0, 10) : d);
@@ -116,6 +167,22 @@ function buildPrompt(mode, nameEn, material, hs10, nameKr) {
 **JSON 배열만 반환** — 설명 텍스트 금지:
 [{"nameEn":"vacuum flask","material":"stainless steel","hs10":"0000000000","reason":"한 줄 근거"}]`;
   }
+  if (mode === 'link2en') {
+    // [ecom-v0.16 Phase2] 1688 실제 상품정보(중문) → 영문 통관품명. nameEn=subject(중문), material=materialCn(중문) 재사용.
+    return `다음은 1688(중국 도매 플랫폼) 상품의 중국어 원문 정보다. 한국 수입통관 신고용 영문 품명으로 변환하라.
+- 중국어 상품명: ${nameEn || '(정보 없음)'}
+- 재질(중국어, 있으면): ${material || '(정보 없음)'}
+
+★규칙(매우 중요):
+- 마케팅 문구(可印LOGO·支持批发代发 같은 판촉/도매 안내 문구) · 브랜드명 · 수식어 · 연도 · 수량 제외.
+- 물품의 재질+용도가 드러나는 구체적 명칭(소문자 시작, 짧은 명사구, 영어).
+- food·snack·goods·products·supplies 같은 총칭 절대 금지 — 구체적으로 무엇인지 반드시 특정.
+- 재질은 영문으로 변환(예: 不锈钢→stainless steel). 재질 정보가 없으면 빈 문자열(임의값 금지).
+- 판단이 불가능하면 nameEn에 "UNKNOWN"만 반환(억지 추정 금지).
+
+**JSON 배열만 반환** — 설명 텍스트 금지:
+[{"nameEn":"...", "material":"...", "reason":"한 줄 근거"}]`;
+  }
   if (mode === 'hs2name') {
     const tariff = TARIFF[hs10];
     const tariffInfo = `공식 세율: A=${tariff.A}% / CN=${tariff.CN}% / E1=${tariff.E1}%`;
@@ -144,17 +211,25 @@ ${tariffInfo}
 - 재질: ${material || '(미입력)'}`;
 }
 
-async function callAnthropic(mode, nameEn, material, hs10, nameKr) {
+async function callAnthropic(mode, nameEn, material, hs10, nameKr, timeoutMs) {
   if (!ANTHROPIC_API_KEY) {
     throw Object.assign(new Error('ANTHROPIC_API_KEY 환경 변수가 설정되지 않았습니다'),
       { hint: 'Vercel 환경 변수에 ANTHROPIC_API_KEY 추가 + 재배포' });
   }
   const userMsg = buildPrompt(mode, nameEn, material, hs10, nameKr);
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: MODEL, max_tokens: MAX_TOKENS, messages: [{ role: 'user', content: userMsg }] }),
-  });
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let r;
+  try {
+    r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: MODEL, max_tokens: MAX_TOKENS, messages: [{ role: 'user', content: userMsg }] }),
+      signal: controller ? controller.signal : undefined,
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   if (!r.ok) {
     const errText = await r.text().catch(() => '');
     throw Object.assign(new Error(`Anthropic API ${r.status}`), { detail: errText.slice(0, 200) });
@@ -245,6 +320,38 @@ module.exports = async (req, res) => {
         nameEn: String(top.nameEn || '').trim().toLowerCase(),
         material: String(top.material || '').trim(),
         hsCandidates: [...new Set(hsCands)].slice(0, 2).map(h => ({ hs10: h, formatted: `${h.slice(0,4)}.${h.slice(4,6)}-${h.slice(6,10)}`, rates: TARIFF[h] })),
+        reason: String(top.reason || ''),
+      });
+    }
+
+    // [ecom-v0.16 Phase2] link2en — 1688 offerId/링크 → 실제 중문 상품명·재질 → 영문 통관품명. 별도 조기 반환.
+    //   ★재시도 없음(QPS 보호) — 프록시/AI 어느 단계든 실패 시 즉시 반환.
+    if (modeIn === 'link2en') {
+      const offerId = String(body.offerId || '').trim() || extractOfferId(body.link);
+      if (!offerId) return res.status(400).json({ ok: false, error: 'offerId 또는 1688 링크(link) 필요 (link2en 모드)' });
+      let offer;
+      try {
+        offer = await fetchOfferDetail(offerId);
+      } catch (e) {
+        return res.status(200).json({ ok: false, mode: 'link2en', offerId, stage: e.stage || 'proxy', error: e.message, hint: e.hint });
+      }
+      let aiCands;
+      try {
+        aiCands = await callAnthropic('link2en', offer.subject, offer.materialCn, '', '', AI_TIMEOUT_MS);
+      } catch (e) {
+        return res.status(200).json({ ok: false, mode: 'link2en', offerId, stage: 'ai', subjectCn: offer.subject, materialCn: offer.materialCn, error: e.message, hint: e.hint || e.detail });
+      }
+      const arr = Array.isArray(aiCands) ? aiCands : [];
+      const top = arr[0] || {};
+      const nameEnOut = String(top.nameEn || '').trim();
+      if (!nameEnOut || nameEnOut.toUpperCase() === 'UNKNOWN') {
+        return res.status(200).json({ ok: false, mode: 'link2en', offerId, stage: 'ai-unknown', subjectCn: offer.subject, materialCn: offer.materialCn, error: 'AI 판단 불가(UNKNOWN)' });
+      }
+      return res.status(200).json({
+        ok: true, mode: 'link2en', offerId,
+        nameEn: nameEnOut.toLowerCase(),
+        material: String(top.material || '').trim(),
+        subjectCn: offer.subject, materialCn: offer.materialCn,
         reason: String(top.reason || ''),
       });
     }

@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.15</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.16</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -959,6 +959,7 @@
   <button type="button" id="btnTranslateAllBlank" onclick="translateAllBlank()" title="🌐 영문명 빈칸 전체 AI 번역 — 한국어 상품명→영문 통관품명(빈칸만·기존값 보존·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#eef4fb; color:#1B5E9A; border:1px solid #1B5E9A; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">🌐 영문명 빈칸 일괄 번역</button>
   <button type="button" id="btnSuggestHs6AllBlank" onclick="suggestHs6AllBlank()" title="🤖 HS 6자리 빈칸 전체 AI 추천 — 영문명→국제 공통 HS6(빈칸만·10자리 추정 안 함·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#eef2fb; color:#1B2A5A; border:1px solid #3a4da7; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">🤖 HS 6자리 빈칸 일괄 추천</button>
   <button type="button" id="btnConfirmAllUnconfirmed" onclick="confirmAllUnconfirmed()" title="✓ AI 추천값(영문명·HS 노란배경) 전체 확정 — 검토 후 미확정 표시 해제(관세사메모 마커 제거). 자동확정 아님." style="margin:4px 0 8px 6px; padding:6px 14px; background:#e8f7ef; color:#0a5a2e; border:1px solid #0a7b40; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">✓ AI추천 일괄 확정</button>
+  <button type="button" id="btnLinkToEnAllBlank" onclick="linkToEnAllBlank()" title="🔗 영문명 빈칸 전체 — 1688 링크 실제 중문 상품명·재질로 AI 변환(빈칸만·기존값 보존·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#fff4e6; color:#a15a00; border:1px solid #a15a00; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">🔗 링크에서 영문명 일괄</button>
   <!-- v3.2.12 #1: 주문별 배송 요청 메모 — 엑셀 '배송 요청 메모' 컬럼 / Orders.배송요청사항 자동 노출 -->
   <div id="orderMemoBox" style="display:none; margin:8px 0 12px; padding:12px 14px; background:#fff8d6; border:1px solid #d4a72c; border-radius:6px; font-size:13px;">
     <div style="font-weight:700; color:#6b5d00; margin-bottom:6px;">📝 배송 요청 메모 (주문별)</div>
@@ -2033,6 +2034,71 @@ async function translateAllBlank() {
     }
     if (typeof renderProducts === 'function') renderProducts();
     toastSuccess && toastSuccess(`🌐 일괄 번역: 성공 ${ok} · 스킵 ${skip} · 실패 ${fail} — 전부 미확정(노란배경), 확인 후 확정`, { title: 'AI 번역 완료' });
+  } finally {
+    _batchProgress.hide();
+    if (btn) { btn.disabled = false; btn.textContent = oldLabel; }
+  }
+}
+
+// [ecom-v0.16 Phase2] 1688 링크(offerId) → 실제 중문 상품명·재질 → 영문 통관품명. 서버(link2en 모드)가
+//   프록시 호출+AI변환 전부 처리 — 여기선 결과만 소비. Airtable에는 사람 확정 전까지 "AI번역(미확정)" 마커.
+async function _fetchLink2En(offerId) {
+  const r = await fetch(HS_SUGGEST_API, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'link2en', offerId }),
+  });
+  return r.json().catch(() => ({ ok: false, error: 'HTTP ' + r.status }));   // { ok, nameEn, material, subjectCn, materialCn, reason } | { ok:false, error, stage }
+}
+async function _applyLinkToEn(p) {
+  const f = p.fields || {};
+  if (String(f['Description'] || '').trim()) return { skip: '기존 영문명 있음' };   // ★빈칸만
+  const link = String(f['제품링크'] || '').trim();
+  const offerId = (link.match(/1688\.com\/offer\/(\d+)/) || [])[1] || (link.match(/[?&]offerId=(\d+)/) || [])[1];
+  if (!offerId) return { skip: '1688 링크 없음/offerId 추출 불가' };
+  const d = await _fetchLink2En(offerId);
+  if (!d.ok) return { skip: d.error || '조회 실패' };
+  const en = String(d.nameEn || '').trim();
+  if (!en) return { skip: '변환 실패' };
+  const fields = { 'Description': en, '통관품명_영문': en, '관세사메모': `AI번역(미확정): 1688[${d.subjectCn||''}] → ${en}${d.reason ? ' · ' + d.reason : ''}` };
+  if (!String(f['Material'] || '').trim() && d.material) fields['Material'] = d.material;   // 재질도 빈칸만·값 없으면 임의 채움 안 함
+  await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields, typecast: true });
+  Object.assign(f, fields);
+  return { en, material: fields['Material'] || '', subjectCn: d.subjectCn || '' };
+}
+async function linkToEnOneProduct(pid) {
+  const p = (state.products || []).find(x => x.id === pid);
+  if (!p) { toastWarn && toastWarn('제품을 찾을 수 없습니다'); return; }
+  try {
+    toastInfo && toastInfo('🔗 1688 링크에서 조회 중…');
+    const res = await _applyLinkToEn(p);
+    if (res.skip) { toastWarn && toastWarn('자동 채움 안 함: ' + res.skip); return; }
+    if (typeof renderProducts === 'function') renderProducts();
+    toastSuccess && toastSuccess(`🔗 자동 채움(미확정): ${res.subjectCn} → ${res.en}`, { title: '확인 후 확정하세요' });
+  } catch (e) { toastError && toastError('자동 채움 실패: ' + (e.message || e)); }
+}
+async function linkToEnAllBlank() {
+  const targets = (state.products || []).filter(p => !String((p.fields||{})['Description'] || '').trim() && String((p.fields||{})['제품링크'] || '').trim());
+  if (!targets.length) { toastWarn && toastWarn('영문명 빈칸 + 1688 링크 있는 제품이 없습니다'); return; }
+  if (!confirm(`영문명 빈칸 ${targets.length}건을 1688 링크로 자동 채웁니다(빈칸만·기존값 보존·미확정 노란배경). 진행할까요?`)) return;
+  const btn = document.getElementById('btnLinkToEnAllBlank');
+  const oldLabel = btn && btn.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = '🔗 조회 중…'; }
+  _batchProgress.show('1688 링크 자동 채움 중…');
+  let ok = 0, skip = 0, fail = 0;
+  const failList = [];
+  try {
+    for (let i = 0; i < targets.length; i++) {
+      const p = targets[i];
+      _batchProgress.step(`${(p.fields||{})['상품ID'] || ''} 조회 중… (${i + 1}/${targets.length})`, i + 1, targets.length);
+      try {
+        const r = await _applyLinkToEn(p);
+        if (r.skip) { skip++; failList.push(`${(p.fields||{})['상품ID']||''}: ${r.skip}`); }
+        else ok++;
+      } catch (e) { fail++; failList.push(`${(p.fields||{})['상품ID']||''}: ${e.message||e}`); console.warn('[링크자동] 실패', (p.fields||{})['상품ID'], e.message); }
+      await sleep(500);   // ★QPS 2/sec 보호(순차 처리, 재시도 없음)
+    }
+    if (typeof renderProducts === 'function') renderProducts();
+    toastSuccess && toastSuccess(`🔗 일괄 자동 채움: 성공 ${ok} · 스킵/실패 ${skip + fail} — 전부 미확정(노란배경), 확인 후 확정${failList.length ? '\n' + failList.slice(0,8).join('\n') : ''}`, { title: '1688 자동 채움 완료' });
   } finally {
     _batchProgress.hide();
     if (btn) { btn.disabled = false; btn.textContent = oldLabel; }
@@ -5526,6 +5592,7 @@ function renderProducts() {
         <input type="text" data-field="Description" value="${escAttr(f['Description'] || '')}" placeholder="${t('placeholder.eng_name')}" ${empAttr} title="${_aiUnconfirmed ? 'AI 번역(미확정) — 확인 후 [Airtable에 저장]으로 확정. 원문: ' + escAttr(f['관세사메모']||'') : empTitle}" style="min-width:120px;${descBg}" />
         ${_aiUnconfEn ? '<div style="font-size:9px;color:#a5820a;text-align:center;margin-top:1px;">🌐 AI번역 미확정</div>' : ''}
         ${!(f['Description'] || '').trim() && (f['통관품명_한글'] || '').trim() ? `<button type="button" onclick="translateOneProduct('${escAttr(p.id)}')" title="🌐 한국어 상품명 → 영문 통관품명 AI 번역(빈칸만·미확정)" style="display:block;margin:2px auto 0;font-size:10px;padding:1px 7px;background:#eef4fb;color:#1B5E9A;border:1px solid #1B5E9A;border-radius:4px;cursor:pointer;">🌐 번역</button>` : ''}
+        ${!(f['Description'] || '').trim() && (f['제품링크'] || '').trim() ? `<button type="button" onclick="linkToEnOneProduct('${escAttr(p.id)}')" title="🔗 1688 링크의 실제 중문 상품명·재질 → 영문 통관품명 AI 변환(빈칸만·미확정)" style="display:block;margin:2px auto 0;font-size:10px;padding:1px 7px;background:#fff4e6;color:#a15a00;border:1px solid #a15a00;border-radius:4px;cursor:pointer;">🔗 링크에서 자동</button>` : ''}
       </td>
       <td>
         <input type="text" data-field="Material" value="${escAttr(f['Material'] || '')}" placeholder="${t('placeholder.material')}" style="min-width:80px;${empBg}" ${empAttr} title="${empTitle}" />
