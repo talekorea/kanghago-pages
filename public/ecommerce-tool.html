@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.19</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.20</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -956,10 +956,11 @@
   <h2 data-i18n="section.products">1. 상품 정보 입력</h2>
   <!-- [v3.2.156] 제품 수동 추가 — 주문 귀속·상품ID 자동. _isNew 행 → 입력 → [저장]이 create. -->
   <button type="button" onclick="addProductRow()" data-i18n-title="products.add_title" title="제품을 수동으로 추가 — 주문 선택 후 빈 행 생성. 영문명/HS/수량/단가 입력 → [Airtable에 저장] → 사진 교체 가능." style="margin:4px 0 8px; padding:6px 14px; background:linear-gradient(135deg,#0a7b40,#0d8f4c); color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;" data-i18n="products.add_btn">➕ 제품 추가</button>
-  <button type="button" id="btnTranslateAllBlank" onclick="translateAllBlank()" data-i18n-title="products.translate_all_title" title="🌐 영문명 빈칸 전체 AI 번역 — 한국어 상품명→영문 통관품명(빈칸만·기존값 보존·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#eef4fb; color:#1B5E9A; border:1px solid #1B5E9A; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;" data-i18n="products.translate_all_btn">🌐 영문명 빈칸 일괄 번역</button>
   <button type="button" id="btnSuggestHs6AllBlank" onclick="suggestHs6AllBlank()" data-i18n-title="products.hs6_all_title" title="🤖 HS 6자리 빈칸 전체 AI 추천 — 영문명→국제 공통 HS6(빈칸만·10자리 추정 안 함·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#eef2fb; color:#1B2A5A; border:1px solid #3a4da7; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;" data-i18n="products.hs6_all_btn">🤖 HS 6자리 빈칸 일괄 추천</button>
   <button type="button" id="btnConfirmAllUnconfirmed" onclick="confirmAllUnconfirmed()" data-i18n-title="products.confirm_all_title" title="✓ AI 추천값(영문명·HS 노란배경) 전체 확정 — 검토 후 미확정 표시 해제(관세사메모 마커 제거). 자동확정 아님." style="margin:4px 0 8px 6px; padding:6px 14px; background:#e8f7ef; color:#0a5a2e; border:1px solid #0a7b40; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;" data-i18n="products.confirm_all_btn">✓ AI추천 일괄 확정</button>
   <button type="button" id="btnLinkToEnAllBlank" onclick="linkToEnAllBlank()" data-i18n-title="products.link2en_all_title" title="🔗 영문명 빈칸 전체 — 1688 링크 실제 중문 상품명·재질로 AI 변환(빈칸만·기존값 보존·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#fff4e6; color:#a15a00; border:1px solid #a15a00; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;" data-i18n="products.link2en_all_btn">🔗 링크에서 영문명 일괄</button>
+  <button type="button" id="btnBulkDeleteDesc" onclick="bulkDeleteDescription()" data-i18n-title="bulkdel.desc_title" title="영문명 일괄삭제 — 기본 미확정(AI 미확정 마커)만, 확정분 포함은 재확인 필요" style="margin:4px 0 8px 6px; padding:6px 14px; background:#fdf0ef; color:#a12b1f; border:1px solid #c0392b; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;" data-i18n="bulkdel.desc_btn">🗑 영문명 일괄삭제</button>
+  <button type="button" id="btnBulkDeleteHs" onclick="bulkDeleteHs()" data-i18n-title="bulkdel.hs_title" title="HS코드 일괄삭제 — 기본 미확정(AI 미확정 마커)만, 확정분 포함은 재확인 필요" style="margin:4px 0 8px 6px; padding:6px 14px; background:#fdf0ef; color:#a12b1f; border:1px solid #c0392b; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;" data-i18n="bulkdel.hs_btn">🗑 HS코드 일괄삭제</button>
   <!-- v3.2.12 #1: 주문별 배송 요청 메모 — 엑셀 '배송 요청 메모' 컬럼 / Orders.배송요청사항 자동 노출 -->
   <div id="orderMemoBox" style="display:none; margin:8px 0 12px; padding:12px 14px; background:#fff8d6; border:1px solid #d4a72c; border-radius:6px; font-size:13px;">
     <div style="font-weight:700; color:#6b5d00; margin-bottom:6px;">📝 배송 요청 메모 (주문별)</div>
@@ -1807,6 +1808,19 @@
   </div>
 </div>
 
+<!-- [ecom-v0.20] 일괄삭제 3지선다 확인 모달 — 미확정만/전부/취소. 임의 즉시삭제 금지. -->
+<div id="bulkDeleteModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.7); z-index:10000; padding:20px; overflow-y:auto;">
+  <div style="max-width:480px; margin:80px auto; background:#fff; border-radius:10px; padding:22px 24px; box-shadow:0 10px 40px rgba(0,0,0,0.4);">
+    <h3 id="bulkDeleteModalTitle" style="margin:0 0 14px; font-size:16px; color:#1B2A3B;" data-i18n="bulkdel.title">일괄삭제 확인</h3>
+    <p id="bulkDeleteModalMsg" style="font-size:13px; color:#444; line-height:1.6; margin-bottom:20px; white-space:pre-wrap;"></p>
+    <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+      <button type="button" onclick="_bulkDeleteResolve(null)" data-i18n="bulkdel.btn_cancel" style="padding:8px 16px; background:#eee; color:#444; border:none; border-radius:6px; cursor:pointer; font-size:13px;">취소</button>
+      <button type="button" onclick="_bulkDeleteResolve('unconfirmed')" data-i18n="bulkdel.btn_unconfirmed" style="padding:8px 16px; background:#C9973A; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:700;">미확정만</button>
+      <button type="button" onclick="_bulkDeleteResolve('all')" data-i18n="bulkdel.btn_all" style="padding:8px 16px; background:#c0392b; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:700;">전부</button>
+    </div>
+  </div>
+</div>
+
 <!-- [v3.2.94] 배차 마스터 모달 — 읽기전용 전체 현황 + Excel. 입력은 부킹 모달에서. -->
 <div id="dispatchMasterModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.7); z-index:9999; padding:14px; overflow:auto;">
   <!-- [v3.2.167] 전체화면 — 96vw×94vh flex 컬럼, 표 영역(dispatchMasterBox)이 flex:1로 시원하게 + 내부 스크롤 -->
@@ -2072,21 +2086,32 @@ async function _fetchLink2En(offerId) {
   });
   return r.json().catch(() => ({ ok: false, error: 'HTTP ' + r.status }));   // { ok, nameEn, material, subjectCn, materialCn, reason } | { ok:false, error, stage }
 }
-async function _applyLinkToEn(p) {
+function _extractOfferId(link) {
+  const s = String(link || '').trim();
+  return (s.match(/1688\.com\/offer\/(\d+)/) || [])[1] || (s.match(/[?&]offerId=(\d+)/) || [])[1] || null;
+}
+// [ecom-v0.20] 그룹 결과 적용 — 이미 조회한 link2en 응답(d)을 재조회 없이 제품 1건에 적용(빈칸만).
+function _applyLinkToEnResult(p, d) {
   const f = p.fields || {};
   if (String(f['Description'] || '').trim()) return { skip: '기존 영문명 있음' };   // ★빈칸만
-  const link = String(f['제품링크'] || '').trim();
-  const offerId = (link.match(/1688\.com\/offer\/(\d+)/) || [])[1] || (link.match(/[?&]offerId=(\d+)/) || [])[1];
-  if (!offerId) return { skip: '1688 링크 없음/offerId 추출 불가' };
-  const d = await _fetchLink2En(offerId);
   if (!d.ok) return { skip: d.error || '조회 실패' };
   const en = String(d.nameEn || '').trim();
   if (!en) return { skip: '변환 실패' };
   const fields = { 'Description': en, '통관품명_영문': en, '관세사메모': `AI번역(미확정): 1688[${d.subjectCn||''}] → ${en}${d.reason ? ' · ' + d.reason : ''}` };
   if (!String(f['Material'] || '').trim() && d.material) fields['Material'] = d.material;   // 재질도 빈칸만·값 없으면 임의 채움 안 함
-  await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields, typecast: true });
-  Object.assign(f, fields);
-  return { en, material: fields['Material'] || '', subjectCn: d.subjectCn || '' };
+  return { fields, en, material: fields['Material'] || '', subjectCn: d.subjectCn || '' };
+}
+async function _applyLinkToEn(p) {
+  const f = p.fields || {};
+  if (String(f['Description'] || '').trim()) return { skip: '기존 영문명 있음' };   // ★빈칸만
+  const offerId = _extractOfferId(f['제품링크']);
+  if (!offerId) return { skip: '1688 링크 없음/offerId 추출 불가' };
+  const d = await _fetchLink2En(offerId);
+  const applied = _applyLinkToEnResult(p, d);
+  if (applied.skip) return applied;
+  await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields: applied.fields, typecast: true });
+  Object.assign(f, applied.fields);
+  return { en: applied.en, material: applied.material, subjectCn: applied.subjectCn };
 }
 async function linkToEnOneProduct(pid) {
   const p = (state.products || []).find(x => x.id === pid);
@@ -2109,17 +2134,40 @@ async function linkToEnAllBlank() {
   _batchProgress.show('1688 링크 자동 채움 중…');
   let ok = 0, skip = 0, fail = 0;
   const failList = [];
+  // [ecom-v0.20] ★offerId 그룹핑 — 같은 1688 링크(offerId) 제품은 프록시+AI 1회만 호출, 결과를 그룹 전체에 동일 적용.
+  //   호출량 절감(QPS·요금) + 같은 제품이 서로 다른 영문명으로 갈라지는 불일치 방지.
+  const groups = new Map();   // offerId -> [product...]
+  const noOfferId = [];
+  targets.forEach(p => {
+    const offerId = _extractOfferId((p.fields||{})['제품링크']);
+    if (!offerId) { noOfferId.push(p); return; }
+    if (!groups.has(offerId)) groups.set(offerId, []);
+    groups.get(offerId).push(p);
+  });
+  const offerIds = [...groups.keys()];
   try {
-    for (let i = 0; i < targets.length; i++) {
-      const p = targets[i];
-      _batchProgress.step(`${(p.fields||{})['상품ID'] || ''} 조회 중… (${i + 1}/${targets.length})`, i + 1, targets.length);
+    for (let i = 0; i < offerIds.length; i++) {
+      const offerId = offerIds[i];
+      const group = groups.get(offerId);
+      _batchProgress.step(`offerId ${offerId} 조회 중… (그룹 ${group.length}건, ${i + 1}/${offerIds.length})`, i + 1, offerIds.length);
       try {
-        const r = await _applyLinkToEn(p);
-        if (r.skip) { skip++; failList.push(`${(p.fields||{})['상품ID']||''}: ${r.skip}`); }
-        else ok++;
-      } catch (e) { fail++; failList.push(`${(p.fields||{})['상품ID']||''}: ${e.message||e}`); console.warn('[링크자동] 실패', (p.fields||{})['상품ID'], e.message); }
-      await sleep(500);   // ★QPS 2/sec 보호(순차 처리, 재시도 없음)
+        const d = await _fetchLink2En(offerId);   // ★그룹당 1회만 호출
+        for (const p of group) {
+          const applied = _applyLinkToEnResult(p, d);
+          if (applied.skip) { skip++; failList.push(`${(p.fields||{})['상품ID']||''}: ${applied.skip}`); continue; }
+          try {
+            await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields: applied.fields, typecast: true });
+            Object.assign(p.fields, applied.fields);
+            ok++;
+          } catch (e) { fail++; failList.push(`${(p.fields||{})['상품ID']||''}: ${e.message||e}`); console.warn('[링크자동] 저장 실패', (p.fields||{})['상품ID'], e.message); }
+        }
+      } catch (e) {
+        group.forEach(p => { fail++; failList.push(`${(p.fields||{})['상품ID']||''}: ${e.message||e}`); });
+        console.warn('[링크자동] 조회 실패', offerId, e.message);
+      }
+      await sleep(500);   // ★QPS 2/sec 보호 — 그룹(=프록시 1회 호출) 단위 pacing
     }
+    noOfferId.forEach(p => { skip++; failList.push(`${(p.fields||{})['상품ID']||''}: 1688 링크 없음/offerId 추출 불가`); });
     if (typeof renderProducts === 'function') renderProducts();
     toastSuccess && toastSuccess(`🔗 일괄 자동 채움: 성공 ${ok} · 스킵/실패 ${skip + fail} — 전부 미확정(노란배경), 확인 후 확정${failList.length ? '\n' + failList.slice(0,8).join('\n') : ''}`, { title: '1688 자동 채움 완료' });
   } finally {
@@ -2198,7 +2246,7 @@ async function _confirmProduct(p) {
   if (!/AI번역\(미확정\)|AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(memo)) return { skip: '미확정 아님' };
   // ecom-v0.5: 미검증(공식표에 없는 코드) 확정 시 1회 경고 게이트 — 취소하면 마커 유지(확정 안 함)
   if (/AI-HS추천\(미검증\)/.test(memo)) {
-    if (!confirm('관세청 공식표에 존재하지 않는 코드입니다. 관세사 확정 전 신고 금지.')) return { skip: '사용자 취소(미검증)' };
+    if (!confirm(t('products.unverified_hs_gate'))) return { skip: '사용자 취소(미검증)' };
   }
   const cleaned = memo.split(' / ').filter(seg => !/AI번역\(미확정\)|AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(seg)).join(' / ');
   await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields: { '관세사메모': cleaned }, typecast: true });
@@ -2213,7 +2261,10 @@ async function confirmOneProduct(pid) {
 async function confirmAllUnconfirmed() {
   const targets = (state.products || []).filter(p => /AI번역\(미확정\)|AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(String((p.fields||{})['관세사메모'] || '')));
   if (!targets.length) { toastWarn && toastWarn('미확정(노란배경) 제품이 없습니다'); return; }
-  if (!confirm(`AI 추천 미확정 ${targets.length}건을 확정합니다(값은 그대로, 노란 표시만 해제). 검토 후 진행하세요.`)) return;
+  // [ecom-v0.20] ★목록을 보여줘서 안 보고 누르는 습관 방지 — 대상 제품명(빈칸이면 상품ID) 나열.
+  const nameList = targets.map(p => (p.fields||{})['Description'] || (p.fields||{})['상품ID'] || t('products.no_id'));
+  const shownNames = nameList.slice(0, 15).join('\n') + (nameList.length > 15 ? '\n' + t('bulkdel.and_more').replace('{n}', nameList.length - 15) : '');
+  if (!confirm(t('products.confirm_all_msg').replace('{n}', targets.length) + '\n\n' + t('products.confirm_all_target_label') + '\n' + shownNames)) return;
   const btn = document.getElementById('btnConfirmAllUnconfirmed');
   const oldLabel = btn && btn.textContent;
   if (btn) { btn.disabled = true; btn.textContent = '✓ 확정 중…'; }
@@ -2231,6 +2282,78 @@ async function confirmAllUnconfirmed() {
     _batchProgress.hide();
     if (btn) { btn.disabled = false; btn.textContent = oldLabel; }
   }
+}
+
+// [ecom-v0.20] 영문명·HS 일괄삭제 — 3지선다(미확정만/전부/취소) 모달. 임의 즉시삭제 금지.
+function _isDescUnconfirmed(p) { return /AI번역\(미확정\)/.test(String((p.fields||{})['관세사메모'] || '')); }
+function _isHsUnconfirmed(p) { return /AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(String((p.fields||{})['관세사메모'] || '')); }
+let _bulkDeleteResolver = null;
+function _bulkDeleteResolve(choice) {
+  document.getElementById('bulkDeleteModal').style.display = 'none';
+  if (_bulkDeleteResolver) { const r = _bulkDeleteResolver; _bulkDeleteResolver = null; r(choice); }
+}
+function _openBulkDeleteModal(unconfirmedCount, confirmedCount) {
+  return new Promise((resolve) => {
+    _bulkDeleteResolver = resolve;
+    document.getElementById('bulkDeleteModalMsg').textContent =
+      t('bulkdel.msg').replace('{unconf}', unconfirmedCount).replace('{all}', confirmedCount);
+    document.getElementById('bulkDeleteModal').style.display = 'block';
+  });
+}
+// fieldSet: { valueFields: [...clear to ''], memoMarkerRe: RegExp } — 관세사메모에서 해당 마커 세그먼트만 제거.
+async function _clearProductFields(p, valueFields, memoMarkerRe) {
+  const f = p.fields || {};
+  const memo = String(f['관세사메모'] || '');
+  const cleaned = memo.split(' / ').filter(seg => !memoMarkerRe.test(seg)).join(' / ');
+  const fields = { '관세사메모': cleaned };
+  valueFields.forEach(k => { fields[k] = ''; });
+  await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields, typecast: true });
+  Object.assign(f, fields);
+}
+async function _bulkDeleteRun(targets, valueFields, memoMarkerRe, doneMsgKey) {
+  _batchProgress.show(t('bulkdel.progress'));
+  let ok = 0, fail = 0;
+  try {
+    for (let i = 0; i < targets.length; i++) {
+      const p = targets[i];
+      _batchProgress.step(`${(p.fields||{})['상품ID'] || ''} 삭제 중… (${i + 1}/${targets.length})`, i + 1, targets.length);
+      try { await _clearProductFields(p, valueFields, memoMarkerRe); ok++; }
+      catch (e) { fail++; console.warn('[일괄삭제] 실패', (p.fields||{})['상품ID'], e.message); }
+      await sleep(150);
+    }
+    if (typeof renderProducts === 'function') renderProducts();
+    toastSuccess && toastSuccess(t(doneMsgKey).replace('{n}', ok) + (fail ? ` (${t('bulkdel.fail_suffix').replace('{n}', fail)})` : ''), { title: t('bulkdel.done_title') });
+  } finally {
+    _batchProgress.hide();
+  }
+}
+async function bulkDeleteDescription() {
+  const all = (state.products || []).filter(p => String((p.fields||{})['Description'] || '').trim());
+  if (!all.length) { toastWarn && toastWarn(t('bulkdel.none_desc')); return; }
+  const unconfirmed = all.filter(_isDescUnconfirmed);
+  const confirmedCount = all.length - unconfirmed.length;
+  const choice = await _openBulkDeleteModal(unconfirmed.length, confirmedCount);
+  if (!choice) return;
+  let targets = choice === 'all' ? all : unconfirmed;
+  if (choice === 'all') {
+    if (!confirm(t('bulkdel.confirm_all_extra').replace('{n}', all.length))) return;
+  }
+  if (!targets.length) { toastWarn && toastWarn(t('bulkdel.none_desc')); return; }
+  await _bulkDeleteRun(targets, ['Description', '통관품명_영문'], /AI번역\(미확정\)/, 'bulkdel.done_desc');
+}
+async function bulkDeleteHs() {
+  const all = (state.products || []).filter(p => String((p.fields||{})['HS코드'] || '').trim());
+  if (!all.length) { toastWarn && toastWarn(t('bulkdel.none_hs')); return; }
+  const unconfirmed = all.filter(_isHsUnconfirmed);
+  const confirmedCount = all.length - unconfirmed.length;
+  const choice = await _openBulkDeleteModal(unconfirmed.length, confirmedCount);
+  if (!choice) return;
+  let targets = choice === 'all' ? all : unconfirmed;
+  if (choice === 'all') {
+    if (!confirm(t('bulkdel.confirm_all_extra').replace('{n}', all.length))) return;
+  }
+  if (!targets.length) { toastWarn && toastWarn(t('bulkdel.none_hs')); return; }
+  await _bulkDeleteRun(targets, ['HS코드'], /AI-HS추천\(미확정\)|AI-HS추천\(미검증\)|📚학습HS/, 'bulkdel.done_hs');
 }
 
 // v3.2.29: construction(편물/직물) 입력 칸 폐기. HS가 편물(61)·직물(62) 자체로 규정.
@@ -3131,6 +3254,28 @@ const I18N = {
     'dispatch.status_waiting': '대기',
     'dispatch.ops_footer_note': '※ 자동표시(보세창고·입항일·한국FW)는 📍 UNIPASS 조회 시 갱신. 차량번호/송장 입력 시 배차상태=완료·완료일=오늘 자동(수동 변경 가능).',
     'dispatch.days_unit': '일',
+    'bulkdel.desc_btn': '🗑 영문명 일괄삭제',
+    'bulkdel.desc_title': '영문명 일괄삭제 — 기본 미확정(AI 미확정 마커)만, 확정분 포함은 재확인 필요',
+    'bulkdel.hs_btn': '🗑 HS코드 일괄삭제',
+    'bulkdel.hs_title': 'HS코드 일괄삭제 — 기본 미확정(AI 미확정 마커)만, 확정분 포함은 재확인 필요',
+    'bulkdel.title': '일괄삭제 확인',
+    'bulkdel.msg': '미확정 {unconf}건 삭제. 확정된 {all}건도 포함하시겠습니까?',
+    'bulkdel.btn_cancel': '취소',
+    'bulkdel.btn_unconfirmed': '미확정만',
+    'bulkdel.btn_all': '전부',
+    'bulkdel.confirm_all_extra': '확정된 값도 포함해 전체 {n}건을 삭제합니다. 되돌릴 수 없습니다. 계속할까요?',
+    'bulkdel.none_desc': '삭제할 영문명이 없습니다',
+    'bulkdel.none_hs': '삭제할 HS코드가 없습니다',
+    'bulkdel.progress': '일괄삭제 중…',
+    'bulkdel.done_title': '일괄삭제 완료',
+    'bulkdel.done_desc': '🗑 영문명 삭제: {n}건',
+    'bulkdel.done_hs': '🗑 HS코드 삭제: {n}건',
+    'bulkdel.fail_suffix': '실패 {n}건',
+    'bulkdel.and_more': '…외 {n}건',
+    'products.no_id': '(제품ID 없음)',
+    'products.confirm_all_msg': 'AI 추천 미확정 {n}건을 확정합니다(값은 그대로, 노란 표시만 해제). 검토 후 진행하세요.',
+    'products.confirm_all_target_label': '대상:',
+    'products.unverified_hs_gate': '관세청 공식표에 존재하지 않는 코드입니다. 관세사 확정 전 신고 금지.',
   },
   zh: {
     'app.title': '发票综合工具',
@@ -3708,6 +3853,28 @@ const I18N = {
     'dispatch.status_waiting': '待处理',
     'dispatch.ops_footer_note': '※ 自动显示项(保税仓库·到港日·韩国货代)在📍UNIPASS查询时更新。填写车牌号/运单号后派车状态自动变为完成·完成日=今天(可手动修改)。',
     'dispatch.days_unit': '天',
+    'bulkdel.desc_btn': '🗑 批量删除英文名',
+    'bulkdel.desc_title': '批量删除英文名 — 默认仅限未确认(AI未确认标记)，包含已确认需再次确认',
+    'bulkdel.hs_btn': '🗑 批量删除HS编码',
+    'bulkdel.hs_title': '批量删除HS编码 — 默认仅限未确认(AI未确认标记)，包含已确认需再次确认',
+    'bulkdel.title': '批量删除确认',
+    'bulkdel.msg': '将删除未确认 {unconf} 件。是否包含已确认的 {all} 件？',
+    'bulkdel.btn_cancel': '取消',
+    'bulkdel.btn_unconfirmed': '仅未确认',
+    'bulkdel.btn_all': '全部',
+    'bulkdel.confirm_all_extra': '将包含已确认值在内删除全部 {n} 件。此操作无法撤销。是否继续？',
+    'bulkdel.none_desc': '没有可删除的英文名',
+    'bulkdel.none_hs': '没有可删除的HS编码',
+    'bulkdel.progress': '批量删除中…',
+    'bulkdel.done_title': '批量删除完成',
+    'bulkdel.done_desc': '🗑 已删除英文名: {n}件',
+    'bulkdel.done_hs': '🗑 已删除HS编码: {n}件',
+    'bulkdel.fail_suffix': '失败 {n}件',
+    'bulkdel.and_more': '…等{n}件',
+    'products.no_id': '(无产品ID)',
+    'products.confirm_all_msg': '将确认AI推荐未确认的 {n} 件(数值保持不变，仅解除黄色标记)。请审核后继续。',
+    'products.confirm_all_target_label': '对象:',
+    'products.unverified_hs_gate': '该编码不存在于海关官方税则表中。确认前禁止向报关行申报。',
   },
   en: {
     'app.title': 'Invoice Integrated Tool',
@@ -4285,6 +4452,28 @@ const I18N = {
     'dispatch.status_waiting': 'Waiting',
     'dispatch.ops_footer_note': '※ Auto-shown fields (bonded warehouse/arrival date/KR forwarder) refresh on 📍 UNIPASS query. Entering vehicle no./tracking # auto-sets dispatch status=complete, date=today (can change manually).',
     'dispatch.days_unit': ' days',
+    'bulkdel.desc_btn': '🗑 Bulk Delete English Names',
+    'bulkdel.desc_title': 'Bulk-delete English names — unconfirmed (AI-unconfirmed marker) only by default; including confirmed ones needs re-confirmation',
+    'bulkdel.hs_btn': '🗑 Bulk Delete HS Codes',
+    'bulkdel.hs_title': 'Bulk-delete HS codes — unconfirmed (AI-unconfirmed marker) only by default; including confirmed ones needs re-confirmation',
+    'bulkdel.title': 'Confirm Bulk Delete',
+    'bulkdel.msg': 'Delete {unconf} unconfirmed. Include the {all} confirmed as well?',
+    'bulkdel.btn_cancel': 'Cancel',
+    'bulkdel.btn_unconfirmed': 'Unconfirmed only',
+    'bulkdel.btn_all': 'All',
+    'bulkdel.confirm_all_extra': 'This deletes all {n} including confirmed values. This cannot be undone. Continue?',
+    'bulkdel.none_desc': 'No English names to delete',
+    'bulkdel.none_hs': 'No HS codes to delete',
+    'bulkdel.progress': 'Bulk deleting…',
+    'bulkdel.done_title': 'Bulk Delete Complete',
+    'bulkdel.done_desc': '🗑 English names deleted: {n}',
+    'bulkdel.done_hs': '🗑 HS codes deleted: {n}',
+    'bulkdel.fail_suffix': '{n} failed',
+    'bulkdel.and_more': '…and {n} more',
+    'products.no_id': '(no product ID)',
+    'products.confirm_all_msg': 'Confirming {n} unconfirmed AI suggestions (values unchanged, only clears the yellow marker). Review before proceeding.',
+    'products.confirm_all_target_label': 'Targets:',
+    'products.unverified_hs_gate': 'This code does not exist in the official customs table. Do not declare before customs broker confirmation.',
   }
 };
 
