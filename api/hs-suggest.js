@@ -19,9 +19,9 @@ const MODEL = 'claude-sonnet-4-5';
 const MAX_TOKENS = 1024;
 
 // [ecom-v0.16 Phase2] link2en — 1688 링크(offerId) → 실제 중문 상품명/재질 → 영문 통관품명 변환.
-//   ★ALIBABA_PROXY_TOKEN은 사장님이 Vercel 대시보드에서 직접 등록(코드에 값 없음).
+//   ★API_TOKEN_INVOICE(강하고 별도 토큰)는 사장님이 Vercel 대시보드에서 직접 등록(코드에 값 없음).
 const ALIBABA_PROXY_URL = process.env.ALIBABA_PROXY_URL || 'http://198.13.44.43:3688';
-const ALIBABA_PROXY_TOKEN = process.env.ALIBABA_PROXY_TOKEN;
+const API_TOKEN_INVOICE = process.env.API_TOKEN_INVOICE;
 const PROXY_TIMEOUT_MS = 15000;
 const AI_TIMEOUT_MS = 30000;
 
@@ -34,9 +34,9 @@ function extractOfferId(link) {
 // 1688 프록시(POST /api/product) 호출 — 중문 상품명(subject) + 재질(材质 속성) 추출.
 //   ★재질 속성이 없는 리스팅(실측 6/12)은 실패가 아님 — materialCn=''로 정상 반환.
 async function fetchOfferDetail(offerId) {
-  if (!ALIBABA_PROXY_TOKEN) {
-    throw Object.assign(new Error('ALIBABA_PROXY_TOKEN 환경 변수가 설정되지 않았습니다'),
-      { hint: 'Vercel 대시보드(kanghago-pages) 환경 변수에 ALIBABA_PROXY_TOKEN 추가 + 재배포', stage: 'proxy' });
+  if (!API_TOKEN_INVOICE) {
+    throw Object.assign(new Error('API_TOKEN_INVOICE 환경 변수가 설정되지 않았습니다'),
+      { hint: 'Vercel 대시보드(kanghago-pages) 환경 변수에 API_TOKEN_INVOICE 추가 + 재배포', stage: 'proxy' });
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
@@ -44,7 +44,7 @@ async function fetchOfferDetail(offerId) {
   try {
     r = await fetch(`${ALIBABA_PROXY_URL}/api/product`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ALIBABA_PROXY_TOKEN}`, 'X-Caller': 'invoice' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_TOKEN_INVOICE}`, 'X-Caller': 'invoice' },
       body: JSON.stringify({ offerId }),
       signal: controller.signal,
     });
