@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.20</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.21</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -2176,6 +2176,12 @@ async function linkToEnAllBlank() {
   }
 }
 
+// [ecom-v0.21] ★AI HS6 세션 캐시 — 정규화된 영문명+재질 키로 그룹당 AI 호출 1회.
+//   같은 키가 다시 오면(일괄 처리 중 다음 제품이든, 나중에 단건 추가든) 재호출 없이 재사용 → 동일 영문명은 항상 동일 HS.
+//   재질도 키에 포함(재질이 분류 좌우 — 플라스틱3926/유리7007/금속7323 등 — 이름만 같고 재질 다르면 다른 분류가 정당할 수 있음).
+const _hs6AiCache = new Map();   // key: `${en}|${mat}`(소문자 정규화) -> top candidate 객체 | null(후보 없음도 캐시)
+function _hs6CacheKey(en, mat) { return String(en).trim().toLowerCase() + '|' + String(mat).trim().toLowerCase(); }
+
 // [전자상거래 B] 영문명 → HS 6자리. ★①HSMapping 학습(관세사 확정) 우선 → ②AI(name2hs6). 빈칸만·10자리 추정 없음.
 //   출처 구분: 학습='📚 학습(관세사 확정)'(관세사메모 마커 없음=신뢰) / AI='🤖 AI추천 미확정'(노란배경).
 //   ★HSMapping 읽기 전용 — 전자상거래 AI값을 HSMapping에 절대 쓰지 않음(관세사 확정 데이터 오염 금지).
@@ -2199,11 +2205,18 @@ async function _suggestHs6(p) {
       return { hs6, en, source: 'learned' };
     }
   }
-  // ② AI — 재질 포함 전달(재질이 분류 좌우: 플라스틱3926/유리7007/금속7323).
-  const r = await fetch(HS_SUGGEST_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'name2hs6', nameEn: en, material: mat }) });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
-  const top = (d.hs6Candidates || [])[0];
+  // ② AI — 재질 포함 전달(재질이 분류 좌우: 플라스틱3926/유리7007/금속7323). ★세션 캐시로 동일 키 재호출 방지.
+  const cacheKey = _hs6CacheKey(en, mat);
+  let top;
+  if (_hs6AiCache.has(cacheKey)) {
+    top = _hs6AiCache.get(cacheKey);
+  } else {
+    const r = await fetch(HS_SUGGEST_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'name2hs6', nameEn: en, material: mat }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+    top = (d.hs6Candidates || [])[0] || null;
+    _hs6AiCache.set(cacheKey, top);
+  }
   if (!top) return { skip: 'HS6 확정 불가(억지 추정 안 함)' };   // 빈칸 유지
   const hs6 = top.formatted;   // '0000.00'
   const memo = String(f['관세사메모'] || '');
