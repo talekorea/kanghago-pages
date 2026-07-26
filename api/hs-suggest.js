@@ -169,19 +169,26 @@ function buildPrompt(mode, nameEn, material, hs10, nameKr) {
   }
   if (mode === 'link2en') {
     // [ecom-v0.16 Phase2] 1688 실제 상품정보(중문) → 영문 통관품명. nameEn=subject(중문), material=materialCn(중문) 재사용.
-    return `다음은 1688(중국 도매 플랫폼) 상품의 중국어 원문 정보다. 한국 수입통관 신고용 영문 품명으로 변환하라.
+    // [ecom-v0.23] nameCn 추가 — 중문 원문에서 핵심 품명만 남긴 간결 중문 통관 품명(TYREDS T열용).
+    return `다음은 1688(중국 도매 플랫폼) 상품의 중국어 원문 정보다. 한국 수입통관 신고용 영문 품명과 간결한 중문 품명으로 변환하라.
 - 중국어 상품명: ${nameEn || '(정보 없음)'}
 - 재질(중국어, 있으면): ${material || '(정보 없음)'}
 
-★규칙(매우 중요):
+★영문 품명 규칙(매우 중요):
 - 마케팅 문구(可印LOGO·支持批发代发 같은 판촉/도매 안내 문구) · 브랜드명 · 수식어 · 연도 · 수량 제외.
 - 물품의 재질+용도가 드러나는 구체적 명칭(소문자 시작, 짧은 명사구, 영어).
 - food·snack·goods·products·supplies 같은 총칭 절대 금지 — 구체적으로 무엇인지 반드시 특정.
 - 재질은 영문으로 변환(예: 不锈钢→stainless steel). 재질 정보가 없으면 빈 문자열(임의값 금지).
 - 판단이 불가능하면 nameEn에 "UNKNOWN"만 반환(억지 추정 금지).
 
+★중문 품명(nameCn) 규칙(매우 중요):
+- 중국어 원문에서 마케팅 문구·브랜드·수식어를 제거한 핵심 품명만 남겨라.
+  예: 不锈钢加厚圆头小剪刀美容化妆工具鼻毛修剪器锋利安全鼻毛剪修眉 → 美容小剪刀
+- ★원문에 없는 단어를 창작하지 마라 — 반드시 원문에 등장하는 글자만 조합해 축약.
+- nameEn과 마찬가지로 판단 불가능하면 빈 문자열("").
+
 **JSON 배열만 반환** — 설명 텍스트 금지:
-[{"nameEn":"...", "material":"...", "reason":"한 줄 근거"}]`;
+[{"nameEn":"...", "nameCn":"...", "material":"...", "reason":"한 줄 근거"}]`;
   }
   if (mode === 'hs2name') {
     const tariff = TARIFF[hs10];
@@ -350,6 +357,7 @@ module.exports = async (req, res) => {
       return res.status(200).json({
         ok: true, mode: 'link2en', offerId,
         nameEn: nameEnOut.toLowerCase(),
+        nameCn: String(top.nameCn || '').trim(),   // [ecom-v0.23] 간결 중문 통관 품명 — 빈값이면 판단불가(임의 생성 없음)
         material: String(top.material || '').trim(),
         subjectCn: offer.subject, materialCn: offer.materialCn,
         reason: String(top.reason || ''),
