@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.23</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.24</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -2091,20 +2091,30 @@ function _extractOfferId(link) {
   return (s.match(/1688\.com\/offer\/(\d+)/) || [])[1] || (s.match(/[?&]offerId=(\d+)/) || [])[1] || null;
 }
 // [ecom-v0.20] 그룹 결과 적용 — 이미 조회한 link2en 응답(d)을 재조회 없이 제품 1건에 적용(빈칸만).
+// [ecom-v0.24] ★대상 확장 — Description 빈칸(기존 전체채움) OR 통관품명_중문만 빈칸(중문만 채움).
+//   영문명이 이미 있는 제품은 Description·Material·관세사메모(마커) 등 기존 값 일절 불변 — 중문만 추가.
 function _applyLinkToEnResult(p, d) {
   const f = p.fields || {};
-  if (String(f['Description'] || '').trim()) return { skip: '기존 영문명 있음' };   // ★빈칸만
+  const hasEn = !!String(f['Description'] || '').trim();
+  const hasCn = !!String(f['통관품명_중문'] || '').trim();
+  if (hasEn && hasCn) return { skip: '기존 영문명·중문 모두 있음' };
   if (!d.ok) return { skip: d.error || '조회 실패' };
+  if (hasEn) {
+    // ★중문만 채움 — Description/Material/관세사메모 등 기존 값 절대 불변.
+    const nameCn = String(d.nameCn || '').trim();
+    if (!nameCn) return { skip: '중문 변환 실패' };
+    return { fields: { '통관품명_중문': nameCn }, mode: 'cn_only', en: String(f['Description']||'').trim(), nameCn, subjectCn: d.subjectCn || '' };
+  }
   const en = String(d.nameEn || '').trim();
   if (!en) return { skip: '변환 실패' };
   const fields = { 'Description': en, '통관품명_영문': en, '관세사메모': `AI번역(미확정): 1688[${d.subjectCn||''}] → ${en}${d.reason ? ' · ' + d.reason : ''}` };
   if (!String(f['Material'] || '').trim() && d.material) fields['Material'] = d.material;   // 재질도 빈칸만·값 없으면 임의 채움 안 함
-  if (!String(f['통관품명_중문'] || '').trim() && d.nameCn) fields['통관품명_중문'] = d.nameCn;   // [ecom-v0.23] 중문 품명도 빈칸만·값 없으면 임의 채움 안 함
-  return { fields, en, material: fields['Material'] || '', nameCn: fields['통관품명_중문'] || '', subjectCn: d.subjectCn || '' };
+  if (!hasCn && d.nameCn) fields['통관품명_중문'] = d.nameCn;   // [ecom-v0.23] 중문 품명도 빈칸만·값 없으면 임의 채움 안 함
+  return { fields, mode: 'full', en, material: fields['Material'] || '', nameCn: fields['통관품명_중문'] || '', subjectCn: d.subjectCn || '' };
 }
 async function _applyLinkToEn(p) {
   const f = p.fields || {};
-  if (String(f['Description'] || '').trim()) return { skip: '기존 영문명 있음' };   // ★빈칸만
+  if (String(f['Description'] || '').trim() && String(f['통관품명_중문'] || '').trim()) return { skip: '기존 영문명·중문 모두 있음' };
   const offerId = _extractOfferId(f['제품링크']);
   if (!offerId) return { skip: '1688 링크 없음/offerId 추출 불가' };
   const d = await _fetchLink2En(offerId);
@@ -2112,7 +2122,7 @@ async function _applyLinkToEn(p) {
   if (applied.skip) return applied;
   await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields: applied.fields, typecast: true });
   Object.assign(f, applied.fields);
-  return { en: applied.en, material: applied.material, nameCn: applied.nameCn, subjectCn: applied.subjectCn };
+  return { en: applied.en, material: applied.material, nameCn: applied.nameCn, subjectCn: applied.subjectCn, mode: applied.mode };
 }
 async function linkToEnOneProduct(pid) {
   const p = (state.products || []).find(x => x.id === pid);
@@ -2122,18 +2132,29 @@ async function linkToEnOneProduct(pid) {
     const res = await _applyLinkToEn(p);
     if (res.skip) { toastWarn && toastWarn('자동 채움 안 함: ' + res.skip); return; }
     if (typeof renderProducts === 'function') renderProducts();
-    toastSuccess && toastSuccess(`🔗 자동 채움(미확정): ${res.subjectCn} → ${res.en}`, { title: '확인 후 확정하세요' });
+    if (res.mode === 'cn_only') {
+      toastSuccess && toastSuccess(`🔗 중문 품명만 채움: ${res.subjectCn} → ${res.nameCn}`, { title: '중문 품명 채움(영문명 불변)' });
+    } else {
+      toastSuccess && toastSuccess(`🔗 자동 채움(미확정): ${res.subjectCn} → ${res.en}`, { title: '확인 후 확정하세요' });
+    }
   } catch (e) { toastError && toastError('자동 채움 실패: ' + (e.message || e)); }
 }
 async function linkToEnAllBlank() {
-  const targets = (state.products || []).filter(p => !String((p.fields||{})['Description'] || '').trim() && String((p.fields||{})['제품링크'] || '').trim());
-  if (!targets.length) { toastWarn && toastWarn('영문명 빈칸 + 1688 링크 있는 제품이 없습니다'); return; }
-  if (!confirm(`영문명 빈칸 ${targets.length}건을 1688 링크로 자동 채웁니다(빈칸만·기존값 보존·미확정 노란배경). 진행할까요?`)) return;
+  // [ecom-v0.24] ★대상 확장 — Description 빈칸 OR 통관품명_중문 빈칸(제품링크는 필수).
+  const targets = (state.products || []).filter(p => {
+    const pf = p.fields || {};
+    if (!String(pf['제품링크'] || '').trim()) return false;
+    const needsEn = !String(pf['Description'] || '').trim();
+    const needsCn = !String(pf['통관품명_중문'] || '').trim();
+    return needsEn || needsCn;
+  });
+  if (!targets.length) { toastWarn && toastWarn('영문명 또는 중문 빈칸 + 1688 링크 있는 제품이 없습니다'); return; }
+  if (!confirm(`영문명·중문 빈칸 대상 ${targets.length}건을 1688 링크로 자동 채웁니다(빈칸만·기존값 보존). 영문명이 이미 있으면 중문만 채웁니다. 진행할까요?`)) return;
   const btn = document.getElementById('btnLinkToEnAllBlank');
   const oldLabel = btn && btn.textContent;
   if (btn) { btn.disabled = true; btn.textContent = '🔗 조회 중…'; }
   _batchProgress.show('1688 링크 자동 채움 중…');
-  let ok = 0, skip = 0, fail = 0;
+  let okFull = 0, okCnOnly = 0, skip = 0, fail = 0;
   const failList = [];
   // [ecom-v0.20] ★offerId 그룹핑 — 같은 1688 링크(offerId) 제품은 프록시+AI 1회만 호출, 결과를 그룹 전체에 동일 적용.
   //   호출량 절감(QPS·요금) + 같은 제품이 서로 다른 영문명으로 갈라지는 불일치 방지.
@@ -2159,7 +2180,7 @@ async function linkToEnAllBlank() {
           try {
             await api('PATCH', `/${TABLES.Products}/${p.id}`, { fields: applied.fields, typecast: true });
             Object.assign(p.fields, applied.fields);
-            ok++;
+            if (applied.mode === 'cn_only') okCnOnly++; else okFull++;
           } catch (e) { fail++; failList.push(`${(p.fields||{})['상품ID']||''}: ${e.message||e}`); console.warn('[링크자동] 저장 실패', (p.fields||{})['상품ID'], e.message); }
         }
       } catch (e) {
@@ -2170,7 +2191,8 @@ async function linkToEnAllBlank() {
     }
     noOfferId.forEach(p => { skip++; failList.push(`${(p.fields||{})['상품ID']||''}: 1688 링크 없음/offerId 추출 불가`); });
     if (typeof renderProducts === 'function') renderProducts();
-    toastSuccess && toastSuccess(`🔗 일괄 자동 채움: 성공 ${ok} · 스킵/실패 ${skip + fail} — 전부 미확정(노란배경), 확인 후 확정${failList.length ? '\n' + failList.slice(0,8).join('\n') : ''}`, { title: '1688 자동 채움 완료' });
+    // [ecom-v0.24] ★토스트 구분 표기 — 영문+중문(full) vs 중문만(cn_only).
+    toastSuccess && toastSuccess(`🔗 일괄 자동 채움: 영문+중문 ${okFull}건 · 중문만 ${okCnOnly}건 · 스킵/실패 ${skip + fail} — 신규분 미확정(노란배경), 확인 후 확정${failList.length ? '\n' + failList.slice(0,8).join('\n') : ''}`, { title: '1688 자동 채움 완료' });
   } finally {
     _batchProgress.hide();
     if (btn) { btn.disabled = false; btn.textContent = oldLabel; }
@@ -3059,7 +3081,7 @@ const I18N = {
     'products.hs6_all_btn': '🤖 HS 6자리 빈칸 일괄 추천',
     'products.confirm_all_title': '✓ AI 추천값(영문명·HS 노란배경) 전체 확정 — 검토 후 미확정 표시 해제(관세사메모 마커 제거). 자동확정 아님.',
     'products.confirm_all_btn': '✓ AI추천 일괄 확정',
-    'products.link2en_all_title': '🔗 영문명 빈칸 전체 — 1688 링크 실제 중문 상품명·재질로 AI 변환(빈칸만·기존값 보존·미확정 노란배경)',
+    'products.link2en_all_title': '🔗 영문명·중문 빈칸 전체 — 1688 링크 실제 중문 상품명·재질로 AI 변환(빈칸만·기존값 보존). 영문명 있으면 중문만 채움.',
     'products.link2en_all_btn': '🔗 링크에서 영문명 일괄',
     'products.translate_one_title': '🌐 한국어 상품명 → 영문 통관품명 AI 번역(빈칸만·미확정)',
     'products.translate_one_btn': '🌐 번역',
@@ -3658,7 +3680,7 @@ const I18N = {
     'products.hs6_all_btn': '🤖 批量推荐HS 6位',
     'products.confirm_all_title': '✓ 批量确认AI推荐值(英文品名·HS黄色底色) — 审核后解除未确认标记(移除报关行备注标记)。非自动确认。',
     'products.confirm_all_btn': '✓ 批量确认AI推荐',
-    'products.link2en_all_title': '🔗 批量空白英文品名 — 根据1688链接实际中文品名·材质AI转换(仅空白·保留原值·未确认黄色底色)',
+    'products.link2en_all_title': '🔗 批量空白英文品名·中文品名 — 根据1688链接实际中文品名·材质AI转换(仅空白·保留原值)。已有英文品名则仅补中文品名。',
     'products.link2en_all_btn': '🔗 从链接批量生成英文品名',
     'products.translate_one_title': '🌐 韩文品名 → 英文报关品名AI翻译(仅空白·未确认)',
     'products.translate_one_btn': '🌐 翻译',
@@ -4257,7 +4279,7 @@ const I18N = {
     'products.hs6_all_btn': '🤖 Batch-suggest HS6',
     'products.confirm_all_title': '✓ Confirm all AI-suggested values (English name/HS yellow background) — review then clear unconfirmed flag (removes customs-memo marker). Not auto-confirm.',
     'products.confirm_all_btn': '✓ Confirm All AI Suggestions',
-    'products.link2en_all_title': '🔗 Batch blank English names — AI conversion from the actual 1688 link Chinese name/material (blank only, preserves existing values, unconfirmed = yellow background)',
+    'products.link2en_all_title': '🔗 Batch blank English/Chinese names — AI conversion from the actual 1688 link Chinese name/material (blank only, preserves existing values). If English name exists, only fills the Chinese name.',
     'products.link2en_all_btn': '🔗 Batch Name from Link',
     'products.translate_one_title': '🌐 AI-translate Korean product name → English customs name (blank only, unconfirmed)',
     'products.translate_one_btn': '🌐 Translate',
