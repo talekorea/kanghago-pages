@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.17</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.18</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -501,29 +501,29 @@
   <!-- Phase D: 사서함 4탭 (상태별 분류 + 카운터 + 새 항목 배지 + 검색) -->
   <div id="shipmentTabs" style="margin-top:12px; display:flex; gap:6px; flex-wrap:wrap;"></div>
   <div id="shipProgressWidget"></div>
-  <input id="shipmentSearch" placeholder="🔍 사서함 번호 검색" oninput="renderShipmentOptions()"
+  <input id="shipmentSearch" data-i18n-placeholder="search.mailbox" placeholder="🔍 사서함 번호 검색" oninput="renderShipmentOptions()"
     style="margin-top:8px; width:100%; box-sizing:border-box; padding:7px 10px; font-size:13px; border:1px solid #ccc; border-radius:6px;" />
   <!-- v3.2.65 (2026-06-14): 상단 정리 — 일상 3개 노출 + 관리 6개를 "⚙️ 관리" 드롭다운(<details> 네이티브, JS 핸들러 0).
        admin-only·onclick 전부 그대로(권한·기능 무변경, 위치만 정리). 채널톡·관세사관리는 현 상태(admin-only) 유지. -->
   <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12px; color:var(--text-dim);">
     <!-- 일상용 — 노출 유지 -->
-    <button class="secondary" style="padding:6px 12px; font-size:12px; background:#e8f7ef; color:#1B2A3B; border:1px solid #2BB673;" onclick="openBookingSummary()" title="선적일 선택 → 그날 사서함 박스 무게·CBM 합계 → 위챗 복사">📦 선적일별 부킹 요약</button>
-    <button class="secondary" style="padding:6px 12px; font-size:12px; background:#f3ece0; color:#5a4a2a; border:1px solid #c9973a;" onclick="openDispatchMaster()" title="배차 마스터 — 선적일별 전체 배차 운영 현황(읽기전용) + Excel">🚚 배차 마스터</button>
-    <button class="secondary" style="padding:6px 12px; font-size:12px; background:#eef2fb; color:#1B2A3B; border:1px solid #4A6DA7;" onclick="openManifestModal()" title="포워딩 매니페스트(TYREDS) — 선적일 선택 → 전자상거래 사서함 Order를 海运/空运/특송 파일로. 무역 미포함.">📄 포워딩 매니페스트</button>
+    <button class="secondary" style="padding:6px 12px; font-size:12px; background:#e8f7ef; color:#1B2A3B; border:1px solid #2BB673;" onclick="openBookingSummary()" data-i18n-title="toolbar.booking_title" title="선적일 선택 → 그날 사서함 박스 무게·CBM 합계 → 위챗 복사" data-i18n="toolbar.booking">📦 선적일별 부킹 요약</button>
+    <button class="secondary" style="padding:6px 12px; font-size:12px; background:#f3ece0; color:#5a4a2a; border:1px solid #c9973a;" onclick="openDispatchMaster()" data-i18n-title="toolbar.dispatch_title" title="배차 마스터 — 선적일별 전체 배차 운영 현황(읽기전용) + Excel" data-i18n="toolbar.dispatch">🚚 배차 마스터</button>
+    <button class="secondary" style="padding:6px 12px; font-size:12px; background:#eef2fb; color:#1B2A3B; border:1px solid #4A6DA7;" onclick="openManifestModal()" data-i18n-title="toolbar.manifest_title" title="포워딩 매니페스트(TYREDS) — 선적일 선택 → 전자상거래 사서함 Order를 海运/空运/특송 파일로. 무역 미포함." data-i18n="toolbar.manifest">📄 포워딩 매니페스트</button>
     <button class="secondary" style="padding:6px 12px; font-size:12px; background:#fff7e0; color:#7a5a00; border:1px solid #d9a441;" onclick="openApBillingModal()" data-i18n-title="apbilling.btn_title" title="AP(고객)별 사서함 전체 청구(운송비+핸들링+승격료) 요약 — 표시만. 매니페스트와 동일 데이터 재사용." data-i18n="apbilling.btn_label">💰 AP별 청구 요약</button>
-    <button class="secondary" style="padding:6px 12px; font-size:12px; background:#fdecef; color:#7a0c28; border:1px solid #e88aa0;" onclick="runContaminationCheck()" title="영문명 broadcast 오염 점검 (READ ONLY 조회) — 비고유 URL·broadcast 클러스터·catch-all HS 쏠림. 주1회 권장.">🔬 오염 점검</button>
-    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#e8f7ef; border:1px solid #2BB673;" onclick="openNotifyModal()" title="채널톡 고객 알림 — 사서함 직접 입력 가능(주문 없어도)">📨 채널톡 알림</button>
+    <button class="secondary" style="padding:6px 12px; font-size:12px; background:#fdecef; color:#7a0c28; border:1px solid #e88aa0;" onclick="runContaminationCheck()" data-i18n-title="toolbar.contam_title" title="영문명 broadcast 오염 점검 (READ ONLY 조회) — 비고유 URL·broadcast 클러스터·catch-all HS 쏠림. 주1회 권장." data-i18n="toolbar.contam">🔬 오염 점검</button>
+    <button class="secondary admin-only" style="padding:6px 12px; font-size:12px; background:#e8f7ef; border:1px solid #2BB673;" onclick="openNotifyModal()" data-i18n-title="toolbar.notify_title" title="채널톡 고객 알림 — 사서함 직접 입력 가능(주문 없어도)" data-i18n="toolbar.notify">📨 채널톡 알림</button>
     <button class="secondary admin-only agent-ui" style="padding:6px 12px; font-size:12px;" onclick="openAgentAdmin()">👥 관세사 관리</button>
     <!-- 관리/설정 6개 → ⚙️ 관리 드롭다운(admin-only) -->
     <details class="admin-only mgmt-menu" style="position:relative; display:inline-block;">
-      <summary style="list-style:none; cursor:pointer; padding:6px 12px; font-size:12px; border:1px solid #ccc; border-radius:6px; background:#f5f5f5; color:#1B2A3B; user-select:none;">⚙️ 관리 ▾</summary>
+      <summary style="list-style:none; cursor:pointer; padding:6px 12px; font-size:12px; border:1px solid #ccc; border-radius:6px; background:#f5f5f5; color:#1B2A3B; user-select:none;" data-i18n="toolbar.admin_menu">⚙️ 관리 ▾</summary>
       <div style="position:absolute; z-index:60; margin-top:4px; background:#fff; border:1px solid #ccc; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.14); padding:8px; display:flex; flex-direction:column; gap:6px; min-width:190px;">
         <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left;" onclick="openCustomerImport()" data-i18n="btn.bulk_import">📋 회원 일괄 등록</button>
-        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left; background:#fff7e6; color:#1B2A3B; border:1px solid var(--gold);" onclick="openExcelUploadModal()" title="표준 양식 엑셀로 사서함 데이터 업로드 — 알리피드 대체 트랙">📂 엑셀 업로드</button>
-        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left;" onclick="openMemberAdmin()">🏢 회원 관리</button>
-        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left; background:#eef5ff; color:#1B2A3B; border:1px solid #1B5E9A;" onclick="openStaffAdmin()" title="직원 계정 발급·관리 (ADMIN_INVITE_TOKEN 필요)">🧑‍💼 직원 관리</button>
-        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left;" onclick="bulkFillRates('shipdate')" title="현재 사서함의 선적일 그룹 중 빈/0 환율을 현재 고시환율로 채움(정상값 보존)">🔄 환율채움(선적일)</button>
-        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left;" onclick="bulkFillRates('all')" title="전체 Shipments의 빈/0 환율을 현재 고시환율로 채움(정상값 보존)">🔄 환율채움(전체빈)</button>
+        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left; background:#fff7e6; color:#1B2A3B; border:1px solid var(--gold);" onclick="openExcelUploadModal()" data-i18n-title="toolbar.excel_upload_title" title="표준 양식 엑셀로 사서함 데이터 업로드 — 알리피드 대체 트랙" data-i18n="toolbar.excel_upload">📂 엑셀 업로드</button>
+        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left;" onclick="openMemberAdmin()" data-i18n="toolbar.member_admin">🏢 회원 관리</button>
+        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left; background:#eef5ff; color:#1B2A3B; border:1px solid #1B5E9A;" onclick="openStaffAdmin()" data-i18n-title="toolbar.staff_admin_title" title="직원 계정 발급·관리 (ADMIN_INVITE_TOKEN 필요)" data-i18n="toolbar.staff_admin">🧑‍💼 직원 관리</button>
+        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left;" onclick="bulkFillRates('shipdate')" data-i18n-title="toolbar.fillrate_shipdate_title" title="현재 사서함의 선적일 그룹 중 빈/0 환율을 현재 고시환율로 채움(정상값 보존)" data-i18n="toolbar.fillrate_shipdate">🔄 환율채움(선적일)</button>
+        <button class="secondary" style="padding:6px 12px; font-size:12px; text-align:left;" onclick="bulkFillRates('all')" data-i18n-title="toolbar.fillrate_all_title" title="전체 Shipments의 빈/0 환율을 현재 고시환율로 채움(정상값 보존)" data-i18n="toolbar.fillrate_all">🔄 환율채움(전체빈)</button>
         <span data-i18n="bulk_import.hint" style="font-size:11px; color:#888;">알리피드 회원관리 페이지에서 50명씩 복사해서 일괄 등록</span>
       </div>
     </details>
@@ -829,50 +829,50 @@
 <!-- 2. 적용환율 — v2.9.14 통합 카드 (관세청 고시환율 정보 + 사서함 적용환율 입력) -->
 <div class="section hidden" id="ratesSection" style="background:#fff; border:2px solid #C9973A; border-radius:10px; padding:20px 24px;">
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-    <h2 style="margin:0; font-size:16px; color:#1B2A3B; border:0; padding:0;">📋 적용환율 <span style="font-weight:normal; color:#666; font-size:13px;">(관세청 고시환율)</span></h2>
+    <h2 style="margin:0; font-size:16px; color:#1B2A3B; border:0; padding:0;"><span data-i18n="rates.title">📋 적용환율</span> <span style="font-weight:normal; color:#666; font-size:13px;" data-i18n="rates.subtitle">(관세청 고시환율)</span></h2>
     <span id="mockBadge" style="background:#C9973A; color:#fff; padding:3px 10px; border-radius:4px; font-size:11px; font-weight:600;">🔧 Mock</span>
   </div>
 
   <div style="font-size:12px; color:#555; line-height:1.7; margin-bottom:16px; padding:10px 14px; background:#f8f5ee; border-radius:6px; border-left:3px solid #C9973A;">
-    <div>적용기간 <strong style="color:#1B2A3B;"><span id="rateWeekRange">-</span></strong> &nbsp;(<span id="rateWeekNo">-</span>주차)</div>
-    <div id="rateBasisNote" style="margin-top:4px;">기준일 -</div>
-    <div>법적근거 관세법 제18조 &nbsp;·&nbsp; 출처 <span id="rateSource">관세청 UNI-PASS</span> &nbsp;·&nbsp; 갱신 <span id="rateFetchedAt">-</span></div>
+    <div><span data-i18n="rates.period">적용기간</span> <strong style="color:#1B2A3B;"><span id="rateWeekRange">-</span></strong> &nbsp;(<span id="rateWeekNo">-</span><span data-i18n="rates.week_suffix">주차</span>)</div>
+    <div id="rateBasisNote" style="margin-top:4px;"><span data-i18n="rates.basis_date">기준일</span> -</div>
+    <div><span data-i18n="rates.legal_basis">법적근거 관세법 제18조</span> &nbsp;·&nbsp; <span data-i18n="rates.source_label">출처</span> <span id="rateSource">관세청 UNI-PASS</span> &nbsp;·&nbsp; <span data-i18n="rates.updated_label">갱신</span> <span id="rateFetchedAt">-</span></div>
   </div>
 
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px;">
     <!-- 좌측: 고시환율 (참고용 읽기 전용) -->
     <div style="background:#f8f5ee; border:1px solid #e8d8b8; border-radius:6px; padding:14px 16px;">
-      <div style="font-size:11px; color:#888; font-weight:600; margin-bottom:10px; letter-spacing:0.5px;">고시환율 (참고용 · 입력칸 아님)</div>
+      <div style="font-size:11px; color:#888; font-weight:600; margin-bottom:10px; letter-spacing:0.5px;" data-i18n="rates.official_readonly">고시환율 (참고용 · 입력칸 아님)</div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 18px; font-family:'Consolas',monospace; font-size:13px;">
         <div>USD &nbsp;<b id="officialUSD" style="color:#1B2A3B;">-</b></div>
         <div>CNY &nbsp;<b id="officialCNY" style="color:#1B2A3B;">-</b></div>
         <div>EUR &nbsp;<b id="officialEUR" style="color:#1B2A3B;">-</b></div>
-        <div>JPY &nbsp;<b id="officialJPY" style="color:#1B2A3B;">-</b> <span style="font-size:9px; color:#aaa;">/100엔</span></div>
+        <div>JPY &nbsp;<b id="officialJPY" style="color:#1B2A3B;">-</b> <span style="font-size:9px; color:#aaa;" data-i18n="rates.per100yen">/100엔</span></div>
       </div>
     </div>
 
     <!-- 우측: 사서함 적용환율 (입력칸) -->
     <div style="background:#fff; border:1px solid #e8d8b8; border-radius:6px; padding:14px 16px;">
-      <div style="font-size:11px; color:#0a7b40; font-weight:600; margin-bottom:10px; letter-spacing:0.5px;">✏️ 사서함 적용환율 (여기에 입력)</div>
+      <div style="font-size:11px; color:#0a7b40; font-weight:600; margin-bottom:10px; letter-spacing:0.5px;" data-i18n="rates.mailbox_applied">✏️ 사서함 적용환율 (여기에 입력)</div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
         <div style="font-size:12px; color:#1B2A3B;">USD 1 = KRW ⭐</div>
-        <input id="rateUsdKrw" type="number" step="0.01" readonly title="관세청 고시환율 — 자동 조회(수동 수정 불가, 세액 보호)" style="width:120px; padding:5px 8px; border:1px solid #e0e0e0; border-radius:4px; font-size:13px; font-family:'Consolas',monospace; text-align:right; background:#f4f1ea; color:#1B2A3B; cursor:default;" />
+        <input id="rateUsdKrw" type="number" step="0.01" readonly data-i18n-title="rates.usdkrw_title" title="관세청 고시환율 — 자동 조회(수동 수정 불가, 세액 보호)" style="width:120px; padding:5px 8px; border:1px solid #e0e0e0; border-radius:4px; font-size:13px; font-family:'Consolas',monospace; text-align:right; background:#f4f1ea; color:#1B2A3B; cursor:default;" />
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
         <div style="font-size:12px; color:#1B2A3B;">CNY 1 = KRW</div>
-        <input id="rateCnyKrw" type="number" step="0.01" readonly title="관세청 고시환율 — 자동 조회(수동 수정 불가)" style="width:120px; padding:5px 8px; border:1px solid #e0e0e0; border-radius:4px; font-size:13px; font-family:'Consolas',monospace; text-align:right; background:#f4f1ea; color:#1B2A3B; cursor:default;" />
+        <input id="rateCnyKrw" type="number" step="0.01" readonly data-i18n-title="rates.cnykrw_title" title="관세청 고시환율 — 자동 조회(수동 수정 불가)" style="width:120px; padding:5px 8px; border:1px solid #e0e0e0; border-radius:4px; font-size:13px; font-family:'Consolas',monospace; text-align:right; background:#f4f1ea; color:#1B2A3B; cursor:default;" />
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <div style="font-size:12px; color:#1B2A3B;">USD 1 = CNY ⭐</div>
-        <input id="rateUsdCnyDisp" type="text" readonly title="USD→CNY 표기 (실제 계산은 CNY→USD 값 사용 — 표기만 역수)" style="width:120px; padding:5px 8px; border:1px solid #e0e0e0; border-radius:4px; font-size:13px; font-family:'Consolas',monospace; text-align:right; background:#f4f1ea; color:#1B2A3B; cursor:default;" />
+        <input id="rateUsdCnyDisp" type="text" readonly data-i18n-title="rates.usdcny_title" title="USD→CNY 표기 (실제 계산은 CNY→USD 값 사용 — 표기만 역수)" style="width:120px; padding:5px 8px; border:1px solid #e0e0e0; border-radius:4px; font-size:13px; font-family:'Consolas',monospace; text-align:right; background:#f4f1ea; color:#1B2A3B; cursor:default;" />
       </div>
       <input id="rateCnyUsd" type="hidden" />
     </div>
   </div>
 
   <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-    <button class="secondary" onclick="refreshOfficialRates(true)" style="padding:8px 16px; font-size:12px; font-weight:600;">🔄 고시환율로 갱신</button>
-    <div style="font-size:11px; color:#666;">⚠ 수입신고 시 <strong>관세법 제18조</strong>에 따라 고시환율 적용 의무</div>
+    <button class="secondary" onclick="refreshOfficialRates(true)" style="padding:8px 16px; font-size:12px; font-weight:600;" data-i18n="rates.refresh_btn">🔄 고시환율로 갱신</button>
+    <div style="font-size:11px; color:#666;"><span data-i18n="rates.duty_notice_pre">⚠ 수입신고 시</span> <strong data-i18n="rates.duty_notice_law">관세법 제18조</strong><span data-i18n="rates.duty_notice_post">에 따라 고시환율 적용 의무</span></div>
   </div>
 </div>
 
@@ -885,27 +885,27 @@
   <div class="customer-grid">
     <div>
       <label data-i18n="cust.name">회원명</label>
-      <input id="cust_name" type="text" placeholder="홍길동" />
+      <input id="cust_name" type="text" data-i18n-placeholder="cust.name_ph" placeholder="홍길동" />
     </div>
     <!-- [v3.2.134] 고객유형 — 영문/식별정보 게이트 분기 단일소스(Customers.회원구분) -->
     <div>
-      <label>고객유형 <span style="color:#c0392b;">*</span></label>
+      <label data-i18n="cust.member_type">고객유형</label> <span style="color:#c0392b;">*</span>
       <select id="cust_member_type" onchange="applyCustomerTypeUI()" style="width:100%; padding:7px; border:1px solid #d4c5a8; border-radius:4px;">
-        <option value="">— 선택 —</option>
-        <option value="개인회원">개인회원 (개인통관)</option>
-        <option value="사업자회원">사업자회원 (사업자통관)</option>
+        <option value="" data-i18n="cust.select_placeholder">— 선택 —</option>
+        <option value="개인회원" data-i18n="cust.type_personal">개인회원 (개인통관)</option>
+        <option value="사업자회원" data-i18n="cust.type_biz">사업자회원 (사업자통관)</option>
       </select>
     </div>
     <div>
       <label data-i18n="cust.company">회사명/상호</label>
-      <input id="cust_company" type="text" placeholder="(주)테스트" />
+      <input id="cust_company" type="text" data-i18n-placeholder="cust.company_ph" placeholder="(주)테스트" />
     </div>
     <div class="cust-biz-only">
       <label data-i18n="cust.biz_no">사업자번호</label>
       <input id="cust_biz_no" type="text" placeholder="123-45-67890" />
     </div>
     <div class="cust-biz-only">
-      <label>영문회사명 (English company)</label>
+      <label data-i18n="cust.en_company">영문회사명 (English company)</label>
       <input id="cust_en_company" type="text" placeholder="TEST CO., LTD." />
     </div>
     <div class="cust-personal-only">
@@ -913,11 +913,11 @@
       <input id="cust_customs_code" type="text" placeholder="P123456789012" />
     </div>
     <div class="cust-personal-only">
-      <label>영문성명 (English name)</label>
+      <label data-i18n="cust.en_name">영문성명 (English name)</label>
       <input id="cust_en_name" type="text" placeholder="GILDONG HONG" />
     </div>
     <div class="full">
-      <label>영문주소 (English address) <span style="color:#c0392b;">*</span></label>
+      <label data-i18n="cust.en_address">영문주소 (English address)</label> <span style="color:#c0392b;">*</span>
       <input id="cust_en_address" type="text" placeholder="123 Gangnam-daero, Gangnam-gu, Seoul, KOREA" />
     </div>
     <div>
@@ -934,11 +934,11 @@
     </div>
     <div class="full">
       <label data-i18n="cust.address">주소</label>
-      <input id="cust_address" type="text" placeholder="서울특별시 강남구 ..." />
+      <input id="cust_address" type="text" data-i18n-placeholder="cust.address_ph" placeholder="서울특별시 강남구 ..." />
     </div>
     <div class="full">
       <label data-i18n="cust.memo">메모</label>
-      <textarea id="cust_memo" rows="2" placeholder="배송 주의사항 등"></textarea>
+      <textarea id="cust_memo" rows="2" data-i18n-placeholder="cust.memo_ph" placeholder="배송 주의사항 등"></textarea>
     </div>
   </div>
   <div id="customerStatus" style="margin-top:8px; font-size:12px; color:var(--text-dim);"></div>
@@ -955,11 +955,11 @@
 <div class="section hidden" id="productsSection">
   <h2 data-i18n="section.products">1. 상품 정보 입력</h2>
   <!-- [v3.2.156] 제품 수동 추가 — 주문 귀속·상품ID 자동. _isNew 행 → 입력 → [저장]이 create. -->
-  <button type="button" onclick="addProductRow()" title="제품을 수동으로 추가 — 주문 선택 후 빈 행 생성. 영문명/HS/수량/단가 입력 → [Airtable에 저장] → 사진 교체 가능." style="margin:4px 0 8px; padding:6px 14px; background:linear-gradient(135deg,#0a7b40,#0d8f4c); color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">➕ 제품 추가</button>
-  <button type="button" id="btnTranslateAllBlank" onclick="translateAllBlank()" title="🌐 영문명 빈칸 전체 AI 번역 — 한국어 상품명→영문 통관품명(빈칸만·기존값 보존·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#eef4fb; color:#1B5E9A; border:1px solid #1B5E9A; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">🌐 영문명 빈칸 일괄 번역</button>
-  <button type="button" id="btnSuggestHs6AllBlank" onclick="suggestHs6AllBlank()" title="🤖 HS 6자리 빈칸 전체 AI 추천 — 영문명→국제 공통 HS6(빈칸만·10자리 추정 안 함·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#eef2fb; color:#1B2A5A; border:1px solid #3a4da7; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">🤖 HS 6자리 빈칸 일괄 추천</button>
-  <button type="button" id="btnConfirmAllUnconfirmed" onclick="confirmAllUnconfirmed()" title="✓ AI 추천값(영문명·HS 노란배경) 전체 확정 — 검토 후 미확정 표시 해제(관세사메모 마커 제거). 자동확정 아님." style="margin:4px 0 8px 6px; padding:6px 14px; background:#e8f7ef; color:#0a5a2e; border:1px solid #0a7b40; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">✓ AI추천 일괄 확정</button>
-  <button type="button" id="btnLinkToEnAllBlank" onclick="linkToEnAllBlank()" title="🔗 영문명 빈칸 전체 — 1688 링크 실제 중문 상품명·재질로 AI 변환(빈칸만·기존값 보존·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#fff4e6; color:#a15a00; border:1px solid #a15a00; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">🔗 링크에서 영문명 일괄</button>
+  <button type="button" onclick="addProductRow()" data-i18n-title="products.add_title" title="제품을 수동으로 추가 — 주문 선택 후 빈 행 생성. 영문명/HS/수량/단가 입력 → [Airtable에 저장] → 사진 교체 가능." style="margin:4px 0 8px; padding:6px 14px; background:linear-gradient(135deg,#0a7b40,#0d8f4c); color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;" data-i18n="products.add_btn">➕ 제품 추가</button>
+  <button type="button" id="btnTranslateAllBlank" onclick="translateAllBlank()" data-i18n-title="products.translate_all_title" title="🌐 영문명 빈칸 전체 AI 번역 — 한국어 상품명→영문 통관품명(빈칸만·기존값 보존·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#eef4fb; color:#1B5E9A; border:1px solid #1B5E9A; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;" data-i18n="products.translate_all_btn">🌐 영문명 빈칸 일괄 번역</button>
+  <button type="button" id="btnSuggestHs6AllBlank" onclick="suggestHs6AllBlank()" data-i18n-title="products.hs6_all_title" title="🤖 HS 6자리 빈칸 전체 AI 추천 — 영문명→국제 공통 HS6(빈칸만·10자리 추정 안 함·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#eef2fb; color:#1B2A5A; border:1px solid #3a4da7; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;" data-i18n="products.hs6_all_btn">🤖 HS 6자리 빈칸 일괄 추천</button>
+  <button type="button" id="btnConfirmAllUnconfirmed" onclick="confirmAllUnconfirmed()" data-i18n-title="products.confirm_all_title" title="✓ AI 추천값(영문명·HS 노란배경) 전체 확정 — 검토 후 미확정 표시 해제(관세사메모 마커 제거). 자동확정 아님." style="margin:4px 0 8px 6px; padding:6px 14px; background:#e8f7ef; color:#0a5a2e; border:1px solid #0a7b40; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;" data-i18n="products.confirm_all_btn">✓ AI추천 일괄 확정</button>
+  <button type="button" id="btnLinkToEnAllBlank" onclick="linkToEnAllBlank()" data-i18n-title="products.link2en_all_title" title="🔗 영문명 빈칸 전체 — 1688 링크 실제 중문 상품명·재질로 AI 변환(빈칸만·기존값 보존·미확정 노란배경)" style="margin:4px 0 8px 6px; padding:6px 14px; background:#fff4e6; color:#a15a00; border:1px solid #a15a00; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;" data-i18n="products.link2en_all_btn">🔗 링크에서 영문명 일괄</button>
   <!-- v3.2.12 #1: 주문별 배송 요청 메모 — 엑셀 '배송 요청 메모' 컬럼 / Orders.배송요청사항 자동 노출 -->
   <div id="orderMemoBox" style="display:none; margin:8px 0 12px; padding:12px 14px; background:#fff8d6; border:1px solid #d4a72c; border-radius:6px; font-size:13px;">
     <div style="font-weight:700; color:#6b5d00; margin-bottom:6px;">📝 배송 요청 메모 (주문별)</div>
@@ -1004,13 +1004,13 @@
       <tbody id="productsBody"></tbody>
       <tfoot>
         <tr style="background:var(--bg-soft); font-weight:600;">
-          <td colspan="12" style="text-align:right; padding:10px 12px;">합계:</td>
+          <td colspan="12" style="text-align:right; padding:10px 12px;" data-i18n="products.total_label">합계:</td>
           <td class="num" id="totalProductsCny" style="padding:10px 12px;">¥0</td>
           <td class="num" id="totalProductsUsd" style="padding:10px 12px;">$0</td>
         </tr>
         <!-- v3.2.48 ③: 배송요금 합계 (현지배송비 — 합계CNY 비례로 신고가에 분배) -->
         <tr style="background:var(--bg-soft); font-size:12px;">
-          <td colspan="12" style="text-align:right; padding:6px 12px; color:var(--text-dim);">배송요금 합계 (현지배송비 · 합계CNY 비례 신고가 분배):</td>
+          <td colspan="12" style="text-align:right; padding:6px 12px; color:var(--text-dim);" data-i18n="products.freight_total_label">배송요금 합계 (현지배송비 · 합계CNY 비례 신고가 분배):</td>
           <td class="num" id="totalLocalShipCny" style="padding:6px 12px; color:#0a7b40;">¥0</td>
           <td></td>
         </tr>
@@ -1065,7 +1065,7 @@
 <!-- 5. 박스 관리 (v3.2.0 의도: §4 박스 — 트리거 1) -->
 <div class="section hidden" id="boxSection">
   <!-- [v3.2.181] 박스 관리 접이식 — 헤더 클릭 펼침/접기. 무게·CBM 요약(#boxSummary)은 접힌 상태에서도 상시 표시. -->
-  <h2 onclick="toggleBoxSection()" style="cursor:pointer; user-select:none; display:flex; align-items:center; gap:6px;" title="클릭하여 박스 상세 펼치기/접기">
+  <h2 onclick="toggleBoxSection()" style="cursor:pointer; user-select:none; display:flex; align-items:center; gap:6px;" data-i18n-title="box.toggle_title" title="클릭하여 박스 상세 펼치기/접기">
     <span id="boxArrow" style="display:inline-block; width:16px; color:var(--gold);">▶</span>
     <span data-i18n="section.box">2. 박스 관리</span> <span class="small-dim" data-i18n="section.box.sub">(상품의 박스번호 입력 → 박스 자동 생성)</span>
     <span id="boxSummary" style="margin-left:auto; font-size:15px; font-weight:700; color:var(--navy);">합계 0.0 kg / 0 CBM</span>
@@ -1118,11 +1118,11 @@
   <!-- v2.9.7: 박스 라벨 출력 -->
   <div style="margin-top:14px; padding:12px; background:#fff8e1; border:1px solid #C9973A; border-radius:6px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
     <div style="font-size:13px;">
-      <strong>🏷 박스 라벨 출력</strong>
+      <strong data-i18n="label.heading">🏷 박스 라벨 출력</strong>
       <span style="color:var(--text-dim); margin-left:8px;" data-i18n="label.note">
         한 박스당 3장씩 (Xprinter DT-108B · 100×150mm 롤지)
       </span>
-      <div id="labelCountInfo" style="font-size:11px; color:#666; margin-top:3px;">
+      <div id="labelCountInfo" style="font-size:11px; color:#666; margin-top:3px;" data-i18n="label.count_empty">
         박스를 입력하면 라벨 매수가 표시됩니다
       </div>
     </div>
@@ -1741,19 +1741,19 @@
 <div id="bookingSummaryModal" style="display:none; position:fixed; inset:0; background:rgba(20,30,50,0.7); z-index:9999; padding:20px; overflow-y:auto;">
   <div style="max-width:780px; margin:30px auto; background:#fff; border-radius:10px; padding:20px; box-shadow:0 10px 40px rgba(0,0,0,0.4);">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:10px; border-bottom:2px solid #1B2A3B;">
-      <h3 style="margin:0; font-size:17px; color:#1B2A3B;">📦 선적일별 부킹 요약</h3>
+      <h3 style="margin:0; font-size:17px; color:#1B2A3B;" data-i18n="booking.title">📦 선적일별 부킹 요약</h3>
       <button onclick="closeBookingSummary()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888;">×</button>
     </div>
-    <div style="font-size:12px; color:#666; margin-bottom:12px; line-height:1.5;">
+    <div style="font-size:12px; color:#666; margin-bottom:12px; line-height:1.5;" data-i18n="booking.intro" data-i18n-html>
       💡 선적일은 <strong>Orders.실제출고요청일</strong>(알리피드 원본, 시간 없이 날짜만) 기준으로 그날 사서함을 모아 박스 무게·CBM을 합산합니다. 모든 사서함의 박스 입력(무게+CBM)이 완료돼야 [위챗 복사]가 활성화됩니다.
     </div>
     <div style="display:flex; gap:8px; align-items:end; flex-wrap:wrap; padding:12px; background:#fafaf5; border-radius:6px; margin-bottom:12px;">
       <div>
-        <label style="display:block; font-size:11px; font-weight:600; color:#444; margin-bottom:4px;">선적일</label>
+        <label style="display:block; font-size:11px; font-weight:600; color:#444; margin-bottom:4px;" data-i18n="manifest.date_label">선적일</label>
         <input type="date" id="bookingDate" style="padding:7px 10px; border:1px solid #d4c5a8; border-radius:5px; font-size:13px;" />
       </div>
-      <button class="primary" onclick="fetchBookingSummary('single')" style="padding:8px 14px; font-size:13px;">📅 그날만 조회</button>
-      <button class="secondary" onclick="fetchBookingSummary('range7')" style="padding:8px 14px; font-size:13px;">📆 오늘~+7일 일괄</button>
+      <button class="primary" onclick="fetchBookingSummary('single')" style="padding:8px 14px; font-size:13px;" data-i18n="manifest.fetch_btn">📅 그날만 조회</button>
+      <button class="secondary" onclick="fetchBookingSummary('range7')" style="padding:8px 14px; font-size:13px;" data-i18n="booking.range7_btn">📆 오늘~+7일 일괄</button>
       <span style="flex:1;"></span>
       <span id="bookingLoadingMsg" style="font-size:11px; color:#888;"></span>
     </div>
@@ -2854,6 +2854,244 @@ const I18N = {
     'ecom.badge.mixed': '혼재',
     'ecom.badge.rate_undetermined': '요율 미정',
     'ecom.badge.tooltip': '운송비만 · 핸들링 별도',
+
+    'toolbar.booking': '📦 선적일별 부킹 요약',
+    'toolbar.booking_title': '선적일 선택 → 그날 사서함 박스 무게·CBM 합계 → 위챗 복사',
+    'toolbar.dispatch': '🚚 배차 마스터',
+    'toolbar.dispatch_title': '배차 마스터 — 선적일별 전체 배차 운영 현황(읽기전용) + Excel',
+    'toolbar.manifest': '📄 포워딩 매니페스트',
+    'toolbar.manifest_title': '포워딩 매니페스트(TYREDS) — 선적일 선택 → 전자상거래 사서함 Order를 海运/空运/특송 파일로. 무역 미포함.',
+    'toolbar.contam': '🔬 오염 점검',
+    'toolbar.contam_title': '영문명 broadcast 오염 점검 (READ ONLY 조회) — 비고유 URL·broadcast 클러스터·catch-all HS 쏠림. 주1회 권장.',
+    'toolbar.notify': '📨 채널톡 알림',
+    'toolbar.notify_title': '채널톡 고객 알림 — 사서함 직접 입력 가능(주문 없어도)',
+    'toolbar.admin_menu': '⚙️ 관리 ▾',
+    'toolbar.excel_upload': '📂 엑셀 업로드',
+    'toolbar.excel_upload_title': '표준 양식 엑셀로 사서함 데이터 업로드 — 알리피드 대체 트랙',
+    'toolbar.member_admin': '🏢 회원 관리',
+    'toolbar.staff_admin': '🧑‍💼 직원 관리',
+    'toolbar.staff_admin_title': '직원 계정 발급·관리 (ADMIN_INVITE_TOKEN 필요)',
+    'toolbar.fillrate_shipdate': '🔄 환율채움(선적일)',
+    'toolbar.fillrate_shipdate_title': '현재 사서함의 선적일 그룹 중 빈/0 환율을 현재 고시환율로 채움(정상값 보존)',
+    'toolbar.fillrate_all': '🔄 환율채움(전체빈)',
+    'toolbar.fillrate_all_title': '전체 Shipments의 빈/0 환율을 현재 고시환율로 채움(정상값 보존)',
+
+    'rates.title': '📋 적용환율',
+    'rates.subtitle': '(관세청 고시환율)',
+    'rates.period': '적용기간',
+    'rates.week_suffix': '주차',
+    'rates.basis_date': '기준일',
+    'rates.legal_basis': '법적근거 관세법 제18조',
+    'rates.source_label': '출처',
+    'rates.updated_label': '갱신',
+    'rates.official_readonly': '고시환율 (참고용 · 입력칸 아님)',
+    'rates.per100yen': '/100엔',
+    'rates.mailbox_applied': '✏️ 사서함 적용환율 (여기에 입력)',
+    'rates.usdkrw_title': '관세청 고시환율 — 자동 조회(수동 수정 불가, 세액 보호)',
+    'rates.cnykrw_title': '관세청 고시환율 — 자동 조회(수동 수정 불가)',
+    'rates.usdcny_title': 'USD→CNY 표기 (실제 계산은 CNY→USD 값 사용 — 표기만 역수)',
+    'rates.refresh_btn': '🔄 고시환율로 갱신',
+    'rates.duty_notice_pre': '⚠ 수입신고 시',
+    'rates.duty_notice_law': '관세법 제18조',
+    'rates.duty_notice_post': '에 따라 고시환율 적용 의무',
+    'rates.basis_arrival_week': '입항일 기준 주차',
+    'rates.basis_provisional': '잠정',
+    'rates.basis_estimate_note': '확정은 관세사 수입신고 시',
+    'rates.applied_toast': '관세청 고시환율 적용',
+    'rates.live_suffix': ' (실시간 조회)',
+    'rates.mock_suffix': ' (모의값)',
+    'rates.refresh_toast_title': '환율 갱신',
+
+    'cust.member_type': '고객유형',
+    'cust.select_placeholder': '— 선택 —',
+    'cust.type_personal': '개인회원 (개인통관)',
+    'cust.type_biz': '사업자회원 (사업자통관)',
+    'cust.name_ph': '홍길동',
+    'cust.company_ph': '(주)테스트',
+    'cust.en_company': '영문회사명 (English company)',
+    'cust.en_name': '영문성명 (English name)',
+    'cust.en_address': '영문주소 (English address)',
+    'cust.address_ph': '서울특별시 강남구 ...',
+    'cust.memo_ph': '배송 주의사항 등',
+
+    'products.add_title': '제품을 수동으로 추가 — 주문 선택 후 빈 행 생성. 영문명/HS/수량/단가 입력 → [Airtable에 저장] → 사진 교체 가능.',
+    'products.add_btn': '➕ 제품 추가',
+    'products.translate_all_title': '🌐 영문명 빈칸 전체 AI 번역 — 한국어 상품명→영문 통관품명(빈칸만·기존값 보존·미확정 노란배경)',
+    'products.translate_all_btn': '🌐 영문명 빈칸 일괄 번역',
+    'products.hs6_all_title': '🤖 HS 6자리 빈칸 전체 AI 추천 — 영문명→국제 공통 HS6(빈칸만·10자리 추정 안 함·미확정 노란배경)',
+    'products.hs6_all_btn': '🤖 HS 6자리 빈칸 일괄 추천',
+    'products.confirm_all_title': '✓ AI 추천값(영문명·HS 노란배경) 전체 확정 — 검토 후 미확정 표시 해제(관세사메모 마커 제거). 자동확정 아님.',
+    'products.confirm_all_btn': '✓ AI추천 일괄 확정',
+    'products.link2en_all_title': '🔗 영문명 빈칸 전체 — 1688 링크 실제 중문 상품명·재질로 AI 변환(빈칸만·기존값 보존·미확정 노란배경)',
+    'products.link2en_all_btn': '🔗 링크에서 영문명 일괄',
+    'products.translate_one_title': '🌐 한국어 상품명 → 영문 통관품명 AI 번역(빈칸만·미확정)',
+    'products.translate_one_btn': '🌐 번역',
+    'products.total_label': '합계:',
+    'products.freight_total_label': '배송요금 합계 (현지배송비 · 합계CNY 비례 신고가 분배):',
+
+    'grp.order': '주문',
+    'grp.product_unit': '· 제품',
+    'grp.qty_unit': '· 총수량',
+    'grp.box_unassigned': '박스 미지정',
+    'grp.rate_base': '기본',
+    'grp.rate_kc': '한중',
+    'grp.rate_apta': '아태',
+    'grp.rate_applied': '적용',
+    'grp.rate_applied_title': '관세사 확정 적용세율',
+    'grp.confirmed': '✓ 확정',
+    'grp.confirmed_title': '관세사 확정 완료',
+    'grp.pending': '⏳ 대기',
+    'grp.pending_title': '관세사 확정 대기',
+    'grp.confirmed_label': '관세사확정',
+    'grp.invalid_hs': '⚠ 실존하지 않는 HS',
+    'grp.invalid_hs_title': 'HS {hs} — 관세청 11,326 표에 없음. leaf 후보는 [HS 입력]에서 확인',
+    'grp.desc_ph': '영문명 일괄',
+    'grp.desc_title': '이 주문 전체 영문명 일괄',
+    'grp.mat_ph': '재질 일괄',
+    'grp.mat_title': '이 주문 전체 재질 일괄',
+    'grp.hs_ph': 'HS 일괄 (0000.00-0000)',
+    'grp.hs_title': '이 주문 전체 HS코드 일괄',
+    'grp.hs_suggest_btn': '🤖 HS 추천',
+    'grp.hs_suggest_title': '🤖 HS 추천 — 영문명·재질로 AI 후보 (학습 우선 → AI)',
+    'grp.fta_disabled_title': '관세사 확정 영역 — 직원 변경 불가 (v3.2.1)',
+    'grp.fta_none': '없음',
+    'grp.fta_kc': '한중FTA',
+    'grp.fta_apta': '아태협정',
+    'grp.box_label': '📦 박스번호',
+    'grp.box_ph': '박스#',
+    'grp.box_input_title': '박스번호 자동 적용 (Tab/blur) — 작업자 핵심 입력 (v3.2.17)',
+    'grp.auto_apply': '⏎ 자동',
+    'grp.auto_apply_title': 'Tab/blur 자동 적용 — 버튼 안 누르고 칸 빠져나가면 즉시 그룹 전체에 반영',
+    'grp.cost_label': '원가',
+    'grp.local_delivery': '현지배송',
+    'grp.work_fee': '작업비',
+    'grp.declare_eq': '= 신고',
+    'grp.per_unit_label': '부대/개',
+    'grp.per_unit_title': '[v3.2.153] 제품 신고단가는 행마다 실단가 독립. 헤더는 부대비용(작업비+현지배송비) 균등 배분만 표시.',
+    'grp.per_unit_usd_title': '★ 부대비용 USD/개 (작업비+현지배송비 균등). 제품 단가는 각 행 최종 USD 참조.',
+    'grp.uncategorized': '기타/미분류',
+
+    'manifest.unclassifiable': '★분류불가(제외)',
+    'manifest.excluded_biztype': '⚠ 통관구분 불명 사서함 제외',
+    'manifest.warn_l_missing': '⛔ L 통관고유번호 누락 {n}건 — 제출 불가(Customers 등록 필요)',
+    'manifest.and_more': ' 외',
+    'manifest.warn_rate_unresolved': '⚠ 승격판정 환율 미확보 {n}건 — 안전측 2(간이통관)로 처리됨(과소신고 방지)',
+    'manifest.warn_ai_unconfirmed': '⚠ AI 추천 미확정 제품 {n}건 — [✓ 확정] 검토 권장',
+    'manifest.warn_truncated': '⚠ 품목 {n}개 30초과 잘림',
+
+    'box.summary_total': '합계',
+    'box.toggle_title': '클릭하여 박스 상세 펼치기/접기',
+
+    'app.ver_title': '전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.',
+    'search.mailbox': '🔍 사서함 번호 검색',
+
+    'tab.req': '📋 출고요청',
+    'tab.cust': '🛃 관세사확정',
+    'tab.paid': '💰 입금완료',
+    'tab.done': '🏁 출고완료',
+
+    'progress.calculating': '📦 선적분 박스입력 진행률 계산 중…',
+    'progress.shipment_group': '선적분',
+    'progress.box_input': '박스입력',
+    'progress.complete': '완료',
+    'progress.incomplete_label': '미완료:',
+    'progress.title': '📦 선적분 박스입력 진행률',
+    'progress.deadline_note': '(D-1 12:00 마감 모니터링)',
+
+    'console.schema_checking': '스키마 점검 중...',
+    'console.schema_done': '✓ 스키마 점검 완료',
+    'console.schema_checking_fields': '스키마 점검 중 (신규 필드 자동 추가)...',
+    'console.data_loading': '데이터 로드 중...',
+    'console.mailbox_prefix': '▶ 사서함:',
+    'console.orders_loading': 'Orders 로드 중...',
+    'console.orders_suffix': '주문',
+    'console.products_loading': 'Products 로드 중...',
+    'console.products_suffix': '상품',
+    'console.rate_diag_prefix': '▶ 세율 진단:',
+    'console.tariff_match_prefix': '▶ 관세표 자동 매칭:',
+    'console.tariff_match_hit': '적중',
+    'console.status_consistency_ok': '▶ 상태 일관성 OK:',
+    'console.mailbox_label': '사서함',
+    'console.product_label': '제품',
+    'console.costitems_loading': 'CostItems 로드 중...',
+    'console.costitems_suffix': '작업비 항목',
+    'console.boxes_loading': 'Boxes 로드 중...',
+    'console.boxes_suffix': '박스 로드됨',
+    'console.hsmapping_loading': 'HSMapping 캐시 로드 중...',
+    'console.hsmapping_done_prefix': '✓ HSMapping 캐시',
+    'console.hscode_word': '코드',
+    'console.item_word': '개',
+    'console.rate_applied_prefix': '✓ 과세환율 자동 적용',
+    'console.rate_estimate_note': '입항일 미정 잠정',
+    'console.load_done': '✓ 로드 완료. HS코드를 입력하세요.',
+    'console.ph_cache_loaded': 'ProductHistory 캐시 로드:',
+    'console.learn_match_start': '🔍 학습 데이터 자동 매칭 시작...',
+    'console.ph_searching': '검색 중...',
+    'console.no_match_result': '매칭 결과 없음',
+    'console.already_confirmed': '이미 확정됨',
+    'console.no_customer_registered': '에 등록된 고객 없음 — 정보 입력 후 저장 시 자동 등록',
+    'console.delivery_method_default': '§4 배송방식 미설정 → 고객 요청({from}→{to}) 기본 적용 (staff 변경 가능)',
+    'label.heading': '🏷 박스 라벨 출력',
+    'label.note': '한 박스당 3장씩 (Xprinter DT-108B · 100×150mm 롤지)',
+    'label.print_btn': '🏷 라벨 출력',
+    'label.count_empty': '박스를 입력하면 라벨 매수가 표시됩니다',
+    'label.box_count': '박스 {n}개',
+    'label.sheet_unit': '장',
+    'label.total_sheets': '총 {n}장',
+    'label.print_pending': '출력 예정',
+    'wfstep.extract': '직원 추출',
+    'wfstep.customs': '관세사 분류',
+    'wfstep.work': '직원 작업',
+    'wfstep.issue': '직원 발행',
+    'wfstep.wait_missing': '발행 대기 — 누락: ',
+    'wfstep.complete_prev': '이전 단계를 먼저 완료하세요',
+    'wfstep.locked_title': '🔒 잠긴 단계',
+    'rates.week_no_prefix': '제',
+    'rates.badge_live': '✅ 관세청 실시간',
+    'rates.badge_failed': '⚠ 조회 실패 — [고시환율로 갱신] 재시도',
+    'rates.badge_mock': '🔧 Mock (인증키/응답 대기)',
+    'grp.per_unit_suffix': '/개',
+    'booking.title': '📦 선적일별 부킹 요약',
+    'booking.intro': '💡 선적일은 <strong>Orders.실제출고요청일</strong>(알리피드 원본, 시간 없이 날짜만) 기준으로 그날 사서함을 모아 박스 무게·CBM을 합산합니다. 모든 사서함의 박스 입력(무게+CBM)이 완료돼야 [위챗 복사]가 활성화됩니다.',
+    'booking.range7_btn': '📆 오늘~+7일 일괄',
+    'booking.pat_required': '§1에서 PAT를 먼저 입력하세요',
+    'booking.select_prompt': '날짜 선택 후 [그날만 조회] 또는 [오늘~+7일 일괄]을 클릭하세요.',
+    'booking.loading_orders': '⏳ Orders 조회 중...',
+    'booking.no_orders': '선적 예정 Orders 0건',
+    'booking.no_shipment_link': '매칭 Orders는 있지만 Shipment 연결이 없습니다 ({n}건)',
+    'booking.loading_mailboxes': '조회 중...',
+    'booking.loading_boxes': '의 박스 조회 중...',
+    'booking.based_on': '건 기반',
+    'booking.fetch_failed': '조회 실패',
+    'booking.doc_missing': '미수령',
+    'booking.doc_all_received': '전건 수령',
+    'booking.doc_receipt': '서류 수령',
+    'booking.doc_legend': 'BL ✅파일+번호 / ⚠파일만·번호없음 / ❌미수령 · CO ✅있음 / ❌미수령',
+    'booking.th_member': '회원명(회사명)',
+    'booking.th_weight': '중량(kg)',
+    'grp.box_label_short': '박스',
+    'booking.th_status': '상태',
+    'booking.bl_title': 'BL: ✅파일+번호 / ⚠파일만(번호없음) / ❌미수령',
+    'booking.co_title': 'CO: ✅있음 / ❌미수령',
+    'booking.no_info': '(정보 없음)',
+    'booking.mixed': '혼재',
+    'booking.box_zero': '박스0',
+    'booking.weight_cbm_missing': '무게/CBM',
+    'booking.bl_ok': 'BL 파일+번호 수령',
+    'booking.bl_file_only': 'BL 파일만 — 번호 미입력',
+    'booking.bl_missing': 'BL 미수령',
+    'booking.co_ok': 'CO 수령',
+    'booking.co_missing': 'CO 미수령',
+    'booking.all_ready': '모든 사서함 박스 입력 완료 — 위챗 복사 가능',
+    'booking.copy_wechat': '💬 위챗 복사',
+    'booking.copy_co_title': '화물 사서함 BL정보 기반 중국어 CO 발급 요청 메시지 복사',
+    'booking.copy_co': '📋 CO 요청 복사',
+    'booking.not_ready': '박스 미입력 사서함 {n}건 — 위챗 복사 잠금',
+    'booking.box_zero_reason': '박스 0개',
+    'booking.weight_cbm_reason': '박스 무게 또는 CBM 미입력',
+    'booking.copy_wechat_locked': '💬 위챗 복사 (잠금)',
+    'booking.copy_co_title_alt': '화물 사서함 BL정보 기반 중국어 CO 발급 요청 메시지 복사 (박스 게이트와 무관)',
+    'booking.fetch_first_placeholder': '먼저 [선적일별 부킹 요약]을 조회하세요',
   },
   zh: {
     'app.title': '发票综合工具',
@@ -3154,6 +3392,244 @@ const I18N = {
     'ecom.badge.mixed': '混装',
     'ecom.badge.rate_undetermined': '费率未定',
     'ecom.badge.tooltip': '仅运费 · 手续费另计',
+
+    'toolbar.booking': '📦 装运日预订汇总',
+    'toolbar.booking_title': '选择装运日 → 汇总当日邮箱箱子重量·CBM → 复制微信文本',
+    'toolbar.dispatch': '🚚 调度总表',
+    'toolbar.dispatch_title': '调度总表 — 按装运日显示全部调度运营现况(只读) + Excel',
+    'toolbar.manifest': '📄 货代舱单',
+    'toolbar.manifest_title': '货代舱单(TYREDS) — 选择装运日 → 将电商邮箱订单生成 海运/空运/快递 文件。不含贸易。',
+    'toolbar.contam': '🔬 污染检查',
+    'toolbar.contam_title': '英文品名 broadcast 污染检查(只读查询) — 非唯一URL·broadcast 集群·catch-all HS 集中。建议每周1次。',
+    'toolbar.notify': '📨 频道通(ChannelTalk)通知',
+    'toolbar.notify_title': '频道通客户通知 — 可直接输入邮箱号(无需订单)',
+    'toolbar.admin_menu': '⚙️ 管理 ▾',
+    'toolbar.excel_upload': '📂 Excel上传',
+    'toolbar.excel_upload_title': '用标准格式Excel上传邮箱数据 — Alipeed替代通道',
+    'toolbar.member_admin': '🏢 会员管理',
+    'toolbar.staff_admin': '🧑‍💼 员工管理',
+    'toolbar.staff_admin_title': '员工账号发放·管理(需要 ADMIN_INVITE_TOKEN)',
+    'toolbar.fillrate_shipdate': '🔄 填充汇率(装运日)',
+    'toolbar.fillrate_shipdate_title': '将当前邮箱装运日分组中为空/0的汇率填充为当前公示汇率(保留正常值)',
+    'toolbar.fillrate_all': '🔄 填充汇率(全部空值)',
+    'toolbar.fillrate_all_title': '将全部Shipments中为空/0的汇率填充为当前公示汇率(保留正常值)',
+
+    'rates.title': '📋 适用汇率',
+    'rates.subtitle': '(海关公示汇率)',
+    'rates.period': '适用期间',
+    'rates.week_suffix': '周次',
+    'rates.basis_date': '基准日',
+    'rates.legal_basis': '法律依据 关税法第18条',
+    'rates.source_label': '来源',
+    'rates.updated_label': '更新',
+    'rates.official_readonly': '公示汇率(仅供参考 · 非输入栏)',
+    'rates.per100yen': '/100日元',
+    'rates.mailbox_applied': '✏️ 邮箱适用汇率(在此输入)',
+    'rates.usdkrw_title': '海关公示汇率 — 自动查询(不可手动修改，保护税额)',
+    'rates.cnykrw_title': '海关公示汇率 — 自动查询(不可手动修改)',
+    'rates.usdcny_title': 'USD→CNY 显示(实际计算使用CNY→USD值 — 仅为显示倒数)',
+    'rates.refresh_btn': '🔄 按公示汇率刷新',
+    'rates.duty_notice_pre': '⚠ 进口申报时',
+    'rates.duty_notice_law': '关税法第18条',
+    'rates.duty_notice_post': '规定必须适用公示汇率',
+    'rates.basis_arrival_week': '按到港日基准周次',
+    'rates.basis_provisional': '暂定',
+    'rates.basis_estimate_note': '确定以报关行进口申报为准',
+    'rates.applied_toast': '已适用海关公示汇率',
+    'rates.live_suffix': '(实时查询)',
+    'rates.mock_suffix': '(模拟值)',
+    'rates.refresh_toast_title': '汇率刷新',
+
+    'cust.member_type': '客户类型',
+    'cust.select_placeholder': '— 请选择 —',
+    'cust.type_personal': '个人会员(个人通关)',
+    'cust.type_biz': '企业会员(企业通关)',
+    'cust.name_ph': '洪吉童',
+    'cust.company_ph': '(株)测试',
+    'cust.en_company': '英文公司名 (English company)',
+    'cust.en_name': '英文姓名 (English name)',
+    'cust.en_address': '英文地址 (English address)',
+    'cust.address_ph': '首尔特别市江南区 ...',
+    'cust.memo_ph': '配送注意事项等',
+
+    'products.add_title': '手动添加产品 — 选择订单后生成空行。输入英文品名/HS/数量/单价 → [保存到Airtable] → 可更换图片。',
+    'products.add_btn': '➕ 添加产品',
+    'products.translate_all_title': '🌐 空白英文品名批量AI翻译 — 韩文品名→英文报关品名(仅空白·保留原值·未确认黄色底色)',
+    'products.translate_all_btn': '🌐 批量翻译空白英文品名',
+    'products.hs6_all_title': '🤖 空白HS 6位批量AI推荐 — 英文品名→国际通用HS6(仅空白·不推测10位·未确认黄色底色)',
+    'products.hs6_all_btn': '🤖 批量推荐HS 6位',
+    'products.confirm_all_title': '✓ 批量确认AI推荐值(英文品名·HS黄色底色) — 审核后解除未确认标记(移除报关行备注标记)。非自动确认。',
+    'products.confirm_all_btn': '✓ 批量确认AI推荐',
+    'products.link2en_all_title': '🔗 批量空白英文品名 — 根据1688链接实际中文品名·材质AI转换(仅空白·保留原值·未确认黄色底色)',
+    'products.link2en_all_btn': '🔗 从链接批量生成英文品名',
+    'products.translate_one_title': '🌐 韩文品名 → 英文报关品名AI翻译(仅空白·未确认)',
+    'products.translate_one_btn': '🌐 翻译',
+    'products.total_label': '合计:',
+    'products.freight_total_label': '运费合计(现地配送费 · 按合计CNY比例分摊至报关价):',
+
+    'grp.order': '订单',
+    'grp.product_unit': '· 产品',
+    'grp.qty_unit': '· 总数量',
+    'grp.box_unassigned': '未指定箱号',
+    'grp.rate_base': '基础',
+    'grp.rate_kc': '韩中',
+    'grp.rate_apta': '亚太',
+    'grp.rate_applied': '适用',
+    'grp.rate_applied_title': '报关行确认适用税率',
+    'grp.confirmed': '✓ 已确认',
+    'grp.confirmed_title': '报关行确认完成',
+    'grp.pending': '⏳ 待处理',
+    'grp.pending_title': '待报关行确认',
+    'grp.confirmed_label': '报关行确认',
+    'grp.invalid_hs': '⚠ 不存在的HS',
+    'grp.invalid_hs_title': 'HS {hs} — 不在海关11,326项表中。leaf候选请在[HS输入]中确认',
+    'grp.desc_ph': '批量英文品名',
+    'grp.desc_title': '本订单全部批量英文品名',
+    'grp.mat_ph': '批量材质',
+    'grp.mat_title': '本订单全部批量材质',
+    'grp.hs_ph': '批量HS (0000.00-0000)',
+    'grp.hs_title': '本订单全部批量HS编码',
+    'grp.hs_suggest_btn': '🤖 HS推荐',
+    'grp.hs_suggest_title': '🤖 HS推荐 — 根据英文品名·材质AI候选(学习优先 → AI)',
+    'grp.fta_disabled_title': '报关行确认区域 — 员工不可更改 (v3.2.1)',
+    'grp.fta_none': '无',
+    'grp.fta_kc': '韩中FTA',
+    'grp.fta_apta': '亚太协定',
+    'grp.box_label': '📦 箱号',
+    'grp.box_ph': '箱号#',
+    'grp.box_input_title': '箱号自动应用(Tab/blur) — 作业员核心输入 (v3.2.17)',
+    'grp.auto_apply': '⏎ 自动',
+    'grp.auto_apply_title': 'Tab/blur自动应用 — 不按按钮，光标离开输入框即刻应用到整组',
+    'grp.cost_label': '原价',
+    'grp.local_delivery': '现地配送',
+    'grp.work_fee': '作业费',
+    'grp.declare_eq': '= 报关',
+    'grp.per_unit_label': '附加/件',
+    'grp.per_unit_title': '[v3.2.153] 产品报关单价各行按实际单价独立计算。表头仅显示附加费用(作业费+现地配送费)均摊。',
+    'grp.per_unit_usd_title': '★ 附加费用 USD/件(作业费+现地配送费均摊)。产品单价请参考各行最终USD。',
+    'grp.uncategorized': '其他/未分类',
+
+    'manifest.unclassifiable': '★无法分类(排除)',
+    'manifest.excluded_biztype': '⚠ 通关类型不明邮箱已排除',
+    'manifest.warn_l_missing': '⛔ 缺失L通关识别码 {n}件 — 无法提交(需在Customers中登记)',
+    'manifest.and_more': ' 等',
+    'manifest.warn_rate_unresolved': '⚠ 未获取升级判定汇率 {n}件 — 按安全侧2(简易通关)处理(防止少报)',
+    'manifest.warn_ai_unconfirmed': '⚠ AI推荐未确认产品 {n}件 — 建议[✓ 确认]审核',
+    'manifest.warn_truncated': '⚠ {n}项超过30项被截断',
+
+    'box.summary_total': '合计',
+    'box.toggle_title': '点击展开/折叠箱子详情',
+
+    'app.ver_title': '电商专用工具 — 与贸易(staff-tool)使用独立版本体系(ecom-*)。未与报关行系统联动。',
+    'search.mailbox': '🔍 搜索邮箱号',
+
+    'tab.req': '📋 出库申请',
+    'tab.cust': '🛃 报关行确认',
+    'tab.paid': '💰 已收款',
+    'tab.done': '🏁 出库完成',
+
+    'progress.calculating': '📦 装运批次箱子录入进度计算中…',
+    'progress.shipment_group': '装运批次',
+    'progress.box_input': '箱子录入',
+    'progress.complete': '完成',
+    'progress.incomplete_label': '未完成:',
+    'progress.title': '📦 装运批次箱子录入进度',
+    'progress.deadline_note': '(监控D-1 12:00截止)',
+
+    'console.schema_checking': '正在检查架构...',
+    'console.schema_done': '✓ 架构检查完成',
+    'console.schema_checking_fields': '正在检查架构(自动添加新字段)...',
+    'console.data_loading': '正在加载数据...',
+    'console.mailbox_prefix': '▶ 邮箱:',
+    'console.orders_loading': '正在加载Orders...',
+    'console.orders_suffix': '订单',
+    'console.products_loading': '正在加载Products...',
+    'console.products_suffix': '产品',
+    'console.rate_diag_prefix': '▶ 税率诊断:',
+    'console.tariff_match_prefix': '▶ 关税表自动匹配:',
+    'console.tariff_match_hit': '命中',
+    'console.status_consistency_ok': '▶ 状态一致性 OK:',
+    'console.mailbox_label': '邮箱',
+    'console.product_label': '产品',
+    'console.costitems_loading': '正在加载CostItems...',
+    'console.costitems_suffix': '作业费项目',
+    'console.boxes_loading': '正在加载Boxes...',
+    'console.boxes_suffix': '个箱子已加载',
+    'console.hsmapping_loading': '正在加载HSMapping缓存...',
+    'console.hsmapping_done_prefix': '✓ HSMapping缓存',
+    'console.hscode_word': '编码',
+    'console.item_word': '个',
+    'console.rate_applied_prefix': '✓ 已自动应用完税汇率',
+    'console.rate_estimate_note': '到港日未定暂定',
+    'console.load_done': '✓ 加载完成。请输入HS编码。',
+    'console.ph_cache_loaded': 'ProductHistory缓存加载:',
+    'console.learn_match_start': '🔍 开始自动匹配学习数据...',
+    'console.ph_searching': '搜索中...',
+    'console.no_match_result': '无匹配结果',
+    'console.already_confirmed': '已确认',
+    'console.no_customer_registered': '未注册客户信息 — 输入信息并保存后自动注册',
+    'console.delivery_method_default': '§4 未设置配送方式 → 默认应用客户要求({from}→{to})(员工可更改)',
+    'label.heading': '🏷 箱子标签打印',
+    'label.note': '每箱3张 (Xprinter DT-108B · 100×150mm 卷纸)',
+    'label.print_btn': '🏷 打印标签',
+    'label.count_empty': '录入箱子后将显示标签张数',
+    'label.box_count': '箱子 {n}个',
+    'label.sheet_unit': '张',
+    'label.total_sheets': '共{n}张',
+    'label.print_pending': '待打印',
+    'wfstep.extract': '员工提取',
+    'wfstep.customs': '报关行分类',
+    'wfstep.work': '员工作业',
+    'wfstep.issue': '员工发行',
+    'wfstep.wait_missing': '待发行 — 缺失: ',
+    'wfstep.complete_prev': '请先完成上一步骤',
+    'wfstep.locked_title': '🔒 锁定阶段',
+    'rates.week_no_prefix': '第',
+    'rates.badge_live': '✅ 海关实时',
+    'rates.badge_failed': '⚠ 查询失败 — 请点击[按公示汇率刷新]重试',
+    'rates.badge_mock': '🔧 模拟值 (等待认证密钥/响应)',
+    'grp.per_unit_suffix': '/件',
+    'booking.title': '📦 装运日预订汇总',
+    'booking.intro': '💡 装运日以<strong>Orders.实际出库申请日</strong>(Alipeed原始数据, 仅日期无时间)为准, 汇总当天邮箱的箱子重量·CBM。所有邮箱都完成箱子录入(重量+CBM)后才能启用[复制微信文本]。',
+    'booking.range7_btn': '📆 今天~+7天批量',
+    'booking.pat_required': '请先在§1中输入PAT',
+    'booking.select_prompt': '请选择日期后点击[仅查询当天]或[今天~+7天批量]。',
+    'booking.loading_orders': '⏳ 正在查询Orders...',
+    'booking.no_orders': '无预定装运Orders',
+    'booking.no_shipment_link': '存在匹配的Orders，但没有Shipment关联 ({n}件)',
+    'booking.loading_mailboxes': '正在查询...',
+    'booking.loading_boxes': '的箱子查询中...',
+    'booking.based_on': '件为基础',
+    'booking.fetch_failed': '查询失败',
+    'booking.doc_missing': '未收到',
+    'booking.doc_all_received': '全部已收到',
+    'booking.doc_receipt': '单据收取情况',
+    'booking.doc_legend': 'BL ✅文件+编号 / ⚠仅文件·无编号 / ❌未收到 · CO ✅已有 / ❌未收到',
+    'booking.th_member': '会员名(公司名)',
+    'booking.th_weight': '重量(kg)',
+    'grp.box_label_short': '箱子',
+    'booking.th_status': '状态',
+    'booking.bl_title': 'BL: ✅文件+编号 / ⚠仅文件(无编号) / ❌未收到',
+    'booking.co_title': 'CO: ✅已有 / ❌未收到',
+    'booking.no_info': '(无信息)',
+    'booking.mixed': '混合',
+    'booking.box_zero': '箱子0',
+    'booking.weight_cbm_missing': '重量/CBM',
+    'booking.bl_ok': 'BL 已收到文件+编号',
+    'booking.bl_file_only': 'BL 仅有文件 — 未填编号',
+    'booking.bl_missing': 'BL 未收到',
+    'booking.co_ok': 'CO 已收到',
+    'booking.co_missing': 'CO 未收到',
+    'booking.all_ready': '所有邮箱箱子录入完成 — 可复制微信文本',
+    'booking.copy_wechat': '💬 复制微信文本',
+    'booking.copy_co_title': '基于货运邮箱BL信息的中文CO签发申请消息复制',
+    'booking.copy_co': '📋 复制CO申请',
+    'booking.not_ready': '未录入箱子的邮箱 {n}件 — 微信复制已锁定',
+    'booking.box_zero_reason': '箱子0个',
+    'booking.weight_cbm_reason': '未录入箱子重量或CBM',
+    'booking.copy_wechat_locked': '💬 复制微信文本(已锁定)',
+    'booking.copy_co_title_alt': '基于货运邮箱BL信息的中文CO签发申请消息复制(与箱子条件无关)',
+    'booking.fetch_first_placeholder': '请先查询[装运日预订汇总]',
   },
   en: {
     'app.title': 'Invoice Integrated Tool',
@@ -3454,6 +3930,244 @@ const I18N = {
     'ecom.badge.mixed': 'Mixed',
     'ecom.badge.rate_undetermined': 'Rate undetermined',
     'ecom.badge.tooltip': 'Freight only · handling separate',
+
+    'toolbar.booking': '📦 Booking Summary by Ship Date',
+    'toolbar.booking_title': 'Select a ship date → sum box weight/CBM for that day\'s mailboxes → copy WeChat text',
+    'toolbar.dispatch': '🚚 Dispatch Master',
+    'toolbar.dispatch_title': 'Dispatch master — overall dispatch operations by ship date (read-only) + Excel',
+    'toolbar.manifest': '📄 Forwarding Manifest',
+    'toolbar.manifest_title': 'Forwarding manifest (TYREDS) — select a ship date → export e-commerce mailbox orders as sea/air/express files. Trade excluded.',
+    'toolbar.contam': '🔬 Contamination Check',
+    'toolbar.contam_title': 'English-name broadcast contamination check (READ ONLY) — non-unique URLs, broadcast clusters, catch-all HS skew. Recommended weekly.',
+    'toolbar.notify': '📨 ChannelTalk Notify',
+    'toolbar.notify_title': 'ChannelTalk customer notification — mailbox can be entered directly (even without an order)',
+    'toolbar.admin_menu': '⚙️ Admin ▾',
+    'toolbar.excel_upload': '📂 Excel Upload',
+    'toolbar.excel_upload_title': 'Upload mailbox data via standard Excel template — Alipeed replacement track',
+    'toolbar.member_admin': '🏢 Member Admin',
+    'toolbar.staff_admin': '🧑‍💼 Staff Admin',
+    'toolbar.staff_admin_title': 'Issue/manage staff accounts (requires ADMIN_INVITE_TOKEN)',
+    'toolbar.fillrate_shipdate': '🔄 Fill Rate (ship date)',
+    'toolbar.fillrate_shipdate_title': 'Fill blank/0 exchange rates in the current mailbox\'s ship-date group with the current official rate (preserves existing values)',
+    'toolbar.fillrate_all': '🔄 Fill Rate (all blanks)',
+    'toolbar.fillrate_all_title': 'Fill blank/0 exchange rates across all Shipments with the current official rate (preserves existing values)',
+
+    'rates.title': '📋 Applied Exchange Rates',
+    'rates.subtitle': '(Customs official rate)',
+    'rates.period': 'Applied period',
+    'rates.week_suffix': 'week',
+    'rates.basis_date': 'Basis date',
+    'rates.legal_basis': 'Legal basis: Customs Act Art. 18',
+    'rates.source_label': 'Source',
+    'rates.updated_label': 'Updated',
+    'rates.official_readonly': 'Official rate (reference only · not editable)',
+    'rates.per100yen': '/100 JPY',
+    'rates.mailbox_applied': '✏️ Mailbox applied rate (enter here)',
+    'rates.usdkrw_title': 'Customs official rate — fetched automatically (not manually editable, protects tax amount)',
+    'rates.cnykrw_title': 'Customs official rate — fetched automatically (not manually editable)',
+    'rates.usdcny_title': 'USD→CNY display (actual calculation uses the CNY→USD value — this is just the inverse for display)',
+    'rates.refresh_btn': '🔄 Refresh to official rate',
+    'rates.duty_notice_pre': '⚠ For import declarations,',
+    'rates.duty_notice_law': 'Customs Act Art. 18',
+    'rates.duty_notice_post': ' requires use of the official rate',
+    'rates.basis_arrival_week': 'week based on arrival date',
+    'rates.basis_provisional': 'provisional',
+    'rates.basis_estimate_note': 'final at customs broker\'s import declaration',
+    'rates.applied_toast': 'Official customs rate applied',
+    'rates.live_suffix': ' (live)',
+    'rates.mock_suffix': ' (mock value)',
+    'rates.refresh_toast_title': 'Rate refresh',
+
+    'cust.member_type': 'Customer type',
+    'cust.select_placeholder': '— Select —',
+    'cust.type_personal': 'Individual member (personal customs)',
+    'cust.type_biz': 'Business member (business customs)',
+    'cust.name_ph': 'John Doe',
+    'cust.company_ph': 'Test Co., Ltd.',
+    'cust.en_company': 'English company name (English company)',
+    'cust.en_name': 'English name (English name)',
+    'cust.en_address': 'English address (English address)',
+    'cust.address_ph': 'Gangnam-gu, Seoul ...',
+    'cust.memo_ph': 'Delivery notes, etc.',
+
+    'products.add_title': 'Manually add a product — creates a blank row after selecting an order. Enter English name/HS/qty/price → [Save to Airtable] → photo can be replaced.',
+    'products.add_btn': '➕ Add Product',
+    'products.translate_all_title': '🌐 Batch AI-translate blank English names — Korean product name→English customs name (blank only, preserves existing values, unconfirmed = yellow background)',
+    'products.translate_all_btn': '🌐 Batch-translate Blank Names',
+    'products.hs6_all_title': '🤖 Batch AI-suggest blank HS6 — English name→common HS6 (blank only, does not guess 10 digits, unconfirmed = yellow background)',
+    'products.hs6_all_btn': '🤖 Batch-suggest HS6',
+    'products.confirm_all_title': '✓ Confirm all AI-suggested values (English name/HS yellow background) — review then clear unconfirmed flag (removes customs-memo marker). Not auto-confirm.',
+    'products.confirm_all_btn': '✓ Confirm All AI Suggestions',
+    'products.link2en_all_title': '🔗 Batch blank English names — AI conversion from the actual 1688 link Chinese name/material (blank only, preserves existing values, unconfirmed = yellow background)',
+    'products.link2en_all_btn': '🔗 Batch Name from Link',
+    'products.translate_one_title': '🌐 AI-translate Korean product name → English customs name (blank only, unconfirmed)',
+    'products.translate_one_btn': '🌐 Translate',
+    'products.total_label': 'Total:',
+    'products.freight_total_label': 'Freight total (local delivery fee · distributed to declared value pro-rata by total CNY):',
+
+    'grp.order': 'Order',
+    'grp.product_unit': '· Products',
+    'grp.qty_unit': '· Total qty',
+    'grp.box_unassigned': 'Box unassigned',
+    'grp.rate_base': 'Base',
+    'grp.rate_kc': 'KR-CN',
+    'grp.rate_apta': 'APTA',
+    'grp.rate_applied': 'Applied',
+    'grp.rate_applied_title': 'Customs-broker-confirmed applied rate',
+    'grp.confirmed': '✓ Confirmed',
+    'grp.confirmed_title': 'Customs broker confirmation complete',
+    'grp.pending': '⏳ Pending',
+    'grp.pending_title': 'Pending customs broker confirmation',
+    'grp.confirmed_label': 'Customs confirmed',
+    'grp.invalid_hs': '⚠ Non-existent HS',
+    'grp.invalid_hs_title': 'HS {hs} — not in the customs 11,326-item table. Check leaf candidates in [HS input]',
+    'grp.desc_ph': 'Bulk English name',
+    'grp.desc_title': 'Bulk-apply English name to this whole order',
+    'grp.mat_ph': 'Bulk material',
+    'grp.mat_title': 'Bulk-apply material to this whole order',
+    'grp.hs_ph': 'Bulk HS (0000.00-0000)',
+    'grp.hs_title': 'Bulk-apply HS code to this whole order',
+    'grp.hs_suggest_btn': '🤖 HS Suggest',
+    'grp.hs_suggest_title': '🤖 HS suggest — AI candidates from English name/material (learned data first → AI)',
+    'grp.fta_disabled_title': 'Customs-broker-confirmed area — staff cannot change (v3.2.1)',
+    'grp.fta_none': 'None',
+    'grp.fta_kc': 'Korea-China FTA',
+    'grp.fta_apta': 'APTA',
+    'grp.box_label': '📦 Box #',
+    'grp.box_ph': 'Box#',
+    'grp.box_input_title': 'Box number auto-applies (Tab/blur) — key input for workers (v3.2.17)',
+    'grp.auto_apply': '⏎ Auto',
+    'grp.auto_apply_title': 'Auto-applies on Tab/blur — leaving the field (without clicking a button) applies to the whole group immediately',
+    'grp.cost_label': 'Cost',
+    'grp.local_delivery': 'Local delivery',
+    'grp.work_fee': 'Processing fee',
+    'grp.declare_eq': '= Declared',
+    'grp.per_unit_label': 'Overhead/unit',
+    'grp.per_unit_title': '[v3.2.153] Each product row\'s declared unit price is independent (actual price). The header only shows the equal split of overhead (processing fee + local delivery).',
+    'grp.per_unit_usd_title': '★ Overhead USD/unit (processing fee + local delivery, split evenly). See each row\'s final USD for the product unit price.',
+    'grp.uncategorized': 'Other/Unclassified',
+
+    'manifest.unclassifiable': '★Unclassifiable (excluded)',
+    'manifest.excluded_biztype': '⚠ Mailboxes with unclear customs type excluded',
+    'manifest.warn_l_missing': '⛔ Missing L customs ID {n} — cannot submit (needs Customers registration)',
+    'manifest.and_more': ' more',
+    'manifest.warn_rate_unresolved': '⚠ Promotion-decision rate unresolved for {n} — treated as safe-side 2 (simplified customs) to avoid under-declaration',
+    'manifest.warn_ai_unconfirmed': '⚠ {n} products with unconfirmed AI suggestions — review with [✓ Confirm] recommended',
+    'manifest.warn_truncated': '⚠ {n} items truncated (over 30)',
+
+    'box.summary_total': 'Total',
+    'box.toggle_title': 'Click to expand/collapse box details',
+
+    'app.ver_title': 'E-commerce-only tool — separate version scheme (ecom-*) from Trade (staff-tool). Not linked to the customs-broker line.',
+    'search.mailbox': '🔍 Search mailbox number',
+
+    'tab.req': '📋 Requested',
+    'tab.cust': '🛃 Customs Confirm',
+    'tab.paid': '💰 Paid',
+    'tab.done': '🏁 Completed',
+
+    'progress.calculating': '📦 Calculating box-input progress for this shipment batch…',
+    'progress.shipment_group': 'shipment batch',
+    'progress.box_input': 'box input',
+    'progress.complete': 'complete',
+    'progress.incomplete_label': 'Incomplete:',
+    'progress.title': '📦 Box-input Progress by Shipment Batch',
+    'progress.deadline_note': '(monitoring D-1 12:00 deadline)',
+
+    'console.schema_checking': 'Checking schema...',
+    'console.schema_done': '✓ Schema check complete',
+    'console.schema_checking_fields': 'Checking schema (auto-adding new fields)...',
+    'console.data_loading': 'Loading data...',
+    'console.mailbox_prefix': '▶ Mailbox:',
+    'console.orders_loading': 'Loading Orders...',
+    'console.orders_suffix': 'orders',
+    'console.products_loading': 'Loading Products...',
+    'console.products_suffix': 'products',
+    'console.rate_diag_prefix': '▶ Rate diagnostics:',
+    'console.tariff_match_prefix': '▶ Tariff table auto-match:',
+    'console.tariff_match_hit': 'hit',
+    'console.status_consistency_ok': '▶ Status consistency OK:',
+    'console.mailbox_label': 'mailbox',
+    'console.product_label': 'products',
+    'console.costitems_loading': 'Loading CostItems...',
+    'console.costitems_suffix': 'cost items',
+    'console.boxes_loading': 'Loading Boxes...',
+    'console.boxes_suffix': 'boxes loaded',
+    'console.hsmapping_loading': 'Loading HSMapping cache...',
+    'console.hsmapping_done_prefix': '✓ HSMapping cache',
+    'console.hscode_word': 'codes',
+    'console.item_word': '',
+    'console.rate_applied_prefix': '✓ Taxable rate auto-applied',
+    'console.rate_estimate_note': 'arrival date TBD, provisional',
+    'console.load_done': '✓ Load complete. Enter an HS code.',
+    'console.ph_cache_loaded': 'ProductHistory cache loaded:',
+    'console.learn_match_start': '🔍 Starting learned-data auto-match...',
+    'console.ph_searching': 'searching...',
+    'console.no_match_result': 'No match found',
+    'console.already_confirmed': 'already confirmed',
+    'console.no_customer_registered': ': no registered customer — will auto-register on save after entering info',
+    'console.delivery_method_default': '§4 Delivery method not set → defaulting to customer request ({from}→{to}) (staff can change)',
+    'label.heading': '🏷 Box Label Printing',
+    'label.note': '3 sheets per box (Xprinter DT-108B · 100×150mm roll paper)',
+    'label.print_btn': '🏷 Print Labels',
+    'label.count_empty': 'Sheet count will show once boxes are entered',
+    'label.box_count': '{n} boxes',
+    'label.sheet_unit': '',
+    'label.total_sheets': '{n} sheets total',
+    'label.print_pending': 'pending print',
+    'wfstep.extract': 'Staff Extract',
+    'wfstep.customs': 'Customs Classify',
+    'wfstep.work': 'Staff Work',
+    'wfstep.issue': 'Staff Issue',
+    'wfstep.wait_missing': 'Waiting to issue — missing: ',
+    'wfstep.complete_prev': 'Please complete the previous step first',
+    'wfstep.locked_title': '🔒 Locked Step',
+    'rates.week_no_prefix': 'Week ',
+    'rates.badge_live': '✅ Customs Live',
+    'rates.badge_failed': '⚠ Fetch failed — retry with [Refresh to official rate]',
+    'rates.badge_mock': '🔧 Mock (waiting for auth key/response)',
+    'grp.per_unit_suffix': '/unit',
+    'booking.title': '📦 Booking Summary by Ship Date',
+    'booking.intro': '💡 The ship date is based on <strong>Orders.actual request date</strong> (Alipeed original, date only). Box weight/CBM for that day\'s mailboxes are summed. [Copy for WeChat] is enabled only once every mailbox has box input (weight+CBM) complete.',
+    'booking.range7_btn': '📆 Today~+7 days',
+    'booking.pat_required': 'Enter a PAT in §1 first',
+    'booking.select_prompt': 'Select a date, then click [Query that day only] or [Today~+7 days].',
+    'booking.loading_orders': '⏳ Querying Orders...',
+    'booking.no_orders': 'No Orders scheduled to ship',
+    'booking.no_shipment_link': 'Matching Orders exist but have no Shipment link ({n})',
+    'booking.loading_mailboxes': 'querying...',
+    'booking.loading_boxes': ' box query...',
+    'booking.based_on': ' based on',
+    'booking.fetch_failed': 'Query failed',
+    'booking.doc_missing': 'missing',
+    'booking.doc_all_received': 'all received',
+    'booking.doc_receipt': 'Document receipt',
+    'booking.doc_legend': 'BL ✅ file+number / ⚠ file only, no number / ❌ missing · CO ✅ present / ❌ missing',
+    'booking.th_member': 'Member (Company)',
+    'booking.th_weight': 'Weight (kg)',
+    'grp.box_label_short': 'Boxes',
+    'booking.th_status': 'Status',
+    'booking.bl_title': 'BL: ✅ file+number / ⚠ file only (no number) / ❌ missing',
+    'booking.co_title': 'CO: ✅ present / ❌ missing',
+    'booking.no_info': '(no info)',
+    'booking.mixed': 'Mixed',
+    'booking.box_zero': 'No boxes',
+    'booking.weight_cbm_missing': 'Weight/CBM',
+    'booking.bl_ok': 'BL file+number received',
+    'booking.bl_file_only': 'BL file only — number not entered',
+    'booking.bl_missing': 'BL not received',
+    'booking.co_ok': 'CO received',
+    'booking.co_missing': 'CO not received',
+    'booking.all_ready': 'All mailboxes have box input complete — can copy for WeChat',
+    'booking.copy_wechat': '💬 Copy for WeChat',
+    'booking.copy_co_title': 'Copy Chinese CO-issuance request message based on cargo mailbox BL info',
+    'booking.copy_co': '📋 Copy CO Request',
+    'booking.not_ready': '{n} mailboxes without box input — WeChat copy locked',
+    'booking.box_zero_reason': 'No boxes',
+    'booking.weight_cbm_reason': 'Box weight or CBM not entered',
+    'booking.copy_wechat_locked': '💬 Copy for WeChat (locked)',
+    'booking.copy_co_title_alt': 'Copy Chinese CO-issuance request message based on cargo mailbox BL info (independent of the box gate)',
+    'booking.fetch_first_placeholder': 'Fetch [Booking Summary by Ship Date] first',
   }
 };
 
@@ -3491,6 +4205,9 @@ function setLang(lang) {
   localStorage.setItem('invoice_lang', lang);
   applyTranslations();
   // 동적 콘텐츠 재렌더링
+  if (typeof renderShipmentTabs === 'function') renderShipmentTabs();
+  if (typeof renderShipProgress === 'function') renderShipProgress();
+  if (typeof renderOfficialRates === 'function') { try { renderOfficialRates(); } catch (e) {} }
   if (state && state.shipment) {
     renderProducts();
     renderCostItems();
@@ -3499,6 +4216,7 @@ function setLang(lang) {
     recalculate();
     renderInvoicePreview();
     renderTariffEstimate();
+    if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();
   }
 }
 
@@ -3833,7 +4551,7 @@ let state = {
 // ========== 스키마 패치 (자동) ==========
 async function ensureSchema() {
   if (state.schemaChecked) return;
-  log('스키마 점검 중...', 'dim');
+  log(t('console.schema_checking'), 'dim');
 
   const meta = await fetch('https://api.airtable.com/v0/meta/bases/' + BASE_ID + '/tables', {
     headers: { 'Authorization': 'Bearer ' + airtablePat() }
@@ -4310,7 +5028,7 @@ async function ensureSchema() {
     }
   }
 
-  log('✓ 스키마 점검 완료', 'ok');
+  log(t('console.schema_done'), 'ok');
   state.schemaChecked = true;
 }
 
@@ -4568,10 +5286,10 @@ window.addEventListener('DOMContentLoaded', () => {
 // [v3.2.142] ★선입금 후출고 흐름: 출고요청 → 관세사확정 → 입금완료(출고대기) → 출고완료(종착).
 //   탭 순서 = 흐름 순. done(출고완료=상태)이 최종(입금 여부 무관). 외상=출고완료+입금완료일시 없음(칩으로 추적).
 const SHIP_TABS = [
-  { key: 'req',  label: '📋 출고요청',   states: ['출고요청', '박스확정'] },
-  { key: 'cust', label: '🛃 관세사확정', states: ['관세사확정완료', '관세사확정대기', '인보이스완료'] },
-  { key: 'paid', label: '💰 입금완료',   states: [] },   // 입금완료일시 있고 출고완료 아님(분류는 tabOfRecord)
-  { key: 'done', label: '🏁 출고완료',   states: ['출고완료', '통관중', '통관완료', '배송중'] },
+  { key: 'req',  labelKey: 'tab.req',  states: ['출고요청', '박스확정'] },
+  { key: 'cust', labelKey: 'tab.cust', states: ['관세사확정완료', '관세사확정대기', '인보이스완료'] },
+  { key: 'paid', labelKey: 'tab.paid', states: [] },   // 입금완료일시 있고 출고완료 아님(분류는 tabOfRecord)
+  { key: 'done', labelKey: 'tab.done', states: ['출고완료', '통관중', '통관완료', '배송중'] },
 ];
 const SHIP_STATUS_PRIORITY = {
   '관세사확정완료': 1, '관세사확정대기': 2, '인보이스완료': 3, '박스확정': 4,
@@ -4601,7 +5319,7 @@ async function loadShipmentList() {
   try {
     // 작업6: PAT 입력 후 첫 사서함 로드 시 ensureSchema 자동 트리거 (17+1 필드 누락 방지)
     if (!state.schemaChecked && state.pat) {
-      log('스키마 점검 중 (신규 필드 자동 추가)...', 'dim');
+      log(t('console.schema_checking_fields'), 'dim');
       try { await ensureSchema(); } catch (e) { log('스키마 점검 경고: ' + e.message, 'warn'); }
     }
     log('사서함 목록 로드 중...', 'info');
@@ -4665,18 +5383,18 @@ function renderShipmentTabs() {
   if (!bar) return;
   const recs = state.allShipments || [];
   const active = state.activeShipTab || 'cust';
-  bar.innerHTML = SHIP_TABS.map(t => {
-    const n = recs.filter(r => tabOfRecord(r) === t.key).length;
-    const newN = (state.shipTabNewIds && state.shipTabNewIds[t.key]) ? state.shipTabNewIds[t.key].size : 0;
-    const on = t.key === active;
+  bar.innerHTML = SHIP_TABS.map(tb => {
+    const n = recs.filter(r => tabOfRecord(r) === tb.key).length;
+    const newN = (state.shipTabNewIds && state.shipTabNewIds[tb.key]) ? state.shipTabNewIds[tb.key].size : 0;
+    const on = tb.key === active;
     const badge = newN
       ? `<span style="background:#e23b3b;color:#fff;border-radius:8px;padding:0 6px;font-size:10px;margin-left:5px;">🆕${newN}</span>`
       : '';
-    return `<button onclick="selectShipTab('${t.key}')" style="`
+    return `<button onclick="selectShipTab('${tb.key}')" style="`
       + `padding:7px 13px;font-size:12px;font-weight:700;border-radius:6px;cursor:pointer;`
       + `border:1px solid ${on ? '#1B2A3B' : '#ccc'};`
       + `background:${on ? '#1B2A3B' : '#fff'};color:${on ? '#fff' : '#555'};">`
-      + `${t.label} <span style="opacity:.75;">${n}</span>${badge}</button>`;
+      + `${t(tb.labelKey)} <span style="opacity:.75;">${n}</span>${badge}</button>`;
   }).join('');
 }
 
@@ -4723,7 +5441,7 @@ async function renderShipProgress() {
   const cutoff = new Date(Date.now() - 7 * 86400000 + 9 * 3600000).toISOString().slice(0, 10);   // 오늘-7일 KST (산술만, 필드 파싱 X)
   const windowed = recs.filter(r => { const sd = (r.fields || {})['선적일']; return sd && sd >= cutoff; });
   if (!windowed.length) { el.innerHTML = ''; return; }
-  el.innerHTML = '<div style="margin-top:10px; color:#888; font-size:12px;">📦 선적분 박스입력 진행률 계산 중…</div>';
+  el.innerHTML = `<div style="margin-top:10px; color:#888; font-size:12px;">${t('progress.calculating')}</div>`;
   const boxesByShip = {};
   for (const r of windowed) {
     const name = (r.fields || {})['사서함'] || '';
@@ -4741,11 +5459,11 @@ async function renderShipProgress() {
   const lines = Object.keys(groups).sort().map(sd => {
     const g = groups[sd]; const mmdd = sd.slice(5).replace('-', '');   // YYYY-MM-DD → MMDD (문자열)
     const done = g.complete === g.total;
-    return `<div style="font-size:12px; margin:3px 0; color:var(--navy);">${done ? '✅' : '🟡'} <strong>${mmdd} 선적분</strong> — 박스입력 ${g.complete}/${g.total}건 완료`
-      + (g.incomplete.length ? ` · 미완료: <span style="color:#c0392b; font-weight:600;">${g.incomplete.map(escAttr).join(', ')}</span>` : '') + `</div>`;
+    return `<div style="font-size:12px; margin:3px 0; color:var(--navy);">${done ? '✅' : '🟡'} <strong>${mmdd} ${t('progress.shipment_group')}</strong> — ${t('progress.box_input')} ${g.complete}/${g.total}${t('unit.count')} ${t('progress.complete')}`
+      + (g.incomplete.length ? ` · ${t('progress.incomplete_label')} <span style="color:#c0392b; font-weight:600;">${g.incomplete.map(escAttr).join(', ')}</span>` : '') + `</div>`;
   });
   el.innerHTML = `<div style="margin-top:10px; padding:10px 12px; background:#f4f8ff; border:1px solid #c4d5ea; border-radius:8px;">`
-    + `<div style="font-size:11px; color:#1B5E9A; font-weight:700; margin-bottom:4px;">📦 선적분 박스입력 진행률 <span style="color:#888; font-weight:400;">(D-1 12:00 마감 모니터링)</span></div>`
+    + `<div style="font-size:11px; color:#1B5E9A; font-weight:700; margin-bottom:4px;">${t('progress.title')} <span style="color:#888; font-weight:400;">${t('progress.deadline_note')}</span></div>`
     + lines.join('') + `</div>`;
 }
 
@@ -4814,7 +5532,7 @@ async function loadShipment(forceId) {
   if (!shipmentId) { toastWarn('사서함을 선택하세요'); return; }
 
   clearLog();
-  log('데이터 로드 중...', 'info');
+  log(t('console.data_loading'), 'info');
 
   // 상태 초기화
   state.modifiedProducts = new Set();
@@ -4841,27 +5559,27 @@ async function loadShipment(forceId) {
     // Shipment 본체
     state.shipment = await api('GET', `/${TABLES.Shipments}/${shipmentId}`);
     const shipmentName = state.shipment.fields['사서함'];
-    log(`▶ 사서함: ${shipmentName}`, 'info');
+    log(`${t('console.mailbox_prefix')} ${shipmentName}`, 'info');
 
     // Orders (filter by shipment 사서함 이름)
-    log('Orders 로드 중...', 'dim');
+    log(t('console.orders_loading'), 'dim');
     state.orders = await apiPaged(
       `/${TABLES.Orders}?filterByFormula=${encodeURIComponent(`SEARCH('${shipmentName}',ARRAYJOIN({Shipment}))`)}`
     );
-    log(`✓ ${state.orders.length}개 주문`, 'ok');
+    log(`✓ ${state.orders.length}${t('unit.count')} ${t('console.orders_suffix')}`, 'ok');
     // [v3.2.89] §4 배송방식 — Shipments.배송방식 빈값이면 고객 요청(Orders.배송방법) 정규화로 기본 적용.
     //   ★박스 기본값·라디오·운임(getShipMethod) 모두 이 필드를 읽으므로 렌더 전에 적용해야 일관. 값 있으면 override 존중.
     if (typeof applyCustomerShipDefault === 'function') applyCustomerShipDefault();
 
     // Products: 모든 fetch 후 클라이언트 필터
-    log('Products 로드 중...', 'dim');
+    log(t('console.products_loading'), 'dim');
     const orderIds = new Set(state.orders.map(o => o.id));
     const allProducts = await apiPaged(`/${TABLES.Products}?pageSize=100`);
     state.products = allProducts.filter(p => {
       const orderLinks = p.fields['Order'] || [];
       return orderLinks.some(id => orderIds.has(id));
     });
-    log(`✓ ${state.products.length}개 상품`, 'ok');
+    log(`✓ ${state.products.length}${t('unit.count')} ${t('console.products_suffix')}`, 'ok');
     // [v3.2.114] stale-overwrite 가드 baseline — 로드 시점 통관/청구 필드 지문. saveAll 직전 Airtable과 비교해 타 세션 변경 시 저장 차단.
     state._prodBaseline = {};
     state.products.forEach(p => { state._prodBaseline[p.id] = _prodFingerprint(p.fields); state._prodBaseline[p.id + '_sid'] = (p.fields || {})['상품ID'] || p.id; });
@@ -4881,7 +5599,7 @@ async function loadShipment(forceId) {
     const baseRateCnt = state.products.filter(p => p.fields && p.fields['기본세율'] != null && p.fields['기본세율'] !== '').length;
     const kcRateCnt   = state.products.filter(p => p.fields && p.fields['FTA_한중'] != null && p.fields['FTA_한중'] !== '').length;
     const aptaRateCnt = state.products.filter(p => p.fields && p.fields['아태세율'] != null && p.fields['아태세율'] !== '').length;
-    log(`▶ 세율 진단: 관세사확정 ${confirmedCnt}/${state.products.length} · 기본세율 ${baseRateCnt} · 한중 ${kcRateCnt} · 아태 ${aptaRateCnt}`, 'info');
+    log(`${t('console.rate_diag_prefix')} ${t('grp.confirmed_label')} ${confirmedCnt}/${state.products.length} · ${t('grp.rate_base')} ${baseRateCnt} · ${t('grp.rate_kc')} ${kcRateCnt} · ${t('grp.rate_apta')} ${aptaRateCnt}`, 'info');
 
     // v3.2.17: 로드 시 전 제품 lookupTariff 자동 실행 — state.hsRatesByCode 채움 (HS blur 안 해도 칩에 즉시 표시)
     let tariffHit = 0, tariffMiss = 0, invalidHs = 0;
@@ -4908,7 +5626,7 @@ async function loadShipment(forceId) {
         }
       });
       const total = state.products.length;
-      log(`▶ 관세표 자동 매칭: ${tariffHit}/${total} 적중${invalidHs > 0 ? ` · ⚠ 실존하지 않는 HS ${invalidHs}건` : ''}`, tariffHit > 0 ? 'ok' : 'dim');
+      log(`${t('console.tariff_match_prefix')} ${tariffHit}/${total} ${t('console.tariff_match_hit')}${invalidHs > 0 ? ` · ${t('grp.invalid_hs')} ${invalidHs}${t('unit.count')}` : ''}`, tariffHit > 0 ? 'ok' : 'dim');
       console.info('[v3.2.17 관세표 매칭]', { 적중: tariffHit, 미적중: tariffMiss, 무효HS: invalidHs });
     }
 
@@ -4922,7 +5640,7 @@ async function loadShipment(forceId) {
     } else if (shipStatus !== '관세사확정완료' && expectStatus) {
       log(`ℹ 모든 제품 확정 완료이나 사서함 상태='${shipStatus}' — 다음 워크플로 단계 전환 권장`, 'info');
     } else {
-      log(`▶ 상태 일관성 OK: 사서함='${shipStatus}', 제품=${customsState}`, 'dim');
+      log(`${t('console.status_consistency_ok')} ${t('console.mailbox_label')}='${shipStatus}', ${t('console.product_label')}=${customsState}`, 'dim');
     }
 
     // P0-C: 고객 선택FTA(§10) → 제품 적용FTA(§3) 자동 반영 — 적용FTA가 '없음'인 제품만
@@ -4944,14 +5662,14 @@ async function loadShipment(forceId) {
     }
 
     // CostItems
-    log('CostItems 로드 중...', 'dim');
+    log(t('console.costitems_loading'), 'dim');
     state.costItems = await apiPaged(
       `/${TABLES.CostItems}?filterByFormula=${encodeURIComponent(`SEARCH('${shipmentName}',ARRAYJOIN({Shipment}))`)}`
     );
-    log(`✓ ${state.costItems.length}개 작업비 항목`, 'ok');
+    log(`✓ ${state.costItems.length}${t('unit.count')} ${t('console.costitems_suffix')}`, 'ok');
 
     // Boxes 로드
-    log('Boxes 로드 중...', 'dim');
+    log(t('console.boxes_loading'), 'dim');
     const allBoxes = await apiPaged(
       `/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${shipmentName}',ARRAYJOIN({Shipment}))`)}`
     );
@@ -4971,7 +5689,7 @@ async function loadShipment(forceId) {
         products: []
       };
     });
-    log(`✓ ${allBoxes.length}개 박스 로드됨`, 'ok');
+    log(`✓ ${allBoxes.length}${t('unit.count')} ${t('console.boxes_suffix')}`, 'ok');
 
     // v3.0.6: 부대비용/CO는 자동값이라 체크 복원 불필요. 단 국내운임/택배 적용여부 + 수정 금액만 복원.
     state.coEnabled = { '한중': false, '아태': false };  // (구버전 호환 잔여)
@@ -4989,7 +5707,7 @@ async function loadShipment(forceId) {
     });
 
     // HSMapping 전체 (자동완성용) — 세율 포함
-    log('HSMapping 캐시 로드 중...', 'dim');
+    log(t('console.hsmapping_loading'), 'dim');
     state.hsMappings = await apiPaged(`/${TABLES.HSMapping}?pageSize=100`);
     state.hsCache = {};
     state.hsRatesByCode = {};
@@ -5017,7 +5735,7 @@ async function loadShipment(forceId) {
       }
       if (code) state.hsRatesByCode[code] = rates;
     });
-    log(`✓ HSMapping 캐시 ${Object.keys(state.hsCache).length}건 (HS코드 ${Object.keys(state.hsRatesByCode).length}개)`, 'ok');
+    log(`${t('console.hsmapping_done_prefix')} ${Object.keys(state.hsCache).length}${t('unit.count')} (HS${t('console.hscode_word')} ${Object.keys(state.hsRatesByCode).length}${t('console.item_word')})`, 'ok');
 
     // 환율 입력 채우기
     document.getElementById('rateCnyKrw').value = state.shipment.fields['환율CNY_KRW'] || '';
@@ -5124,7 +5842,7 @@ async function loadShipment(forceId) {
     const live = await fetchOfficialRatesFromAPI(false, _basis.date);
     if (live && live.rates && live.rates.USD > 0) {
       refreshOfficialRates(true, _basis.date);  // 입항일 주차로 강제 세팅 (캐시 있어 빠름)
-      log(`✓ 과세환율 자동 적용(입항일 ${_basis.date} 주차): USD ${live.rates.USD} · CNY ${live.rates.CNY}${_basis.estimate ? ' · 입항일 미정 잠정' : ''}`, 'ok');
+      log(`${t('console.rate_applied_prefix')}(${t('rates.basis_date')} ${_basis.date} ${t('rates.week_suffix')}): USD ${live.rates.USD} · CNY ${live.rates.CNY}${_basis.estimate ? ` · ${t('console.rate_estimate_note')}` : ''}`, 'ok');
     } else {
       // 실시간 실패 → 좌측만 갱신, 우측은 저장값 유지(빈 칸이면 폴백)
       renderOfficialRates();
@@ -5138,7 +5856,7 @@ async function loadShipment(forceId) {
     await autoMatchProductsFromHistory();
 
     log('━━━━━━━━━━━━━━━━━━━━━━━━━━', 'dim');
-    log('✓ 로드 완료. HS코드를 입력하세요.', 'ok');
+    log(t('console.load_done'), 'ok');
 
     // [v3.2.172] ★확정 후 최종IP 자동저장(놓침 방지·두더지잡기 근본처방) — 관세사확정완료 ∧ 최종IP없음 ∧ BL∧CO면 단건 저장경로로 1회 자동 등록.
     //   관세사 페이지 확정(서버엔 IP 생성코드 없음)도, 사장이 이 사서함을 도구로 열면 여기서 커버됨. _batchMode=false라 _snapshotIp PATCH 실제 저장.
@@ -5327,19 +6045,19 @@ function buildGroupHeader(gk, ordered) {
   const isApply = (curApplyR != null && curApplyR !== '');
   let rateChips;
   if (isInvalidHs) {
-    rateChips = `<span style="font-size:11px; padding:3px 10px; border-radius:10px; background:#ffebe9; color:#c0392b; font-weight:700;" title="HS ${curHs} — 관세청 11,326 표에 없음. leaf 후보는 [HS 입력]에서 확인">⚠ 실존하지 않는 HS</span>`;
+    rateChips = `<span style="font-size:11px; padding:3px 10px; border-radius:10px; background:#ffebe9; color:#c0392b; font-weight:700;" title="${t('grp.invalid_hs_title').replace('{hs}', curHs)}">${t('grp.invalid_hs')}</span>`;
   } else {
     rateChips = ''
-      + rateChip('기본', curBaseR, curFta === '없음')
+      + rateChip(t('grp.rate_base'), curBaseR, curFta === '없음')
       + rateChip('WTO', curWtoR, curFta === 'WTO')
-      + rateChip('한중', curKcR,   curFta === '한중')
+      + rateChip(t('grp.rate_kc'), curKcR,   curFta === '한중')
       + rateChip('RCEP', curRcepR, curFta === 'RCEP')
-      + rateChip('아태', curAptaR, curFta === '아태')
-      + (isApply ? `<span style="font-size:11px; padding:3px 8px; border-radius:10px; background:#0a7b40; color:#fff; font-weight:700;" title="관세사 확정 적용세율">적용 ${curApplyR}%</span>` : '')
-      + (isCustomsConfirmed ? `<span style="font-size:10px; color:#0a7b40; margin-left:4px;" title="관세사 확정 완료">✓ 확정</span>` : `<span style="font-size:10px; color:#b26a00; margin-left:4px;" title="관세사 확정 대기">⏳ 대기</span>`);
+      + rateChip(t('grp.rate_apta'), curAptaR, curFta === '아태')
+      + (isApply ? `<span style="font-size:11px; padding:3px 8px; border-radius:10px; background:#0a7b40; color:#fff; font-weight:700;" title="${t('grp.rate_applied_title')}">${t('grp.rate_applied')} ${curApplyR}%</span>` : '')
+      + (isCustomsConfirmed ? `<span style="font-size:10px; color:#0a7b40; margin-left:4px;" title="${t('grp.confirmed_title')}">${t('grp.confirmed')}</span>` : `<span style="font-size:10px; color:#b26a00; margin-left:4px;" title="${t('grp.pending_title')}">${t('grp.pending')}</span>`);
   }
 
-  const label = gk === '__기타' ? '기타/미분류' : gk;
+  const label = gk === '__기타' ? t('grp.uncategorized') : gk;
   const htr = document.createElement('tr');
   htr.className = 'group-header';
   htr.dataset.groupHeader = gk;
@@ -5352,36 +6070,36 @@ function buildGroupHeader(gk, ordered) {
   htr.innerHTML = `<td colspan="15" style="background:var(--ivory); font-weight:700; padding:9px 12px; user-select:none; border-top:2px solid var(--gold);">`
     + `<div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">`
     +   `<span class="grp-arrow" style="display:inline-block; width:16px; color:var(--gold);">▶</span>`
-    +   `<span>주문 <span style="font-family:ui-monospace,monospace;">${label}</span></span>`
-    +   `<span style="color:var(--text-dim); font-weight:400; font-size:12px;">· 제품 <span data-group-cnt>${items.length}</span>건 · 총수량 <strong data-group-qty style="color:var(--navy);">${qty.toLocaleString()}</strong></span>`
-    +   `<span data-group-box-summary style="font-weight:600; font-size:12px; color:${boxSummary ? 'var(--navy)' : '#bbb'}; margin-left:6px;">${boxSummary || '박스 미지정'}</span>`
+    +   `<span>${t('grp.order')} <span style="font-family:ui-monospace,monospace;">${label}</span></span>`
+    +   `<span style="color:var(--text-dim); font-weight:400; font-size:12px;">${t('grp.product_unit')} <span data-group-cnt>${items.length}</span>${t('unit.count')} ${t('grp.qty_unit')} <strong data-group-qty style="color:var(--navy);">${qty.toLocaleString()}</strong></span>`
+    +   `<span data-group-box-summary style="font-weight:600; font-size:12px; color:${boxSummary ? 'var(--navy)' : '#bbb'}; margin-left:6px;">${boxSummary || t('grp.box_unassigned')}</span>`
     +   (typeof _ecomOrderFreightBadgeHtml === 'function' ? _ecomOrderFreightBadgeHtml(gk, items) : '')
     +   `<span style="margin-left:auto; display:inline-flex; gap:5px; align-items:center; flex-wrap:wrap;">${rateChips}</span>`
     + `</div>`
     + `<div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:8px; padding-top:8px; border-top:1px dashed #ddd;">`
     +   `<span class="grp-bulk-wrap" style="font-weight:400; display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap;">`
-    +     `<input class="grp-desc-input" type="text" placeholder="영문명 일괄" value="${escAttr(curDesc)}" title="이 주문 전체 영문명 일괄" style="width:130px; font-size:11px; padding:2px 6px; border:1px solid #ccc; border-radius:4px;" />`
-    +     `<input class="grp-mat-input" type="text" placeholder="재질 일괄" value="${escAttr(curMat)}" title="이 주문 전체 재질 일괄" style="width:90px; font-size:11px; padding:2px 6px; border:1px solid #ccc; border-radius:4px;" />`
-    +     `<input class="grp-hs-input" type="text" placeholder="HS 일괄 (0000.00-0000)" value="${escAttr(curHs)}" title="이 주문 전체 HS코드 일괄" style="width:130px; font-size:11px; padding:2px 6px; border:1px solid #ccc; border-radius:4px;" />`
-    +     `<button class="grp-hs-suggest-btn" type="button" title="🤖 HS 추천 — 영문명·재질로 AI 후보 (학습 우선 → AI)" data-gk="${escAttr(gk)}" style="font-size:11px; padding:3px 10px; background:linear-gradient(135deg,#1B5E9A,#2872B5); color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">🤖 HS 추천</button>`
-    +     `<select class="grp-fta-input" disabled title="관세사 확정 영역 — 직원 변경 불가 (v3.2.1)" style="font-size:11px; padding:2px 4px; border:1px solid #d0d0d0; border-radius:4px; background:#f5f5f5; color:#666; cursor:not-allowed;">`
-    +       `<option value="없음"${curFta==='없음'?' selected':''}>없음</option>`
-    +       `<option value="한중"${curFta==='한중'?' selected':''}>한중FTA</option>`
-    +       `<option value="아태"${curFta==='아태'?' selected':''}>아태협정</option>`
+    +     `<input class="grp-desc-input" type="text" placeholder="${t('grp.desc_ph')}" value="${escAttr(curDesc)}" title="${t('grp.desc_title')}" style="width:130px; font-size:11px; padding:2px 6px; border:1px solid #ccc; border-radius:4px;" />`
+    +     `<input class="grp-mat-input" type="text" placeholder="${t('grp.mat_ph')}" value="${escAttr(curMat)}" title="${t('grp.mat_title')}" style="width:90px; font-size:11px; padding:2px 6px; border:1px solid #ccc; border-radius:4px;" />`
+    +     `<input class="grp-hs-input" type="text" placeholder="${t('grp.hs_ph')}" value="${escAttr(curHs)}" title="${t('grp.hs_title')}" style="width:130px; font-size:11px; padding:2px 6px; border:1px solid #ccc; border-radius:4px;" />`
+    +     `<button class="grp-hs-suggest-btn" type="button" title="${t('grp.hs_suggest_title')}" data-gk="${escAttr(gk)}" style="font-size:11px; padding:3px 10px; background:linear-gradient(135deg,#1B5E9A,#2872B5); color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">${t('grp.hs_suggest_btn')}</button>`
+    +     `<select class="grp-fta-input" disabled title="${t('grp.fta_disabled_title')}" style="font-size:11px; padding:2px 4px; border:1px solid #d0d0d0; border-radius:4px; background:#f5f5f5; color:#666; cursor:not-allowed;">`
+    +       `<option value="없음"${curFta==='없음'?' selected':''}>${t('grp.fta_none')}</option>`
+    +       `<option value="한중"${curFta==='한중'?' selected':''}>${t('grp.fta_kc')}</option>`
+    +       `<option value="아태"${curFta==='아태'?' selected':''}>${t('grp.fta_apta')}</option>`
     +     `</select>`
-    +     `<label style="display:inline-flex; flex-direction:column; align-items:center; gap:1px;"><span style="font-size:10px; font-weight:700; color:var(--gold);">📦 박스번호</span><input class="grp-box-input" type="text" placeholder="박스#" title="박스번호 자동 적용 (Tab/blur) — 작업자 핵심 입력 (v3.2.17)" style="width:96px; height:38px; font-size:18px; font-weight:800; padding:4px 8px; text-align:center; border:3px solid var(--gold); border-radius:8px; background:#fff7e6; color:var(--navy); box-shadow:0 2px 6px rgba(201,151,58,0.25); font-family:ui-monospace,monospace;" /></label>`
-    +     `<span style="font-size:10px; color:#888; padding-left:4px;" title="Tab/blur 자동 적용 — 버튼 안 누르고 칸 빠져나가면 즉시 그룹 전체에 반영">⏎ 자동</span>`
+    +     `<label style="display:inline-flex; flex-direction:column; align-items:center; gap:1px;"><span style="font-size:10px; font-weight:700; color:var(--gold);">${t('grp.box_label')}</span><input class="grp-box-input" type="text" placeholder="${t('grp.box_ph')}" title="${t('grp.box_input_title')}" style="width:96px; height:38px; font-size:18px; font-weight:800; padding:4px 8px; text-align:center; border:3px solid var(--gold); border-radius:8px; background:#fff7e6; color:var(--navy); box-shadow:0 2px 6px rgba(201,151,58,0.25); font-family:ui-monospace,monospace;" /></label>`
+    +     `<span style="font-size:10px; color:#888; padding-left:4px;" title="${t('grp.auto_apply_title')}">${t('grp.auto_apply')}</span>`
     +   `</span>`
     +   `<span style="margin-left:auto; font-size:11px; color:var(--navy); display:inline-flex; gap:10px; align-items:center; flex-wrap:wrap;">`
-    +     `<span>원가 <strong>¥${원가CNY.toLocaleString()}</strong></span>`
-    +     (현지배송비CNY > 0 ? `<span style="color:#0a7b40;">+ 현지배송 <strong>¥${현지배송비CNY.toFixed(2)}</strong></span>` : '')
-    +     (작업비CNY > 0 ? `<span style="color:#b26a00;">+ 작업비 <strong>¥${작업비CNY.toFixed(2)}</strong></span>` : '')
-    +     `<span style="font-size:13px;">= 신고 <strong style="color:var(--gold);">¥${신고총액CNY.toFixed(2)}</strong></span>`
-    +     `<span style="background:#fff7e6; padding:4px 10px; border-radius:5px; border:1px solid var(--gold); display:inline-flex; align-items:center; gap:8px;" title="[v3.2.153] 제품 신고단가는 행마다 실단가 독립. 헤더는 부대비용(작업비+현지배송비) 균등 배분만 표시.">`
-    +       `<span style="font-size:11px; color:var(--text-dim);">부대/개</span>`
-    +       `<strong style="color:var(--text-dim); font-size:11px;">¥${부대per단가CNY.toFixed(2)}/개</strong>`
+    +     `<span>${t('grp.cost_label')} <strong>¥${원가CNY.toLocaleString()}</strong></span>`
+    +     (현지배송비CNY > 0 ? `<span style="color:#0a7b40;">+ ${t('grp.local_delivery')} <strong>¥${현지배송비CNY.toFixed(2)}</strong></span>` : '')
+    +     (작업비CNY > 0 ? `<span style="color:#b26a00;">+ ${t('grp.work_fee')} <strong>¥${작업비CNY.toFixed(2)}</strong></span>` : '')
+    +     `<span style="font-size:13px;">${t('grp.declare_eq')} <strong style="color:var(--gold);">¥${신고총액CNY.toFixed(2)}</strong></span>`
+    +     `<span style="background:#fff7e6; padding:4px 10px; border-radius:5px; border:1px solid var(--gold); display:inline-flex; align-items:center; gap:8px;" title="${t('grp.per_unit_title')}">`
+    +       `<span style="font-size:11px; color:var(--text-dim);">${t('grp.per_unit_label')}</span>`
+    +       `<strong style="color:var(--text-dim); font-size:11px;">¥${부대per단가CNY.toFixed(2)}${t('grp.per_unit_suffix')}</strong>`
     +       `<span style="font-size:9px; color:#aaa;">→</span>`
-    +       `<strong style="color:var(--navy); font-size:15px; padding:2px 10px; background:#fff; border:2px solid var(--navy); border-radius:5px; font-family:ui-monospace,monospace;" title="★ 부대비용 USD/개 (작업비+현지배송비 균등). 제품 단가는 각 행 최종 USD 참조.">+$${부대per단가USD.toFixed(4)}</strong>`
+    +       `<strong style="color:var(--navy); font-size:15px; padding:2px 10px; background:#fff; border:2px solid var(--navy); border-radius:5px; font-family:ui-monospace,monospace;" title="${t('grp.per_unit_usd_title')}">+$${부대per단가USD.toFixed(4)}</strong>`
     +     `</span>`
     +   `</span>`
     + `</div>`
@@ -5780,7 +6498,7 @@ function renderProducts() {
       <td class="desc-cell">
         <input type="text" data-field="Description" value="${escAttr(f['Description'] || '')}" placeholder="${t('placeholder.eng_name')}" ${empAttr} title="${_aiUnconfirmed ? 'AI 번역(미확정) — 확인 후 [Airtable에 저장]으로 확정. 원문: ' + escAttr(f['관세사메모']||'') : empTitle}" style="min-width:120px;${descBg}" />
         ${_aiUnconfEn ? '<div style="font-size:9px;color:#a5820a;text-align:center;margin-top:1px;">🌐 AI번역 미확정</div>' : ''}
-        ${!(f['Description'] || '').trim() && (f['통관품명_한글'] || '').trim() ? `<button type="button" onclick="translateOneProduct('${escAttr(p.id)}')" title="🌐 한국어 상품명 → 영문 통관품명 AI 번역(빈칸만·미확정)" style="display:block;margin:2px auto 0;font-size:10px;padding:1px 7px;background:#eef4fb;color:#1B5E9A;border:1px solid #1B5E9A;border-radius:4px;cursor:pointer;">🌐 번역</button>` : ''}
+        ${!(f['Description'] || '').trim() && (f['통관품명_한글'] || '').trim() ? `<button type="button" onclick="translateOneProduct('${escAttr(p.id)}')" data-i18n-title="products.translate_one_title" title="🌐 한국어 상품명 → 영문 통관품명 AI 번역(빈칸만·미확정)" style="display:block;margin:2px auto 0;font-size:10px;padding:1px 7px;background:#eef4fb;color:#1B5E9A;border:1px solid #1B5E9A;border-radius:4px;cursor:pointer;" data-i18n="products.translate_one_btn">🌐 번역</button>` : ''}
         ${!(f['Description'] || '').trim() && (f['제품링크'] || '').trim() ? `<button type="button" onclick="linkToEnOneProduct('${escAttr(p.id)}')" title="🔗 1688 링크의 실제 중문 상품명·재질 → 영문 통관품명 AI 변환(빈칸만·미확정)" style="display:block;margin:2px auto 0;font-size:10px;padding:1px 7px;background:#fff4e6;color:#a15a00;border:1px solid #a15a00;border-radius:4px;cursor:pointer;">🔗 링크에서 자동</button>` : ''}
       </td>
       <td>
@@ -8347,7 +9065,7 @@ function toggleBoxSection() {
 }
 function _updBoxSummary(kg, cbm) {
   const e = document.getElementById('boxSummary');
-  if (e) e.textContent = '합계 ' + (parseFloat(kg) || 0).toFixed(1) + ' kg / ' + ((typeof fmtCBM === 'function') ? fmtCBM(cbm || 0) : (cbm || 0)) + ' CBM';
+  if (e) e.textContent = t('box.summary_total') + ' ' + (parseFloat(kg) || 0).toFixed(1) + ' kg / ' + ((typeof fmtCBM === 'function') ? fmtCBM(cbm || 0) : (cbm || 0)) + ' CBM';
 }
 function recalculateBoxTotals() {
   let totalCbm = 0, totalKg = 0;
@@ -8364,10 +9082,10 @@ function recalculateBoxTotals() {
   if (labelInfo) {
     const boxCount = Object.keys(state.boxes).length;
     if (boxCount === 0) {
-      labelInfo.textContent = '박스를 입력하면 라벨 매수가 표시됩니다';
+      labelInfo.textContent = t('label.count_empty');
       labelInfo.style.color = '#666';
     } else {
-      labelInfo.innerHTML = `<strong style="color:#1B2A3B;">박스 ${boxCount}개</strong> × 3장 = <strong style="color:#C9973A;">총 ${boxCount * 3}장</strong> 출력 예정`;
+      labelInfo.innerHTML = `<strong style="color:#1B2A3B;">${t('label.box_count').replace('{n}', boxCount)}</strong> × 3${t('label.sheet_unit')} = <strong style="color:#C9973A;">${t('label.total_sheets').replace('{n}', boxCount * 3)}</strong> ${t('label.print_pending')}`;
     }
   }
 }
@@ -9410,7 +10128,7 @@ async function loadProductHistoryCache() {
       사용횟수: r.fields['사용횟수'] || 0,
       마지막사용일: r.fields['마지막사용일'] || ''
     }));
-    log(`  ProductHistory 캐시 로드: ${state.productHistoryCache.length}건`, 'dim');
+    log(`  ${t('console.ph_cache_loaded')} ${state.productHistoryCache.length}${t('unit.count')}`, 'dim');
     return state.productHistoryCache;
   } catch (e) {
     log(`  ProductHistory 로드 실패: ${e.message}`, 'err');
@@ -9647,7 +10365,7 @@ async function autoMatchProductsFromHistory() {
     return;
   }
 
-  log('🔍 학습 데이터 자동 매칭 시작...', 'dim');
+  log(t('console.learn_match_start'), 'dim');
 
   // ProductHistory 캐시 로드 (한 번만)
   await loadProductHistoryCache();
@@ -9669,7 +10387,7 @@ async function autoMatchProductsFromHistory() {
     return;
   }
   if (cache.length > 0) {
-    log(`  ProductHistory ${cache.length}건 검색 중...`, 'dim');
+    log(`  ProductHistory ${cache.length}${t('unit.count')} ${t('console.ph_searching')}`, 'dim');
   }
 
   for (const product of state.products) {
@@ -9749,7 +10467,7 @@ async function autoMatchProductsFromHistory() {
     recalculate();
     updateWorkflowStatus();
   } else {
-    log(`  매칭 결과 없음 (${skippedCount}건 이미 확정됨)`, 'dim');
+    log(`  ${t('console.no_match_result')} (${skippedCount}${t('unit.count')} ${t('console.already_confirmed')})`, 'dim');
   }
 }
 
@@ -9770,7 +10488,7 @@ async function loadCustomer(shipmentName) {
       log(`✓ 고객 정보 로드: ${state.customer.fields['회원명'] || '(이름 없음)'} (${shipmentName})`, 'ok');
       document.getElementById('customerStatus').innerHTML = `💾 저장됨 · ${t('cust.last_used')}: ${state.customer.fields['마지막사용일'] || '-'}`;
     } else {
-      log(`ℹ ${shipmentName}에 등록된 고객 없음 — 정보 입력 후 저장 시 자동 등록`, 'dim');
+      log(`ℹ ${shipmentName}${t('console.no_customer_registered')}`, 'dim');
       document.getElementById('customerStatus').innerHTML = `<span style="color:var(--gold);">⚠ ${t('cust.new')}</span>`;
     }
   } catch (e) {
@@ -11382,17 +12100,17 @@ function updateRateBasisLabel() {
   const el = document.getElementById('rateBasisNote');
   if (!el) return;
   const d = _rateBasisDate ? _rateBasisDate.replace(/-/g, '.') : '-';
-  el.innerHTML = `기준일 <strong style="color:#1B2A3B;">${d}</strong> `
-    + `<span style="color:#888;">(입항일=수입신고일 주차)</span>`
-    + (_rateEstimate ? ` <span style="color:#c0392b; font-weight:700;">· 입항일 미정 — 오늘 기준 잠정</span>` : '')
-    + ` <span style="color:#C9973A;">· 예상 — 확정 과세환율은 관세사가 수입신고 시 결정</span>`;
+  el.innerHTML = `${t('rates.basis_date')} <strong style="color:#1B2A3B;">${d}</strong> `
+    + `<span style="color:#888;">(${t('rates.basis_arrival_week')})</span>`
+    + (_rateEstimate ? ` <span style="color:#c0392b; font-weight:700;">· ${t('rates.basis_provisional')}</span>` : '')
+    + ` <span style="color:#C9973A;">· ${t('rates.basis_estimate_note')}</span>`;
 }
 
 function renderOfficialRates() {
   const r = getOfficialRates();
   const fmt = n => n.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   document.getElementById('rateWeekRange').textContent = r.weekStart.replace(/-/g, '.') + ' ~ ' + r.weekEnd.replace(/-/g, '.');
-  document.getElementById('rateWeekNo').textContent = '제' + r.weekNo;
+  document.getElementById('rateWeekNo').textContent = t('rates.week_no_prefix') + r.weekNo;
   document.getElementById('rateSource').textContent = r.source;
   document.getElementById('rateFetchedAt').textContent = r.fetchedAt;
   document.getElementById('officialUSD').textContent = fmt(r.rates.USD);
@@ -11407,9 +12125,9 @@ function renderOfficialRates() {
   // 환율 일원화: 실 API 캐시 있으면 '관세청 실시간', 없으면 'Mock' 배지
   const badge = document.getElementById('mockBadge');
   if (badge) {
-    if (_officialRatesCache) { badge.textContent = '✅ 관세청 실시간'; badge.style.background = '#0a7b40'; }
-    else if (_rateFetchFailed) { badge.textContent = '⚠ 조회 실패 — [고시환율로 갱신] 재시도'; badge.style.background = '#c0392b'; }
-    else { badge.textContent = '🔧 Mock (인증키/응답 대기)'; badge.style.background = '#C9973A'; }
+    if (_officialRatesCache) { badge.textContent = t('rates.badge_live'); badge.style.background = '#0a7b40'; }
+    else if (_rateFetchFailed) { badge.textContent = t('rates.badge_failed'); badge.style.background = '#c0392b'; }
+    else { badge.textContent = t('rates.badge_mock'); badge.style.background = '#C9973A'; }
   }
   updateRateBasisLabel();
 }
@@ -11455,7 +12173,7 @@ async function refreshOfficialRates(forceOverwrite, dateStrArg) {
   if (typeof toastSuccess === 'function') {
     // 작업2: 실 API 성공이면 '실시간', 실패 폴백이면 'Mock'
     const live = !!_officialRatesCache;
-    toastSuccess('관세청 고시환율 적용' + (live ? ' (실시간)' : ' (Mock)'), { title: '🔄 갱신' });
+    toastSuccess(t('rates.applied_toast') + (live ? t('rates.live_suffix') : t('rates.mock_suffix')), { title: t('rates.refresh_toast_title') });
   }
 }
 
@@ -12140,10 +12858,10 @@ function renderWorkflowSteps() {
   const s4ready = s1 && s2 && s3;                                      // ④ 직원 발행 (이전 ⑤ → ④로 승격)
 
   const steps = [
-    { e:'①', label:'직원 추출',   st: s1 ? 'done' : 'progress',                          tgt:'productsSection' },
-    { e:'②', label:'관세사 분류', st: !s1 ? 'locked' : (s2 ? 'done' : 'progress'),        tgt:'productsSection' },
-    { e:'③', label:'직원 작업',   st: !s2 ? 'locked' : (s3 ? 'done' : 'progress'),        tgt:'boxSection' },
-    { e:'④', label:'직원 발행',   st: !s4ready ? 'locked' : 'ready',                      tgt:'shippingResponseSection' },
+    { e:'①', label:t('wfstep.extract'),   st: s1 ? 'done' : 'progress',                          tgt:'productsSection' },
+    { e:'②', label:t('wfstep.customs'), st: !s1 ? 'locked' : (s2 ? 'done' : 'progress'),        tgt:'productsSection' },
+    { e:'③', label:t('wfstep.work'),   st: !s2 ? 'locked' : (s3 ? 'done' : 'progress'),        tgt:'boxSection' },
+    { e:'④', label:t('wfstep.issue'),   st: !s4ready ? 'locked' : 'ready',                      tgt:'shippingResponseSection' },
   ];
   const missing = [];
   if (!s1) missing.push('①추출'); if (!s2) missing.push('②관세사');
@@ -12169,7 +12887,7 @@ function renderWorkflowSteps() {
     el.addEventListener('click', () => {
       if (el.dataset.st === 'locked') {
         const miss = el.dataset.missing;
-        toastWarn(miss ? ('발행 대기 — 누락: ' + miss) : '이전 단계를 먼저 완료하세요', { title:'🔒 잠긴 단계' });
+        toastWarn(miss ? (t('wfstep.wait_missing') + miss) : t('wfstep.complete_prev'), { title: t('wfstep.locked_title') });
         return;
       }
       const tgt = document.getElementById(el.dataset.tgt);
@@ -17460,7 +18178,7 @@ function applyCustomerShipDefault() {
   var req = normalizeShipMethodKo(reqRaw);
   if (req) {
     state.shipment.fields['배송방식'] = req;
-    if (typeof log === 'function') log('§4 배송방식 미설정 → 고객 요청(' + reqRaw + '→' + req + ') 기본 적용 (staff 변경 가능)', 'info');
+    if (typeof log === 'function') log(t('console.delivery_method_default').replace('{from}', reqRaw).replace('{to}', req), 'info');
   }
 }
 
@@ -17924,7 +18642,7 @@ const SIMPLE_CUSTOMS_FEE_CNY = 15;          // 승격 주문당 알리코인 차
 //   ★새 판정 작성 금지 — Phase1-A/1-B(calcEcomFreightCny/calcEcomBillingCny/ecomRecipientKey) 결과를 AP 단위로 재그룹핑만.
 async function openApBillingModal() {
   const pat = (document.getElementById('pat') || {}).value || sessionStorage.getItem('kanghago_airtable_pat') || '';
-  if (!pat) { (typeof toastWarn === 'function' ? toastWarn : alert)('§1에서 PAT를 먼저 입력하세요'); return; }
+  if (!pat) { (typeof toastWarn === 'function' ? toastWarn : alert)(t('booking.pat_required')); return; }
   document.getElementById('apBillingModal').style.display = 'block';
   const bd = (document.getElementById('bookingDate') || {}).value;
   const today = new Date().toISOString().slice(0, 10);
@@ -18526,14 +19244,14 @@ async function buildManifestData(shipDate) {
 // [ecom-v0.9] 모달 열기 — prompt() 폐기, 부킹요약 모달과 동일 패턴.
 function openManifestModal() {
   const pat = (document.getElementById('pat') || {}).value || sessionStorage.getItem('kanghago_airtable_pat') || '';
-  if (!pat) { (typeof toastWarn === 'function' ? toastWarn : alert)('§1에서 PAT를 먼저 입력하세요'); return; }
+  if (!pat) { (typeof toastWarn === 'function' ? toastWarn : alert)(t('booking.pat_required')); return; }
   document.getElementById('manifestModal').style.display = 'block';
   const bd = (document.getElementById('bookingDate') || {}).value;
   const today = new Date().toISOString().slice(0, 10);
   const inp = document.getElementById('manifestDate');
   if (inp && !inp.value) inp.value = bd || today;
   document.getElementById('manifestResultBox').innerHTML =
-    '<div style="padding:18px; text-align:center; color:#999; font-size:13px;">선적일 선택 후 [그날만 조회]를 클릭하세요.</div>';
+    `<div style="padding:18px; text-align:center; color:#999; font-size:13px;">${escAttr(t('manifest.select_prompt'))}</div>`;
   document.getElementById('manifestLoadingMsg').textContent = '';
   state._manifestPreview = null;
 }
@@ -18672,20 +19390,20 @@ function _renderManifestBucketRow(bucket, label, rows, warnM, warnVague) {
 function renderManifestPreview(data) {
   const BUCKET_LABEL = { sea: '해운(海运)', air: '항공(空运)', express: '특송' };
   const shipRows = Object.entries(data.shipSummary).map(([key, info]) => {
-    const label = info.bucket ? BUCKET_LABEL[info.bucket] : '★분류불가(제외)';
+    const label = info.bucket ? BUCKET_LABEL[info.bucket] : t('manifest.unclassifiable');
     const color = info.bucket ? '#1B2A3B' : '#c0392b';
-    return `<tr><td style="padding:4px 8px;font-family:ui-monospace,monospace;">${escAttr(key)}</td><td style="padding:4px 8px;color:${color};">${label}</td><td style="padding:4px 8px;text-align:right;">${info.orderCount}건</td></tr>`;
+    return `<tr><td style="padding:4px 8px;font-family:ui-monospace,monospace;">${escAttr(key)}</td><td style="padding:4px 8px;color:${color};">${label}</td><td style="padding:4px 8px;text-align:right;">${info.orderCount}${t('unit.count')}</td></tr>`;
   }).join('');
 
   let softHtml = '';
   const _excludedKeys = Object.keys(data.excludedShip || {});
   if (_excludedKeys.length) {
-    softHtml += `<div style="font-size:11px;color:#a5820a;margin-top:6px;">⚠ 통관구분 불명 사서함 제외: ${escAttr(_excludedKeys.map(k => `${k}(${data.excludedShip[k]}건)`).join(', '))}</div>`;
+    softHtml += `<div style="font-size:11px;color:#a5820a;margin-top:6px;">${t('manifest.excluded_biztype')}: ${escAttr(_excludedKeys.map(k => `${k}(${data.excludedShip[k]}${t('unit.count')})`).join(', '))}</div>`;
   }
-  if (data.warnL.length) softHtml += `<div style="font-size:11px;color:#c0392b;margin-top:6px;">⛔ L 통관고유번호 누락 ${data.warnL.length}건 — 제출 불가(Customers 등록 필요): ${escAttr(data.warnL.slice(0,8).join(', '))}${data.warnL.length>8?' 외':''}</div>`;
-  if (data.warnRate.length) softHtml += `<div style="font-size:11px;color:#a5820a;margin-top:6px;">⚠ 승격판정 환율 미확보 ${data.warnRate.length}건 — 안전측 2(간이통관)로 처리됨(과소신고 방지)</div>`;
-  if (data.warnUnconf.length) softHtml += `<div style="font-size:11px;color:#a5820a;margin-top:6px;">⚠ AI 추천 미확정 제품 ${data.warnUnconf.length}건 — [✓ 확정] 검토 권장</div>`;
-  if (data.truncated) softHtml += `<div style="font-size:11px;color:#a5820a;margin-top:6px;">⚠ 품목 ${data.truncated}개 30초과 잘림</div>`;
+  if (data.warnL.length) softHtml += `<div style="font-size:11px;color:#c0392b;margin-top:6px;">${t('manifest.warn_l_missing').replace('{n}', data.warnL.length)}: ${escAttr(data.warnL.slice(0,8).join(', '))}${data.warnL.length>8?t('manifest.and_more'):''}</div>`;
+  if (data.warnRate.length) softHtml += `<div style="font-size:11px;color:#a5820a;margin-top:6px;">${t('manifest.warn_rate_unresolved').replace('{n}', data.warnRate.length)}</div>`;
+  if (data.warnUnconf.length) softHtml += `<div style="font-size:11px;color:#a5820a;margin-top:6px;">${t('manifest.warn_ai_unconfirmed').replace('{n}', data.warnUnconf.length)}</div>`;
+  if (data.truncated) softHtml += `<div style="font-size:11px;color:#a5820a;margin-top:6px;">${t('manifest.warn_truncated').replace('{n}', data.truncated)}</div>`;
 
   // [ecom-v0.15 Phase A] 유형별 3행 — 각자 독립 다운로드/차단(1버튼 일괄 방식 폐기).
   const bucketRowsHtml =
@@ -18747,8 +19465,8 @@ async function openBookingSummary() {
   // PAT 미입력 시 경고 (api() 호출은 헬퍼가 자동 처리하지만 모달 진입 전 안내)
   const pat = (document.getElementById('pat') || {}).value || sessionStorage.getItem('kanghago_airtable_pat') || '';
   if (!pat) {
-    if (typeof toastWarn === 'function') toastWarn('§1에서 PAT를 먼저 입력하세요');
-    else alert('§1에서 PAT를 먼저 입력하세요');
+    if (typeof toastWarn === 'function') toastWarn(t('booking.pat_required'));
+    else alert(t('booking.pat_required'));
     return;
   }
   document.getElementById('bookingSummaryModal').style.display = 'block';
@@ -18758,7 +19476,7 @@ async function openBookingSummary() {
   if (inp && !inp.value) inp.value = today;
   // 빈 상태로 초기화
   document.getElementById('bookingResultBox').innerHTML =
-    '<div style="padding:18px; text-align:center; color:#999; font-size:13px;">날짜 선택 후 [그날만 조회] 또는 [오늘~+7일 일괄]을 클릭하세요.</div>';
+    `<div style="padding:18px; text-align:center; color:#999; font-size:13px;">${t('booking.select_prompt')}</div>`;
   document.getElementById('bookingLoadingMsg').textContent = '';
   // customerByPost가 비어있으면(사서함 한 번도 안 불렀을 때) 회원 매핑만 한 번 강제 로드
   // ★ TABLES.Customers는 ensureSchema 후 채워짐 — 가드 필수 (기존 line 3367 패턴 따름)
@@ -18786,7 +19504,7 @@ function closeBookingSummary() {
 //   ★무쓰기: 순번 persist·적용FTA확정 자동기록 전부 차단(둘 다 _batchIpMode==='co' 가드).
 async function downloadBatchIp(stage) {
   const rows = (bookingState.rows || []).slice();
-  if (!rows.length) { toastWarn && toastWarn('먼저 [선적일별 부킹 요약]을 조회하세요'); return; }
+  if (!rows.length) { toastWarn && toastWarn(t('booking.fetch_first_placeholder')); return; }
   const isCo = (stage === 'co');
   const genStage = isCo ? 'final' : stage;   // 2차는 최종 양식 재사용
   const label = (stage === 'first') ? '1차' : (isCo ? 'CO발급용' : '최종');
@@ -18986,7 +19704,7 @@ function _dispatchCols() {
 
 function openDispatchMaster() {
   const pat = (document.getElementById('pat') || {}).value || sessionStorage.getItem('kanghago_airtable_pat') || '';
-  if (!pat) { (toastWarn || alert)('§1에서 PAT를 먼저 입력하세요'); return; }
+  if (!pat) { (toastWarn || alert)(t('booking.pat_required')); return; }
   document.getElementById('dispatchMasterModal').style.display = 'block';
   const s = document.getElementById('dmStart'); if (s && !s.value) s.value = new Date().toISOString().slice(0, 10);
   if (typeof _renderDispatchTabs === 'function') _renderDispatchTabs();   // [v3.2.192] 3탭 렌더
@@ -19216,7 +19934,7 @@ async function fetchBookingSummary(mode) {
 
   const loading = document.getElementById('bookingLoadingMsg');
   const box = document.getElementById('bookingResultBox');
-  loading.textContent = '⏳ Orders 조회 중...';
+  loading.textContent = t('booking.loading_orders');
   box.innerHTML = '';
 
   try {
@@ -19234,7 +19952,7 @@ async function fetchBookingSummary(mode) {
     if (!orders.length) {
       loading.textContent = '';
       box.innerHTML =
-        `<div style="padding:18px; text-align:center; color:#999; font-size:13px;">📭 <strong>${dateLabel}</strong> 선적 예정 Orders 0건</div>`;
+        `<div style="padding:18px; text-align:center; color:#999; font-size:13px;">📭 <strong>${dateLabel}</strong> ${t('booking.no_orders')}</div>`;
       bookingState.rows = []; bookingState.textForCopy = ''; bookingState.dateLabel = dateLabel;
       return;
     }
@@ -19254,12 +19972,12 @@ async function fetchBookingSummary(mode) {
     if (!shipIds.length) {
       loading.textContent = '';
       box.innerHTML =
-        `<div style="padding:18px; text-align:center; color:#999; font-size:13px;">📭 매칭 Orders는 있지만 Shipment 연결이 없습니다 (${orders.length}건)</div>`;
+        `<div style="padding:18px; text-align:center; color:#999; font-size:13px;">📭 ${t('booking.no_shipment_link').replace('{n}', orders.length)}</div>`;
       bookingState.rows = []; bookingState.textForCopy = ''; bookingState.dateLabel = dateLabel;
       return;
     }
 
-    loading.textContent = `⏳ ${shipIds.length}개 사서함 조회 중...`;
+    loading.textContent = `⏳ ${shipIds.length}${t('unit.count')} ${t('booking.loading_mailboxes')}`;
 
     // (3) Shipments 조회 (RECORD_ID()로 묶음, 50개씩 chunk)
     const shipChunks = chunkArray(shipIds, 50);
@@ -19282,7 +20000,7 @@ async function fetchBookingSummary(mode) {
     // [ecommerce] ★무역 혼입 차단 — 부킹요약도 전자상거래만(isEcommerce 단일소스). 통관트랙 빈값=무역 → 제외.
     const ships = shipResults.flat().filter(s => isEcommerce(s));
 
-    loading.textContent = `⏳ ${ships.length}개 사서함의 박스 조회 중...`;
+    loading.textContent = `⏳ ${ships.length}${t('unit.count')} ${t('booking.loading_boxes')}`;
 
     // (4) 각 사서함의 Boxes 병렬 조회 (기존 도구 line 3609 패턴: 사서함명으로 SEARCH)
     const rows = await Promise.all(ships.map(async (s) => {
@@ -19355,11 +20073,11 @@ async function fetchBookingSummary(mode) {
     // [v3.2.95] 배차견적액 빈값 자동 채움(참고 견적, override 보존) — 배차견적액만 write. 렌더 전 반영.
     try { await autoFillEstimates(rows); } catch (e) { console.warn('[autoFillEstimates]', e.message); }
     renderBookingTable(rows, dateLabel);
-    loading.textContent = `✓ ${rows.length}개 사서함 (Orders ${orders.length}건 기반)`;
+    loading.textContent = `✓ ${rows.length}${t('unit.count')} ${t('console.mailbox_label')} (Orders ${orders.length}${t('unit.count')} ${t('booking.based_on')})`;
   } catch (e) {
     console.error('[booking] 조회 실패', e);
     loading.textContent = '';
-    box.innerHTML = `<div style="padding:14px; color:#b00020; background:#fff5f5; border:1px solid #f5c2c7; border-radius:6px; font-size:13px;">❌ 조회 실패: ${e.message || e}</div>`;
+    box.innerHTML = `<div style="padding:14px; color:#b00020; background:#fff5f5; border:1px solid #f5c2c7; border-radius:6px; font-size:13px;">❌ ${t('booking.fetch_failed')}: ${e.message || e}</div>`;
   }
 }
 
@@ -19377,59 +20095,59 @@ function renderBookingTable(rows, dateLabel) {
     lines.push(`- ${r.mailbox} ${nameTag} : ${r.kgSum.toFixed(1)}kg / ${fmtCBM(r.cbmSum)}CBM`);
   });
   lines.push('');
-  lines.push(`합계: ${totalKg.toFixed(1)}kg / ${fmtCBM(totalCbm)}CBM (사서함 ${rows.length}개)`);
+  lines.push(`${t('box.summary_total')}: ${totalKg.toFixed(1)}kg / ${fmtCBM(totalCbm)}CBM (${t('console.mailbox_label')} ${rows.length}${t('unit.count')})`);
   bookingState.textForCopy = lines.join('\n');
 
   // HTML 테이블
   let html = '';
-  html += `<div style="background:#fafaf5; padding:10px 12px; border-radius:6px; margin-bottom:10px; font-size:13px;">📅 <strong>${dateLabel}</strong> · 사서함 <strong>${rows.length}개</strong> · 합계 <strong>${totalKg.toFixed(1)}kg / ${fmtCBM(totalCbm)}CBM</strong></div>`;
+  html += `<div style="background:#fafaf5; padding:10px 12px; border-radius:6px; margin-bottom:10px; font-size:13px;">📅 <strong>${dateLabel}</strong> · ${t('console.mailbox_label')} <strong>${rows.length}${t('unit.count')}</strong> · ${t('box.summary_total')} <strong>${totalKg.toFixed(1)}kg / ${fmtCBM(totalCbm)}CBM</strong></div>`;
   // [v3.2.87] 문서 수령 요약 — BL/CO 미수령(파일 없음) 건수. 0이면 초록, 있으면 빨강.
   const blMissing = rows.filter(r => !r.blHasFile).length;
   const coMissing = rows.filter(r => !r.coHasFile).length;
   const _missTag = (n, label) => n > 0
-    ? `<strong style="color:#c0392b;">${label} 미수령 ${n}</strong>`
-    : `<span style="color:#0a7b40;">${label} 전건 수령</span>`;
-  html += `<div style="background:${(blMissing || coMissing) ? '#fff5f5' : '#f1f8f1'}; border:1px solid ${(blMissing || coMissing) ? '#f5c2c7' : '#cfe8cf'}; padding:8px 12px; border-radius:6px; margin-bottom:10px; font-size:12px;">📄 서류 수령: ${_missTag(blMissing, 'BL')} · ${_missTag(coMissing, 'CO')} <span style="color:#999;">(BL ✅파일+번호 / ⚠파일만·번호없음 / ❌미수령 · CO ✅있음 / ❌미수령)</span></div>`;
+    ? `<strong style="color:#c0392b;">${label} ${t('booking.doc_missing')} ${n}</strong>`
+    : `<span style="color:#0a7b40;">${label} ${t('booking.doc_all_received')}</span>`;
+  html += `<div style="background:${(blMissing || coMissing) ? '#fff5f5' : '#f1f8f1'}; border:1px solid ${(blMissing || coMissing) ? '#f5c2c7' : '#cfe8cf'}; padding:8px 12px; border-radius:6px; margin-bottom:10px; font-size:12px;">📄 ${t('booking.doc_receipt')}: ${_missTag(blMissing, 'BL')} · ${_missTag(coMissing, 'CO')} <span style="color:#999;">(${t('booking.doc_legend')})</span></div>`;
   html += `<table style="width:100%; border-collapse:collapse; font-size:13px;">`;
   html += `<thead><tr style="background:#1B2A3B; color:#fff;">
-    <th style="padding:8px; text-align:left; width:100px;">사서함</th>
-    <th style="padding:8px; text-align:left;">회원명(회사명)</th>
-    <th style="padding:8px; text-align:right; width:90px;">중량(kg)</th>
+    <th style="padding:8px; text-align:left; width:100px;">${t('console.mailbox_label')}</th>
+    <th style="padding:8px; text-align:left;">${t('booking.th_member')}</th>
+    <th style="padding:8px; text-align:right; width:90px;">${t('booking.th_weight')}</th>
     <th style="padding:8px; text-align:right; width:90px;">CBM</th>
-    <th style="padding:8px; text-align:center; width:70px;">박스</th>
-    <th style="padding:8px; text-align:center; width:80px;">상태</th>
-    <th style="padding:8px; text-align:center; width:44px;" title="BL: ✅파일+번호 / ⚠파일만(번호없음) / ❌미수령">BL</th>
-    <th style="padding:8px; text-align:center; width:44px;" title="CO: ✅있음 / ❌미수령">CO</th>
+    <th style="padding:8px; text-align:center; width:70px;">${t('grp.box_label_short')}</th>
+    <th style="padding:8px; text-align:center; width:80px;">${t('booking.th_status')}</th>
+    <th style="padding:8px; text-align:center; width:44px;" title="${t('booking.bl_title')}">BL</th>
+    <th style="padding:8px; text-align:center; width:44px;" title="${t('booking.co_title')}">CO</th>
   </tr></thead><tbody>`;
   rows.forEach(r => {
     const bg = r.isReady ? '#fff' : '#fff8e1';
     // [v3.2.71] 회원명(회사명) — 둘 다 있으면 "회원명 (회사명)", 하나만 있으면 그것, 둘 다 없으면 "(정보 없음)"
     const nameTag0 = (r.member && r.company) ? `${r.member}<span style="color:#888; font-size:11px;"> (${r.company})</span>`
-      : (r.member || r.company || '<span style="color:#bbb;">(정보 없음)</span>');
+      : (r.member || r.company || `<span style="color:#bbb;">${t('booking.no_info')}</span>`);
     // [v3.2.140] 부가 라벨(표시 전용) — 대행종류: 수입자 그룹 2개(구매↔실화주)면 '혼재'(빨강), 결제+배송(동일 실화주)은 유형 나열(파랑·오해 방지). 배송방식 별개.
     const _ats = r.agentTypes || [];
     const _grp = [...new Set(_ats.map(t => (t === '결제대행' || t === '배송대행') ? '실화주' : (t === '구매대행' ? '구매대행' : null)).filter(Boolean))];
     const _atRed = _grp.length >= 2;   // 구매↔실화주 혼재만 빨강
-    const _atL = _ats.length === 0 ? '' : (_atRed ? '혼재' : _ats.join('+'));
+    const _atL = _ats.length === 0 ? '' : (_atRed ? t('booking.mixed') : _ats.join('+'));
     const _smL = (r.shipMethods && r.shipMethods.length) ? (r.shipMethods.length >= 2 ? r.shipMethods.join('+') : r.shipMethods[0]) : '';
     const _chip = (t, c) => `<span style="display:inline-block; margin-left:5px; padding:1px 6px; border-radius:9px; font-size:10.5px; font-weight:600; background:${c}1a; color:${c}; border:1px solid ${c}55;">${t}</span>`;
     const nameTag = nameTag0
       + (_atL ? _chip(_atL, _atRed ? '#c0392b' : '#1B5E9A') : '')
       + (_smL ? _chip(_smL, _smL.indexOf('+') >= 0 ? '#c0392b' : '#5a4a2a') : '');
     const statusBadge = r.isReady
-      ? '<span style="color:#0a7b40; font-weight:600;">✓ 완료</span>'
+      ? `<span style="color:#0a7b40; font-weight:600;">✓ ${t('progress.complete')}</span>`
       : (r.boxCount === 0
-          ? '<span style="color:#b26a00; font-weight:600;">✗ 박스0</span>'
-          : '<span style="color:#b26a00; font-weight:600;">✗ 무게/CBM</span>');
+          ? `<span style="color:#b26a00; font-weight:600;">✗ ${t('booking.box_zero')}</span>`
+          : `<span style="color:#b26a00; font-weight:600;">✗ ${t('booking.weight_cbm_missing')}</span>`);
     // [v3.2.87] BL: 파일+번호→✅ / 파일만→⚠ / 없음→❌ · CO: 있음→✅ / 없음→❌
     const blCell = r.blHasFile
       ? (r.blNo
-          ? '<span style="color:#0a7b40; font-weight:700;" title="BL 파일+번호 수령">✅</span>'
-          : '<span style="color:#b26a00; font-weight:700;" title="BL 파일만 — 번호 미입력">⚠</span>')
-      : '<span style="color:#c0392b; font-weight:700;" title="BL 미수령">❌</span>';
+          ? `<span style="color:#0a7b40; font-weight:700;" title="${t('booking.bl_ok')}">✅</span>`
+          : `<span style="color:#b26a00; font-weight:700;" title="${t('booking.bl_file_only')}">⚠</span>`)
+      : `<span style="color:#c0392b; font-weight:700;" title="${t('booking.bl_missing')}">❌</span>`;
     const coCell = r.coHasFile
-      ? '<span style="color:#0a7b40; font-weight:700;" title="CO 수령">✅</span>'
-      : '<span style="color:#c0392b; font-weight:700;" title="CO 미수령">❌</span>';
+      ? `<span style="color:#0a7b40; font-weight:700;" title="${t('booking.co_ok')}">✅</span>`
+      : `<span style="color:#c0392b; font-weight:700;" title="${t('booking.co_missing')}">❌</span>`;
     html += `<tr style="background:${bg}; border-bottom:1px solid #eee;">
       <td style="padding:7px 8px; font-family:'SF Mono',Consolas,monospace; font-weight:600;">${r.mailbox}</td>
       <td style="padding:7px 8px;">${nameTag}</td>
@@ -19442,7 +20160,7 @@ function renderBookingTable(rows, dateLabel) {
     </tr>`;
   });
   html += `<tr style="background:#1B2A3B; color:#fff; font-weight:700;">
-    <td colspan="2" style="padding:9px 8px; text-align:right;">합계</td>
+    <td colspan="2" style="padding:9px 8px; text-align:right;">${t('box.summary_total')}</td>
     <td style="padding:9px 8px; text-align:right; font-family:'SF Mono',Consolas,monospace;">${totalKg.toFixed(1)}</td>
     <td style="padding:9px 8px; text-align:right; font-family:'SF Mono',Consolas,monospace;">${fmtCBM(totalCbm)}</td>
     <td colspan="4"></td>
@@ -19452,20 +20170,20 @@ function renderBookingTable(rows, dateLabel) {
   // 게이트 + 복사 버튼
   html += `<div style="margin-top:14px; padding:12px; background:${allReady ? '#e8f5e9' : '#fff8e1'}; border:1px solid ${allReady ? '#0a7b40' : '#C9973A'}; border-radius:6px;">`;
   if (allReady) {
-    html += `<div style="font-size:13px; color:#1b5e20; font-weight:600; margin-bottom:8px;">✓ 모든 사서함 박스 입력 완료 — 위챗 복사 가능</div>`;
-    html += `<button onclick="copyBookingText()" style="padding:9px 18px; background:#0a7b40; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">💬 위챗 복사</button>`;
-    html += `<button onclick="copyCoRequest()" style="margin-left:8px; padding:9px 18px; background:#C9973A; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;" title="화물 사서함 BL정보 기반 중국어 CO 발급 요청 메시지 복사">📋 CO 요청 복사</button>`;
+    html += `<div style="font-size:13px; color:#1b5e20; font-weight:600; margin-bottom:8px;">✓ ${t('booking.all_ready')}</div>`;
+    html += `<button onclick="copyBookingText()" style="padding:9px 18px; background:#0a7b40; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">${t('booking.copy_wechat')}</button>`;
+    html += `<button onclick="copyCoRequest()" style="margin-left:8px; padding:9px 18px; background:#C9973A; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;" title="${t('booking.copy_co_title')}">${t('booking.copy_co')}</button>`;
   } else {
-    html += `<div style="font-size:13px; color:#9a7b2a; font-weight:600; margin-bottom:6px;">🔒 박스 미입력 사서함 ${notReady.length}건 — 위챗 복사 잠금</div>`;
+    html += `<div style="font-size:13px; color:#9a7b2a; font-weight:600; margin-bottom:6px;">🔒 ${t('booking.not_ready').replace('{n}', notReady.length)}</div>`;
     html += `<div style="font-size:12px; color:#7a5a1a;">`;
     notReady.forEach(r => {
-      const nameTag = (r.member && r.company) ? `${r.member}(${r.company})` : (r.member || r.company || '(정보 없음)');
-      const reason = r.boxCount === 0 ? '박스 0개' : '박스 무게 또는 CBM 미입력';
+      const nameTag = (r.member && r.company) ? `${r.member}(${r.company})` : (r.member || r.company || t('booking.no_info'));
+      const reason = r.boxCount === 0 ? t('booking.box_zero_reason') : t('booking.weight_cbm_reason');
       html += `&nbsp;&nbsp;・ <strong>${r.mailbox}</strong> ${nameTag} — ${reason}<br/>`;
     });
     html += `</div>`;
-    html += `<button disabled style="margin-top:8px; padding:9px 18px; background:#ccc; color:#fff; border:none; border-radius:6px; cursor:not-allowed; font-weight:700; font-size:13px;">💬 위챗 복사 (잠금)</button>`;
-    html += `<button onclick="copyCoRequest()" style="margin-top:8px; margin-left:8px; padding:9px 18px; background:#C9973A; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;" title="화물 사서함 BL정보 기반 중국어 CO 발급 요청 메시지 복사 (박스 게이트와 무관)">📋 CO 요청 복사</button>`;
+    html += `<button disabled style="margin-top:8px; padding:9px 18px; background:#ccc; color:#fff; border:none; border-radius:6px; cursor:not-allowed; font-weight:700; font-size:13px;">${t('booking.copy_wechat_locked')}</button>`;
+    html += `<button onclick="copyCoRequest()" style="margin-top:8px; margin-left:8px; padding:9px 18px; background:#C9973A; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;" title="${t('booking.copy_co_title_alt')}">${t('booking.copy_co')}</button>`;
   }
   html += `</div>`;
 
@@ -19706,7 +20424,7 @@ function _transportMarkRange(base, seqs) {
 //   데이터: 부킹 조회 결과(bookingState) 재활용 + Shipments/Orders/Boxes 추가필드만 재조회. 전부 기존 필드. 새 API 0.
 async function downloadTransportExcel(forCourier) {
   if (typeof ExcelJS === 'undefined') { toastError('ExcelJS 로딩 실패 — 새로고침'); return; }
-  if (!bookingState.rows || !bookingState.rows.length) { toastWarn('먼저 [선적일별 부킹 요약]을 조회하세요'); return; }
+  if (!bookingState.rows || !bookingState.rows.length) { toastWarn(t('booking.fetch_first_placeholder')); return; }
   const method = forCourier ? '택배' : '화물';
   const label = forCourier ? '택배사' : '운송사';
   const _carrierInp = prompt(`${label}명 입력 — 전체 행의 '운송사' 칸에 동일 적용합니다.\n(비워도 됨: 빈칸으로 발행 → 나중에 손기입)`);
@@ -19945,7 +20663,7 @@ async function _setShipPortIp(shipId, en, label) {
 async function handleBatchDocFiles(fileList) {
   let files = Array.from(fileList || []);
   if (!files.length) return;
-  if (!bookingState.rows || !bookingState.rows.length) { toastWarn && toastWarn('먼저 [선적일별 부킹 요약]을 조회하세요'); return; }
+  if (!bookingState.rows || !bookingState.rows.length) { toastWarn && toastWarn(t('booking.fetch_first_placeholder')); return; }
   const resEl = document.getElementById('batchDocResult');
   if (resEl) resEl.innerHTML = '<span style="color:#888; font-size:12px;">🔎 파일 분석 중…</span>';
   // ZIP 풀기(보너스) — JSZip 동적 로드. 실패해도 일반 파일은 진행.
