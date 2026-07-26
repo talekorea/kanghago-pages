@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.21</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.22</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -19410,85 +19410,134 @@ async function buildManifestData(shipDate) {
     const custs = await apiPaged(`/${TABLES.Customers}?fields[]=사서함번호&fields[]=사업자번호&fields[]=통관고유부호&fields[]=회원명`);
     custs.forEach(c => { const k = (c.fields||{})['사서함번호']; if (k) custByBase[k] = c.fields; });
   } catch (e) {}
-  // 행 빌드 (행=Order), 통관구분(사서함 키)으로 해운/항공/항공특송 3분리
+  // [ecom-v0.22] 행 빌드 (행=★수취인/배송건 단위) — 원본(20260210-해운-ZH.xlsx) 실측 확정: 1행=1수취인,
+  //   그 수취인의 전 주문 제품을 상품명(1)~(30)에 옆으로 나열. "1행=1주문"은 오독이었음(정정).
+  //   그룹핑 키 = ecomShipBucket와 같은 사서함(sid) 스코프 내 ecomRecipientKey(신규 키 금지 — 청구 엔진과 동일 재사용).
   const seaRows = [], airRows = [], expressRows = []; let truncated = 0;
   const _warnL = [], _warnM = [], _warnUnconf = [], _warnRate = [], _warnVague = [];   // [C]L누락 / [D]M빈값 / AI 미확정 / 환율미확보 / [ecom-v0.8]총칭품명
   const _warnMByBucket = { sea: [], air: [], express: [] };       // [ecom-v0.15] 유형별 차단(Phase A) — _warnM 전수와 별도 인덱스
   const _warnVagueByBucket = { sea: [], air: [], express: [] };   // [ecom-v0.15] 유형별 차단(Phase A)
   const _excludedShip = {};   // [ecom-v0.8] 통관구분 분류 불가 사서함(캐치올 폐지) — key -> 제외 건수
-  const _shipSummary = {};    // [ecom-v0.9] 모달 미리보기용 — key -> {bucket, orderCount}
+  const _shipSummary = {};    // [ecom-v0.9] 모달 미리보기용 — key -> {bucket, orderCount, recipientCount}
+  // (4-pre) Orders를 사서함(sid) 단위로 먼저 묶는다 — bucket·환율·고객정보가 사서함 스코프이므로.
+  const ordersBySid = {};
   ecomOrders.forEach(o => {
     const of = o.fields || {};
     const sid = (of.Shipment || []).find(id => shipById[id]);
+    (ordersBySid[sid] = ordersBySid[sid] || []).push(o);
+  });
+  Object.keys(ordersBySid).forEach(sid => {
     const s = shipById[sid]; const sf = s.fields || {};
     const key = String(sf['사서함'] || '');
+    const ordersForShip = ordersBySid[sid];
     // [ecom-v0.8] 통관구분 3분리 — 캐치올(무조건 海运) 폐지. 분류 불가 사서함은 여기서 제외(조용한 오분류 차단).
     //   [ecom-v0.17] 분류 로직 = ecomShipBucket() 공유(§1 주문헤더 실시간 표시와 동일 함수, 정책 이원화 방지).
     const _bucket = ecomShipBucket(key);
-    _shipSummary[key] = _shipSummary[key] || { bucket: _bucket, orderCount: 0 };
-    _shipSummary[key].orderCount++;
-    if (!_bucket) { _excludedShip[key] = (_excludedShip[key] || 0) + 1; return; }
-    // [주문단위] ★사업자개인 = Orders(주문·수취인 단위)만. Shipments(사서함 대표) 폴백 제거 — 혼재 사서함에서 개인 주문에 사업자 플래그 오적용(통관사고) 방지.
-    //   Shipments.사업자개인 필드 자체는 유지(도구 계산·부킹요약·알리코인 판정용) — 여기 매니페스트 읽기에서만 미사용.
-    const bizPerson = String(of['사업자개인'] || '').trim();   // '사업자'/'개인'/'' (M열·L열 Customers분기 공통)
+    _shipSummary[key] = _shipSummary[key] || { bucket: _bucket, orderCount: 0, recipientCount: 0 };
+    _shipSummary[key].orderCount += ordersForShip.length;
+    if (!_bucket) { _excludedShip[key] = (_excludedShip[key] || 0) + ordersForShip.length; return; }
     const rateCnyUsd = parseFloat(sf['환율CNY_USD']) || 0;
     const cust = custByBase[sf['고객사서함']] || {};
-    const box = boxByShipId[sid] || { count:'', kg:'', dim:null };
-    const prodsO = (prodByOrderId[o.id] || []).slice();
-    if (prodsO.length > TYREDS_MAX_ITEMS) { truncated += prodsO.length - TYREDS_MAX_ITEMS; prodsO.length = TYREDS_MAX_ITEMS; }
-    const p0 = (prodsO[0] || {}).fields || {};
-    const row = new Array(142).fill('');
-    row[0] = 0;                                              // A NO — 뒤에서 재부여
-    row[1] = `${of['주문번호']||''} ${sf['고객사서함']||''}`.trim();  // B 주문번호+AP
-    row[2] = of['트래킹번호'] || '';                          // C HBL [ecom-v0.9] 422 수정(운송장번호→트래킹번호)
-    row[3] = 'weihai';                                       // D POL 상수
-    row[4] = '';                                             // E 발송인 빈칸
-    row[5] = 'weihai';                                       // F 발송인주소 상수
-    row[6] = of['수취인'] || '';                              // G 수취인
-    row[7] = of['연락처'] || '';                              // H 연락처
-    row[8] = '';                                             // I 우편번호 빈칸
-    row[9] = of['수취인주소'] || '';                          // J 주소
-    row[10] = of['배송요청사항'] || '';                       // K 배송메모
-    // L 통관고유번호 — ★주문(수취인) 단위: Orders.수취_통관부호 우선 → Customers(회원 수기) → 빈칸.
-    //   ★Shipments.수취_통관부호(사서함 대표값) 폴백 제거 — 다른 수취인 부호 오적용=통관사고 방지.
-    row[11] = String(of['수취_통관부호'] || '').trim()
-            || (bizPerson === '사업자' ? (cust['사업자번호']||'') : (bizPerson === '개인' ? (cust['통관고유부호']||'') : ''));
-    // [ecom-v0.6] M 플래그 — 단일 판정함수(계산 로직 단일화). prodsO는 아래에서 재사용(30건 초과 절단 전 시점).
-    const _mResult = calcManifestFlag(bizPerson, prodsO, rateCnyUsd);
-    row[12] = _mResult.flag;
-    // [C] L 통관고유번호 누락 / [D] M 사업자개인 빈값 집계(주문번호+사서함) — 제출 불가 경고용
-    const _ono = `${of['주문번호']||''}(${sf['사서함']||''})`;
-    if (!row[11]) _warnL.push(_ono);
-    if (row[12] === '') { _warnM.push(_ono); _warnMByBucket[_bucket].push(_ono); }
-    if (_mResult.warn) _warnRate.push(`${_ono}: ${_mResult.warn}`);
-    row[13] = p0['제품링크'] || 'https://1688.com/';          // N 상품URL
-    row[14] = box.count;                                     // O 박스수(사서함 집계)
-    row[15] = box.kg;                                        // P 총중량 kg
-    row[16] = box.dim ? Math.round(box.dim[0]/100*1000)/1000 : '';  // Q 가로 m (cm÷100)
-    row[17] = box.dim ? Math.round(box.dim[1]/100*1000)/1000 : '';  // R 세로 m
-    row[18] = box.dim ? Math.round(box.dim[2]/100*1000)/1000 : '';  // S 높이 m
-    row[19] = '';                                            // T 中文품명 — 미저장 빈칸
-    row[20] = p0['Material'] || '';                          // U 규격/모델=재질
-    row[21] = String(p0['HS코드']||'').replace(/\./g,'');     // V HS(점 제거)
-    // ★매니페스트는 부대비용 제외(물품가만). 부대비(구매수수료·현지배송비) 포함은 청구 트랙 전용. 2026-07-23 확정.
-    //   개당단가USD = 단가CNY(물품가) × 환율. 구매수수료·현지배송비 가산 없음(조건부 가산 구조 삭제 — 재오염 방지).
-    prodsO.forEach((p, i) => {
-      const pf = p.fields || {}; const b = 22 + i*4;
-      const dan  = parseFloat(pf['단가CNY']) || 0;
-      if (/AI번역\(미확정\)|AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(String(pf['관세사메모'] || ''))) _warnUnconf.push(`${of['주문번호']||''}:${pf['상품ID']||''}`);   // [C] AI 미확정 제품
-      // [ecom-v0.8] 통관품명 총칭 하드차단 — 정확일치만(부분일치 금지: seafood·food processor는 통과).
-      const _engLower = String(pf['통관품명_영문'] || '').trim().toLowerCase();
-      if (VAGUE_NAMES.includes(_engLower)) {
-        const _vagueEntry = `${sf['사서함']||''}/${of['주문번호']||''}:${pf['상품ID']||''}(${pf['통관품명_영문']})`;   // [ecom-v0.9] 사서함까지 명시(요건: 대상 특정 가능해야 함)
-        _warnVague.push(_vagueEntry);
-        _warnVagueByBucket[_bucket].push(_vagueEntry);
-      }
-      row[b]   = pf['통관품명_영문'] || '';                   // 상품명(n)
-      row[b+1] = 'PC';                                       // 단위 상수
-      row[b+2] = parseFloat(pf['수량']) || 0;                 // 수량
-      row[b+3] = rateCnyUsd > 0 ? Math.round(dan * rateCnyUsd * 100)/100 : '';  // 개당단가USD = 물품가만
+    const boxesByNum = (boxByShipId[sid] || {}).byNumber || {};
+
+    // [ecom-v0.14 청구 엔진과 동일] 수취인 동일성 = ecomRecipientKey. 같은 키의 주문들을 한 행으로 병합.
+    const groupsByKey = {};
+    ordersForShip.forEach(o => {
+      const of = o.fields || {};
+      const rKey = ecomRecipientKey(of);
+      if (!groupsByKey[rKey]) groupsByKey[rKey] = { key: rKey, orders: [] };
+      groupsByKey[rKey].orders.push(o);
     });
-    ({ sea: seaRows, air: airRows, express: expressRows })[_bucket].push(row);
+    const recipientGroups = Object.values(groupsByKey);
+    _shipSummary[key].recipientCount += recipientGroups.length;
+
+    recipientGroups.forEach(g => {
+      const of0 = g.orders[0].fields || {};   // 대표 주문(첫 주문) — B/G/H/J/K 등 수취인 공통값 출처
+      // [주문단위] ★사업자개인 = Orders(주문·수취인 단위)만. Shipments(사서함 대표) 폴백 제거 — 혼재 사서함에서 개인 주문에 사업자 플래그 오적용(통관사고) 방지.
+      const bizPerson = String(of0['사업자개인'] || '').trim();   // '사업자'/'개인'/'' — 동일 수취인은 동일값 전제
+
+      let prodsG = g.orders.flatMap(o => prodByOrderId[o.id] || []);   // 주문 순 → 각 주문 내 pro_seq 순(이미 정렬됨)
+      if (prodsG.length > TYREDS_MAX_ITEMS) { truncated += prodsG.length - TYREDS_MAX_ITEMS; prodsG = prodsG.slice(0, TYREDS_MAX_ITEMS); }
+
+      // N/U/V(상품URL·재질·HS) 대표 제품 = ★합계CNY(단가×수량) 최대 제품.
+      let repProd = null, repCny = -1;
+      prodsG.forEach(p => {
+        const pf = p.fields || {};
+        const cny = (parseFloat(pf['단가CNY'])||0) * (parseFloat(pf['수량'])||0);
+        if (cny > repCny) { repCny = cny; repProd = p; }
+      });
+      const pRep = (repProd && repProd.fields) || {};
+
+      // C열 트래킹번호 — 그 수취인 주문들의 트래킹번호(중복 제거, 복수면 공백 병기). ★원본 다중표기 세부규칙은 포워더 확인 대기.
+      const trackingNos = [...new Set(g.orders.map(o => (o.fields||{})['트래킹번호'] || '').filter(Boolean))];
+
+      // O/P/Q/R/S — ★수취인 단위 박스 집계(청구 엔진과 동일 매핑: Products.박스번호 ↔ Boxes.박스순번).
+      const boxNums = [...new Set(prodsG.map(p => String((p.fields||{})['박스번호']||'').trim()).filter(Boolean))];
+      let boxKg = 0, maxCbm = -1, boxDim = null;
+      boxNums.forEach(bn => {
+        const bf = boxesByNum[bn] || {};
+        boxKg += parseFloat(bf['무게KG']) || 0;
+        const cb = parseFloat(bf['부피CBM']) || 0;
+        if (cb > maxCbm) { maxCbm = cb; const w=parseFloat(bf['가로cm'])||0,h=parseFloat(bf['세로cm'])||0,d=parseFloat(bf['높이cm'])||0; boxDim = (w||h||d)?[w,h,d]:null; }
+      });
+
+      // M열 — ★그 수취인 주문들 중 최고 단계(3>2>1) 적용(안전측). 주문별 calcManifestFlag는 기존 그대로(재구현 아님).
+      let mFlag = '', mWarn = '';
+      g.orders.forEach(o => {
+        const r = calcManifestFlag(bizPerson, prodByOrderId[o.id] || [], rateCnyUsd);
+        if (r.flag !== '' && (mFlag === '' || r.flag > mFlag)) { mFlag = r.flag; mWarn = r.warn || ''; }
+      });
+
+      const row = new Array(142).fill('');
+      row[0] = 0;                                              // A NO — 뒤에서 재부여
+      row[1] = `${of0['주문번호']||''} ${sf['고객사서함']||''}`.trim();  // B 대표 주문번호+AP
+      row[2] = trackingNos.join(' ');                          // C 트래킹번호(복수 공백 병기)
+      row[3] = 'weihai';                                       // D POL 상수
+      row[4] = '';                                             // E 발송인 빈칸
+      row[5] = 'weihai';                                       // F 발송인주소 상수
+      row[6] = of0['수취인'] || '';                             // G 수취인
+      row[7] = of0['연락처'] || '';                             // H 연락처
+      row[8] = '';                                             // I 우편번호 빈칸
+      row[9] = of0['수취인주소'] || '';                         // J 주소
+      row[10] = of0['배송요청사항'] || '';                      // K 배송메모(대표 주문)
+      // L 통관고유번호 — ★수취인 단위: Orders.수취_통관부호 우선 → Customers(회원 수기) → 빈칸.
+      row[11] = String(of0['수취_통관부호'] || '').trim()
+              || (bizPerson === '사업자' ? (cust['사업자번호']||'') : (bizPerson === '개인' ? (cust['통관고유부호']||'') : ''));
+      row[12] = mFlag;                                          // M 최고 단계(3>2>1)
+      // [C] L 통관고유번호 누락 / [D] M 사업자개인 빈값 집계(수취인+사서함) — 제출 불가 경고용
+      const _recipLabel = `${of0['수취인']||''}(${sf['사서함']||''})`;
+      if (!row[11]) _warnL.push(_recipLabel);
+      if (row[12] === '') { _warnM.push(_recipLabel); _warnMByBucket[_bucket].push(_recipLabel); }
+      if (mWarn) _warnRate.push(`${_recipLabel}: ${mWarn}`);
+      row[13] = pRep['제품링크'] || 'https://1688.com/';        // N 상품URL(대표 제품)
+      row[14] = boxNums.length;                                 // O 박스수(수취인 단위)
+      row[15] = Math.round(boxKg*100)/100;                      // P 총중량 kg(수취인 단위 합산)
+      row[16] = boxDim ? Math.round(boxDim[0]/100*1000)/1000 : '';  // Q 가로 m (대표=최대박스)
+      row[17] = boxDim ? Math.round(boxDim[1]/100*1000)/1000 : '';  // R 세로 m
+      row[18] = boxDim ? Math.round(boxDim[2]/100*1000)/1000 : '';  // S 높이 m
+      row[19] = '';                                             // T 中文품명 — 미저장(데이터 없음, 대표 규칙은 V와 동일 제품 사용)
+      row[20] = pRep['Material'] || '';                         // U 규격/모델=재질(대표 제품)
+      row[21] = String(pRep['HS코드']||'').replace(/\./g,'');    // V HS(점 제거, 대표 제품)
+      // ★매니페스트는 부대비용 제외(물품가만). 부대비(구매수수료·현지배송비) 포함은 청구 트랙 전용. 2026-07-23 확정.
+      //   개당단가USD = 단가CNY(물품가) × 환율. 구매수수료·현지배송비 가산 없음(조건부 가산 구조 삭제 — 재오염 방지).
+      prodsG.forEach((p, i) => {
+        const pf = p.fields || {}; const b = 22 + i*4;
+        const dan  = parseFloat(pf['단가CNY']) || 0;
+        if (/AI번역\(미확정\)|AI-HS추천\(미확정\)|AI-HS추천\(미검증\)/.test(String(pf['관세사메모'] || ''))) _warnUnconf.push(`${_recipLabel}:${pf['상품ID']||''}`);   // [C] AI 미확정 제품
+        // [ecom-v0.8] 통관품명 총칭 하드차단 — 정확일치만(부분일치 금지: seafood·food processor는 통과).
+        const _engLower = String(pf['통관품명_영문'] || '').trim().toLowerCase();
+        if (VAGUE_NAMES.includes(_engLower)) {
+          const _vagueEntry = `${sf['사서함']||''}/${_recipLabel}:${pf['상품ID']||''}(${pf['통관품명_영문']})`;   // [ecom-v0.9] 사서함까지 명시(요건: 대상 특정 가능해야 함)
+          _warnVague.push(_vagueEntry);
+          _warnVagueByBucket[_bucket].push(_vagueEntry);
+        }
+        row[b]   = pf['통관품명_영문'] || '';                   // 상품명(n)
+        row[b+1] = 'PC';                                       // 단위 상수
+        row[b+2] = parseFloat(pf['수량']) || 0;                 // 수량
+        row[b+3] = rateCnyUsd > 0 ? Math.round(dan * rateCnyUsd * 100)/100 : '';  // 개당단가USD = 물품가만
+      });
+      ({ sea: seaRows, air: airRows, express: expressRows })[_bucket].push(row);
+    });
   });
   // NO 재부여
   seaRows.forEach((r,i) => r[0] = i+1);
@@ -19711,7 +19760,9 @@ function renderManifestPreview(data) {
   const shipRows = Object.entries(data.shipSummary).map(([key, info]) => {
     const label = info.bucket ? BUCKET_LABEL[info.bucket] : t('manifest.unclassifiable');
     const color = info.bucket ? '#1B2A3B' : '#c0392b';
-    return `<tr><td style="padding:4px 8px;font-family:ui-monospace,monospace;">${escAttr(key)}</td><td style="padding:4px 8px;color:${color};">${label}</td><td style="padding:4px 8px;text-align:right;">${info.orderCount}${t('unit.count')}</td></tr>`;
+    // [ecom-v0.22] ★행=수취인 단위 정정 — "N건"은 수취인(행) 수. 분류불가(bucket 없음)는 그룹핑 전이라 주문건수로 폴백.
+    const _cnt = info.bucket ? info.recipientCount : info.orderCount;
+    return `<tr><td style="padding:4px 8px;font-family:ui-monospace,monospace;">${escAttr(key)}</td><td style="padding:4px 8px;color:${color};">${label}</td><td style="padding:4px 8px;text-align:right;">${_cnt}${t('unit.count')}</td></tr>`;
   }).join('');
 
   let softHtml = '';
