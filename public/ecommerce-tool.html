@@ -18459,7 +18459,8 @@ async function buildManifestData(shipDate) {
   expressRows.forEach((r,i) => r[0] = i+1);
 
   // (6) [ecom-v0.13 Phase1-B] 사서함별 예상 청구(알리코인 차감) — Phase1-A 엔진(calcEcomFreightCny/calcEcomBillingCny) 재사용, 조회 전용.
-  //   ★박스↔수취인 매핑 = Products.박스번호(수기) → Boxes.박스번호 텍스트 매칭이 유일 경로(BoxAssignments 0건 확정, 00-결정로그 참조).
+  //   ★제품↔박스 매핑 = Products.박스번호 ↔ Boxes.박스순번 (★전체 문자열 아님 — cbfcddc에서 정정.
+  //   전체문자열 매칭은 항상 실패해 미확정으로 은폐됐던 버그). BoxAssignments 0건 확정, 00-결정로그 참조.
   const _bucketMode = ECOM_BUCKET_MODE;   // [ecom-v0.17] 모듈 상수 재사용(중복 정의 제거)
   const shipBilling = {};
   Object.keys(shipById).forEach(sid => {
