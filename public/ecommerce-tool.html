@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.18</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.19</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3092,6 +3092,45 @@ const I18N = {
     'booking.copy_wechat_locked': '💬 위챗 복사 (잠금)',
     'booking.copy_co_title_alt': '화물 사서함 BL정보 기반 중국어 CO 발급 요청 메시지 복사 (박스 게이트와 무관)',
     'booking.fetch_first_placeholder': '먼저 [선적일별 부킹 요약]을 조회하세요',
+    'dispatch.transport_title': '🚚 배차 양식 다운로드',
+    'dispatch.transport_desc': '(박스 배송방식별 — 화물=운송사 / 택배=택배사. 혼재 사서함은 양쪽에 출현)',
+    'dispatch.transport_btn_cargo': '🚚 운송사 양식',
+    'dispatch.transport_btn_courier': '📦 택배사 양식',
+    'dispatch.doc_upload_title': '📁 서류 일괄 업로드',
+    'dispatch.doc_upload_desc': '(BL·CO 여러 파일 한 번에 — 파일명 AP번호로 자동 매칭, 사람 확인 후 저장)',
+    'dispatch.dropzone_pre': '여기로 파일을 끌어놓거나',
+    'dispatch.dropzone_click': '클릭해서 선택',
+    'dispatch.dropzone_post': '(PDF·JPG·PNG·ZIP 다중)',
+    'dispatch.batchip_title': '📦 배치 IP 다운로드',
+    'dispatch.batchip_desc': '(선적일 사서함 일괄 → ZIP. 게이트 통과만 생성·미충족 스킵. Airtable 무쓰기·현재 사서함 복원)',
+    'dispatch.batchip_btn_first': '📥 1차 IP 전체',
+    'dispatch.batchip_co_title': 'CO 발급기관 전달용 — 그날 선적분 중 CO 발급 대상(절세 ≥ ¥100)만 묶습니다. 절세<¥100(기본세율 신고)은 배제.',
+    'dispatch.batchip_btn_co': '📄 CO 발급용 IP',
+    'dispatch.batchip_btn_final': '📋 최종 IP 전체',
+    'dispatch.ops_title': '🚚 배차 운영 입력',
+    'dispatch.ops_desc': '(화물=차량번호·기사전화 / 택배=송장 일괄삽입. 자동표시: 보세창고·입항일·포워딩. 입력 즉시 저장)',
+    'dispatch.th_bonded': '보세창고(📍UNIPASS)',
+    'dispatch.th_arrival': '입항일',
+    'dispatch.th_kr_fw': '한국FW',
+    'dispatch.th_cn_fw': '중국FW',
+    'dispatch.th_estimate': '견적액',
+    'dispatch.th_actual_cost': '실제배차비',
+    'dispatch.th_customs_fee_title': '세관 검사 걸린 사서함 창고료(수기)',
+    'dispatch.th_customs_fee': '세관창고료',
+    'dispatch.th_dispatch': '배차(화물/택배)',
+    'dispatch.tracking_ph': '송장번호(전 박스 동일)',
+    'dispatch.tracking_bulk_title': '이 사서함 전 박스({n})에 송장 일괄 삽입',
+    'dispatch.tracking_bulk_btn': '📦 일괄삽입',
+    'dispatch.courier_word': '택배',
+    'dispatch.vehicle_ph': '차량번호',
+    'dispatch.driver_phone_ph': '기사전화',
+    'dispatch.method_undetermined': '배송방식 미정 — §4에서 택배/화물 선택',
+    'dispatch.undetermined': '미정',
+    'dispatch.bonded_ph': '보세창고',
+    'dispatch.unipass_query_title': 'UNIPASS 조회 → 보세창고·입항일·한국포워딩사 자동(보세창고는 빈값일 때만)',
+    'dispatch.status_waiting': '대기',
+    'dispatch.ops_footer_note': '※ 자동표시(보세창고·입항일·한국FW)는 📍 UNIPASS 조회 시 갱신. 차량번호/송장 입력 시 배차상태=완료·완료일=오늘 자동(수동 변경 가능).',
+    'dispatch.days_unit': '일',
   },
   zh: {
     'app.title': '发票综合工具',
@@ -3630,6 +3669,45 @@ const I18N = {
     'booking.copy_wechat_locked': '💬 复制微信文本(已锁定)',
     'booking.copy_co_title_alt': '基于货运邮箱BL信息的中文CO签发申请消息复制(与箱子条件无关)',
     'booking.fetch_first_placeholder': '请先查询[装运日预订汇总]',
+    'dispatch.transport_title': '🚚 派车单据下载',
+    'dispatch.transport_desc': '(按箱子配送方式区分 — 货运=货运公司 / 快递=快递公司。混装邮箱两边都会出现)',
+    'dispatch.transport_btn_cargo': '🚚 货运公司单据',
+    'dispatch.transport_btn_courier': '📦 快递公司单据',
+    'dispatch.doc_upload_title': '📁 单据批量上传',
+    'dispatch.doc_upload_desc': '(BL·CO多个文件一次性上传 — 按文件名中的AP编号自动匹配, 人工确认后保存)',
+    'dispatch.dropzone_pre': '将文件拖放到此处或',
+    'dispatch.dropzone_click': '点击选择',
+    'dispatch.dropzone_post': '(可多选PDF·JPG·PNG·ZIP)',
+    'dispatch.batchip_title': '📦 批量IP下载',
+    'dispatch.batchip_desc': '(按装运日邮箱批量生成 → ZIP。仅生成通过条件的, 不满足则跳过。Airtable不写入·恢复当前邮箱)',
+    'dispatch.batchip_btn_first': '📥 一次IP全部',
+    'dispatch.batchip_co_title': '用于CO签发机构提交 — 仅汇总当天装运中符合CO签发条件(节税 ≥ ¥100)的。节税<¥100(按基础税率申报)将被排除。',
+    'dispatch.batchip_btn_co': '📄 CO签发用IP',
+    'dispatch.batchip_btn_final': '📋 最终IP全部',
+    'dispatch.ops_title': '🚚 派车运营录入',
+    'dispatch.ops_desc': '(货运=车牌号·司机电话 / 快递=批量插入运单号。自动显示: 保税仓库·到港日·货代。录入后立即保存)',
+    'dispatch.th_bonded': '保税仓库(📍UNIPASS)',
+    'dispatch.th_arrival': '到港日',
+    'dispatch.th_kr_fw': '韩国货代',
+    'dispatch.th_cn_fw': '中国货代',
+    'dispatch.th_estimate': '预估费用',
+    'dispatch.th_actual_cost': '实际派车费',
+    'dispatch.th_customs_fee_title': '被海关查验的邮箱仓储费(手动)',
+    'dispatch.th_customs_fee': '海关仓储费',
+    'dispatch.th_dispatch': '派车(货运/快递)',
+    'dispatch.tracking_ph': '运单号(全部箱子相同)',
+    'dispatch.tracking_bulk_title': '将该邮箱全部箱子({n})批量插入运单号',
+    'dispatch.tracking_bulk_btn': '📦 批量插入',
+    'dispatch.courier_word': '快递',
+    'dispatch.vehicle_ph': '车牌号',
+    'dispatch.driver_phone_ph': '司机电话',
+    'dispatch.method_undetermined': '配送方式未定 — 请在§4选择快递/货运',
+    'dispatch.undetermined': '未定',
+    'dispatch.bonded_ph': '保税仓库',
+    'dispatch.unipass_query_title': 'UNIPASS查询 → 自动获取保税仓库·到港日·韩国货代(保税仓库仅在为空时填充)',
+    'dispatch.status_waiting': '待处理',
+    'dispatch.ops_footer_note': '※ 自动显示项(保税仓库·到港日·韩国货代)在📍UNIPASS查询时更新。填写车牌号/运单号后派车状态自动变为完成·完成日=今天(可手动修改)。',
+    'dispatch.days_unit': '天',
   },
   en: {
     'app.title': 'Invoice Integrated Tool',
@@ -4168,6 +4246,45 @@ const I18N = {
     'booking.copy_wechat_locked': '💬 Copy for WeChat (locked)',
     'booking.copy_co_title_alt': 'Copy Chinese CO-issuance request message based on cargo mailbox BL info (independent of the box gate)',
     'booking.fetch_first_placeholder': 'Fetch [Booking Summary by Ship Date] first',
+    'dispatch.transport_title': '🚚 Dispatch Form Download',
+    'dispatch.transport_desc': '(by box delivery method — cargo=carrier / courier=courier company. Mixed mailboxes appear in both)',
+    'dispatch.transport_btn_cargo': '🚚 Carrier Form',
+    'dispatch.transport_btn_courier': '📦 Courier Form',
+    'dispatch.doc_upload_title': '📁 Batch Document Upload',
+    'dispatch.doc_upload_desc': '(Multiple BL/CO files at once — auto-matched by AP number in filename, saved after human confirmation)',
+    'dispatch.dropzone_pre': 'Drag files here or',
+    'dispatch.dropzone_click': 'click to select',
+    'dispatch.dropzone_post': '(multiple PDF/JPG/PNG/ZIP)',
+    'dispatch.batchip_title': '📦 Batch IP Download',
+    'dispatch.batchip_desc': '(All mailboxes for the ship date → ZIP. Only generates gate-passing ones, skips the rest. No Airtable writes, restores current mailbox)',
+    'dispatch.batchip_btn_first': '📥 All 1st IP',
+    'dispatch.batchip_co_title': 'For the CO-issuing authority — bundles only mailboxes eligible for CO issuance (duty savings ≥ ¥100) among that day\'s shipments. Savings < ¥100 (base-rate declared) are excluded.',
+    'dispatch.batchip_btn_co': '📄 CO-issuance IP',
+    'dispatch.batchip_btn_final': '📋 All Final IP',
+    'dispatch.ops_title': '🚚 Dispatch Operations Input',
+    'dispatch.ops_desc': '(cargo=vehicle no./driver phone / courier=bulk tracking-number insert. Auto-shown: bonded warehouse·arrival date·forwarder. Saves immediately on input)',
+    'dispatch.th_bonded': 'Bonded WH (📍UNIPASS)',
+    'dispatch.th_arrival': 'Arrival Date',
+    'dispatch.th_kr_fw': 'KR Forwarder',
+    'dispatch.th_cn_fw': 'CN Forwarder',
+    'dispatch.th_estimate': 'Estimate',
+    'dispatch.th_actual_cost': 'Actual Cost',
+    'dispatch.th_customs_fee_title': 'Storage fee for mailboxes flagged for customs inspection (manual)',
+    'dispatch.th_customs_fee': 'Customs Storage Fee',
+    'dispatch.th_dispatch': 'Dispatch (cargo/courier)',
+    'dispatch.tracking_ph': 'Tracking # (same for all boxes)',
+    'dispatch.tracking_bulk_title': 'Bulk-insert tracking number to all boxes ({n}) in this mailbox',
+    'dispatch.tracking_bulk_btn': '📦 Bulk Insert',
+    'dispatch.courier_word': 'Courier',
+    'dispatch.vehicle_ph': 'Vehicle no.',
+    'dispatch.driver_phone_ph': 'Driver phone',
+    'dispatch.method_undetermined': 'Delivery method undetermined — select courier/cargo in §4',
+    'dispatch.undetermined': 'Undetermined',
+    'dispatch.bonded_ph': 'Bonded warehouse',
+    'dispatch.unipass_query_title': 'UNIPASS query → auto-fills bonded warehouse/arrival date/KR forwarder (bonded warehouse only when blank)',
+    'dispatch.status_waiting': 'Waiting',
+    'dispatch.ops_footer_note': '※ Auto-shown fields (bonded warehouse/arrival date/KR forwarder) refresh on 📍 UNIPASS query. Entering vehicle no./tracking # auto-sets dispatch status=complete, date=today (can change manually).',
+    'dispatch.days_unit': ' days',
   }
 };
 
@@ -19929,7 +20046,7 @@ async function fetchBookingSummary(mode) {
   const baseDate = (dateInp && dateInp.value) || new Date().toISOString().slice(0, 10);
   const days = (mode === 'range7') ? isoDayList(baseDate, 8) : [baseDate];   // 오늘 포함 8일 (오늘~+7일)
   const dateLabel = (mode === 'range7')
-    ? `${days[0]} ~ ${days[days.length - 1]} (${days.length}일)`
+    ? `${days[0]} ~ ${days[days.length - 1]} (${days.length}${t('dispatch.days_unit')})`
     : baseDate;
 
   const loading = document.getElementById('bookingLoadingMsg');
@@ -20189,17 +20306,17 @@ function renderBookingTable(rows, dateLabel) {
 
   // [v3.2.69] 운송사/택배사 배차 manifest 양식 (ExcelJS, 클라이언트 — 새 API 0). 박스 배송방식별 필터.
   html += `<div style="margin-top:10px; padding:12px; background:#eef4fb; border:1px solid #cfe0f3; border-radius:6px;">
-    <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">🚚 배차 양식 다운로드 <span style="font-weight:400; color:#888;">(박스 배송방식별 — 화물=운송사 / 택배=택배사. 혼재 사서함은 양쪽에 출현)</span></div>
-    <button onclick="downloadTransportExcel(false)" style="padding:8px 16px; margin-right:8px; background:#1B2A3B; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">🚚 운송사 양식</button>
-    <button onclick="downloadTransportExcel(true)" style="padding:8px 16px; background:#0a7b40; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">📦 택배사 양식</button>
+    <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">${t('dispatch.transport_title')} <span style="font-weight:400; color:#888;">${t('dispatch.transport_desc')}</span></div>
+    <button onclick="downloadTransportExcel(false)" style="padding:8px 16px; margin-right:8px; background:#1B2A3B; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">${t('dispatch.transport_btn_cargo')}</button>
+    <button onclick="downloadTransportExcel(true)" style="padding:8px 16px; background:#0a7b40; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">${t('dispatch.transport_btn_courier')}</button>
   </div>`;
 
   // [v3.2.74] 서류 일괄 업로드 — 그날 선적건 BL·CO 다중 파일 → 사서함별 자동 매칭 → 일괄 저장.
   html += `<div style="margin-top:10px; padding:12px; background:#fff7e6; border:1px solid var(--gold); border-radius:6px;">
-    <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">📁 서류 일괄 업로드 <span style="font-weight:400; color:#888;">(BL·CO 여러 파일 한 번에 — 파일명 AP번호로 자동 매칭, 사람 확인 후 저장)</span></div>
+    <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">${t('dispatch.doc_upload_title')} <span style="font-weight:400; color:#888;">${t('dispatch.doc_upload_desc')}</span></div>
     <div id="batchDropZone" ondragover="event.preventDefault(); this.style.background='#fdebc8';" ondragleave="this.style.background='';" ondrop="event.preventDefault(); this.style.background=''; handleBatchDocFiles(event.dataTransfer.files);"
          style="padding:14px; border:2px dashed var(--gold); border-radius:6px; text-align:center; color:#9a7b2a; font-size:12px; cursor:pointer;" onclick="document.getElementById('batchDocInput').click();">
-      여기로 파일을 끌어놓거나 <strong>클릭해서 선택</strong> (PDF·JPG·PNG·ZIP 다중)
+      ${t('dispatch.dropzone_pre')} <strong>${t('dispatch.dropzone_click')}</strong> ${t('dispatch.dropzone_post')}
     </div>
     <input type="file" id="batchDocInput" multiple accept=".pdf,.jpg,.jpeg,.png,.zip" style="display:none;" onchange="handleBatchDocFiles(this.files); this.value='';" />
     <div id="batchDocResult" style="margin-top:10px;"></div>
@@ -20208,20 +20325,20 @@ function renderBookingTable(rows, dateLabel) {
   // [v3.2.98] 배치 IP 다운로드 — 1차/최종 ZIP. 게이트 통과만 생성, 미충족 스킵+사유. 무쓰기·작업 사서함 복원.
   // [v3.2.231] 2차(CO 발급용) 추가 — IP 3단계: 1차=포워딩 / 2차=CO 발급기관(절세<¥100 배제) / 최종=세관.
   html += `<div style="margin-top:10px; padding:12px; background:#eef7f0; border:1px solid #b7dcc2; border-radius:6px;">
-    <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">📦 배치 IP 다운로드 <span style="font-weight:400; color:#888;">(선적일 사서함 일괄 → ZIP. 게이트 통과만 생성·미충족 스킵. Airtable 무쓰기·현재 사서함 복원)</span></div>
-    <button onclick="downloadBatchIp('first')" style="padding:8px 16px; margin-right:8px; background:#C9973A; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">📥 1차 IP 전체</button>
-    <button onclick="downloadBatchIp('co')" style="padding:8px 16px; margin-right:8px; background:#0a7b40; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;" title="CO 발급기관 전달용 — 그날 선적분 중 CO 발급 대상(절세 ≥ ¥100)만 묶습니다. 절세<¥100(기본세율 신고)은 배제.">📄 CO 발급용 IP</button>
-    <button onclick="downloadBatchIp('final')" style="padding:8px 16px; background:#1B2A3B; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">📋 최종 IP 전체</button>
+    <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">${t('dispatch.batchip_title')} <span style="font-weight:400; color:#888;">${t('dispatch.batchip_desc')}</span></div>
+    <button onclick="downloadBatchIp('first')" style="padding:8px 16px; margin-right:8px; background:#C9973A; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">${t('dispatch.batchip_btn_first')}</button>
+    <button onclick="downloadBatchIp('co')" style="padding:8px 16px; margin-right:8px; background:#0a7b40; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;" title="${t('dispatch.batchip_co_title')}">${t('dispatch.batchip_btn_co')}</button>
+    <button onclick="downloadBatchIp('final')" style="padding:8px 16px; background:#1B2A3B; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:13px;">${t('dispatch.batchip_btn_final')}</button>
     <div id="batchIpResult"></div>
   </div>`;
 
   // [v3.2.93] 배차 운영 입력 — 배송방식 분기(화물=차량번호·기사전화 / 택배=Boxes.송장번호 일괄삽입). 입력 즉시 자동저장(debounce).
   //   자동표시(읽기): 보세창고(📍 UNIPASS)·입항일·한국포워딩사·중국포워딩(포워딩사)·배차견적액. 배차상태 자동(입력↔완료).
   html += `<div style="margin-top:10px; padding:12px; background:#f3f0ea; border:1px solid #d9cdb4; border-radius:6px;">
-    <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">🚚 배차 운영 입력 <span style="font-weight:400; color:#888;">(화물=차량번호·기사전화 / 택배=송장 일괄삽입. 자동표시: 보세창고·입항일·포워딩. 입력 즉시 저장)</span></div>
+    <div style="font-size:12px; color:#1B2A3B; font-weight:600; margin-bottom:8px;">${t('dispatch.ops_title')} <span style="font-weight:400; color:#888;">${t('dispatch.ops_desc')}</span></div>
     <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px; white-space:nowrap;">
     <thead><tr style="background:#5a4a2a; color:#fff;">
-      <th style="padding:5px 7px; text-align:left;">사서함</th><th style="padding:5px 7px; text-align:left;">보세창고(📍UNIPASS)</th><th style="padding:5px 7px;">입항일</th><th style="padding:5px 7px;">한국FW</th><th style="padding:5px 7px;">중국FW</th><th style="padding:5px 7px;">견적액</th><th style="padding:5px 7px;">실제배차비</th><th style="padding:5px 7px;" title="세관 검사 걸린 사서함 창고료(수기)">세관창고료</th><th style="padding:5px 7px; text-align:left;">배차(화물/택배)</th><th style="padding:5px 7px;">상태</th><th style="padding:5px 7px;"></th>
+      <th style="padding:5px 7px; text-align:left;">${t('console.mailbox_label')}</th><th style="padding:5px 7px; text-align:left;">${t('dispatch.th_bonded')}</th><th style="padding:5px 7px;">${t('dispatch.th_arrival')}</th><th style="padding:5px 7px;">${t('dispatch.th_kr_fw')}</th><th style="padding:5px 7px;">${t('dispatch.th_cn_fw')}</th><th style="padding:5px 7px;">${t('dispatch.th_estimate')}</th><th style="padding:5px 7px;">${t('dispatch.th_actual_cost')}</th><th style="padding:5px 7px;" title="${t('dispatch.th_customs_fee_title')}">${t('dispatch.th_customs_fee')}</th><th style="padding:5px 7px; text-align:left;">${t('dispatch.th_dispatch')}</th><th style="padding:5px 7px;">${t('booking.th_status')}</th><th style="padding:5px 7px;"></th>
     </tr></thead><tbody>`;
   rows.forEach((r, i) => {
     const sid = r.id, dst = 'dispSt_' + i, bid = 'bonded_' + i;
@@ -20231,15 +20348,15 @@ function renderBookingTable(rows, dateLabel) {
     // 배차 입력 칸 — 배송방식 분기
     let dispatchCell;
     if (method === '택배') {
-      dispatchCell = `<input id="trk_${i}" value="${escAttr(r.송장번호 || '')}" placeholder="송장번호(전 박스 동일)" style="width:150px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><button type="button" title="이 사서함 전 박스(${r.boxCount})에 송장 일괄 삽입" onclick="bulkInsertTracking('${sid}', document.getElementById('trk_${i}').value, '${dst}')" style="margin-left:3px; padding:3px 7px; border:1px solid #0a7b40; background:#eafaf0; border-radius:4px; cursor:pointer; font-size:11px;">📦 일괄삽입</button> <span style="font-size:10px; color:#999;">택배 ${r.boxCount}박스</span>`;
+      dispatchCell = `<input id="trk_${i}" value="${escAttr(r.송장번호 || '')}" placeholder="${t('dispatch.tracking_ph')}" style="width:150px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><button type="button" title="${t('dispatch.tracking_bulk_title').replace('{n}', r.boxCount)}" onclick="bulkInsertTracking('${sid}', document.getElementById('trk_${i}').value, '${dst}')" style="margin-left:3px; padding:3px 7px; border:1px solid #0a7b40; background:#eafaf0; border-radius:4px; cursor:pointer; font-size:11px;">${t('dispatch.tracking_bulk_btn')}</button> <span style="font-size:10px; color:#999;">${t('dispatch.courier_word')} ${r.boxCount}${t('grp.box_label_short')}</span>`;
     } else if (method === '화물') {
-      dispatchCell = `<input value="${escAttr(r.차량번호 || '')}" placeholder="차량번호" oninput="saveDispatch('${sid}','차량번호',this.value,'${dst}')" style="width:100px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"> <input value="${escAttr(r.기사전화번호 || '')}" placeholder="기사전화" oninput="saveDispatch('${sid}','기사전화번호',this.value,'${dst}')" style="width:110px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;">`;
+      dispatchCell = `<input value="${escAttr(r.차량번호 || '')}" placeholder="${t('dispatch.vehicle_ph')}" oninput="saveDispatch('${sid}','차량번호',this.value,'${dst}')" style="width:100px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"> <input value="${escAttr(r.기사전화번호 || '')}" placeholder="${t('dispatch.driver_phone_ph')}" oninput="saveDispatch('${sid}','기사전화번호',this.value,'${dst}')" style="width:110px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;">`;
     } else {
-      dispatchCell = `<span style="color:#b26a00; font-size:11px;">배송방식 미정 — §4에서 택배/화물 선택</span>`;
+      dispatchCell = `<span style="color:#b26a00; font-size:11px;">${t('dispatch.method_undetermined')}</span>`;
     }
     html += `<tr style="border-bottom:1px solid #e6ddc8;">
-      <td style="padding:4px 7px; font-family:ui-monospace,monospace; font-weight:600;">${r.mailbox}<div style="font-size:10px; color:#888; font-weight:400;">${method || '미정'}</div></td>
-      <td style="padding:4px 7px;"><input id="${bid}" value="${escAttr(r.보세창고 || '')}" placeholder="보세창고" oninput="saveDispatch('${sid}','보세창고',this.value,'${dst}')" style="width:140px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><button type="button" title="UNIPASS 조회 → 보세창고·입항일·한국포워딩사 자동(보세창고는 빈값일 때만)" onclick="fetchCustomsAutoFields('${sid}','${escAttr(r.blNo || '')}','${escAttr(r.shipDate || '')}','${bid}','${dst}')" style="margin-left:3px; padding:3px 6px; border:1px solid #1B5E9A; background:#eef5ff; border-radius:4px; cursor:pointer; font-size:11px;">📍</button></td>
+      <td style="padding:4px 7px; font-family:ui-monospace,monospace; font-weight:600;">${r.mailbox}<div style="font-size:10px; color:#888; font-weight:400;">${method || t('dispatch.undetermined')}</div></td>
+      <td style="padding:4px 7px;"><input id="${bid}" value="${escAttr(r.보세창고 || '')}" placeholder="${t('dispatch.bonded_ph')}" oninput="saveDispatch('${sid}','보세창고',this.value,'${dst}')" style="width:140px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><button type="button" title="${t('dispatch.unipass_query_title')}" onclick="fetchCustomsAutoFields('${sid}','${escAttr(r.blNo || '')}','${escAttr(r.shipDate || '')}','${bid}','${dst}')" style="margin-left:3px; padding:3px 6px; border:1px solid #1B5E9A; background:#eef5ff; border-radius:4px; cursor:pointer; font-size:11px;">📍</button></td>
       <td style="padding:4px 7px; text-align:center;">${ro(r.입항일)}</td>
       <td style="padding:4px 7px;">${ro(r.한국포워딩사)}</td>
       <td style="padding:4px 7px; text-align:center;">${ro(r.포워딩사)}</td>
@@ -20247,12 +20364,12 @@ function renderBookingTable(rows, dateLabel) {
       <td style="padding:4px 7px;">${numInp('실제배차비', r.실제배차비)}</td>
       <td style="padding:4px 7px;">${numInp('세관창고료', r.세관창고료)}</td>
       <td style="padding:4px 7px;">${dispatchCell}</td>
-      <td style="padding:4px 7px; text-align:center;"><select onchange="saveDispatch('${sid}','배차상태',this.value,'${dst}')" style="padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><option value="대기"${r.배차상태 !== '완료' ? ' selected' : ''}>대기</option><option value="완료"${r.배차상태 === '완료' ? ' selected' : ''}>완료</option></select></td>
+      <td style="padding:4px 7px; text-align:center;"><select onchange="saveDispatch('${sid}','배차상태',this.value,'${dst}')" style="padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;"><option value="대기"${r.배차상태 !== '완료' ? ' selected' : ''}>${t('dispatch.status_waiting')}</option><option value="완료"${r.배차상태 === '완료' ? ' selected' : ''}>${t('progress.complete')}</option></select></td>
       <td style="padding:4px 7px;"><span id="${dst}" style="font-size:11px; color:#888;"></span></td>
     </tr>`;
   });
   html += `</tbody></table></div>
-    <div style="font-size:11px; color:#999; margin-top:6px;">※ 자동표시(보세창고·입항일·한국FW)는 📍 UNIPASS 조회 시 갱신. 차량번호/송장 입력 시 배차상태=완료·완료일=오늘 자동(수동 변경 가능).</div>
+    <div style="font-size:11px; color:#999; margin-top:6px;">${t('dispatch.ops_footer_note')}</div>
   </div>`;
 
   document.getElementById('bookingResultBox').innerHTML = html;
