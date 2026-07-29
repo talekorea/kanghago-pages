@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.24</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.25</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -13815,15 +13815,15 @@ function buildLocalShipShareCNY() {
   return share;
 }
 
-// [v3.2.91] 통관서류 품명 — 통관품명_영문(canonical) → Description. ★상품ID(중국 주문코드) 폴백 금지.
-//   빈값이면 '⚠영문명 미입력' 표식(raw 코드 노출 금지). 행 식별은 박스·한글명·이미지로.
+// [ecom-v0.25] 통관서류 품명 — Description(사람 수정 필드, 단일 진실원) → 빈칸이면 통관품명_영문(추출기 원본) 폴백.
+//   ★상품ID(중국 주문코드) 폴백 금지. 빈값이면 '⚠영문명 미입력' 표식(raw 코드 노출 금지). 행 식별은 박스·한글명·이미지로.
 function declItemName(pf) {
   pf = pf || {};
-  return String(pf['통관품명_영문'] || pf['Description'] || '').trim() || '⚠영문명 미입력';
+  return String(pf['Description'] || pf['통관품명_영문'] || '').trim() || '⚠영문명 미입력';
 }
 function hasDeclName(pf) {
   pf = pf || {};
-  return !!String(pf['통관품명_영문'] || pf['Description'] || '').trim();
+  return !!String(pf['Description'] || pf['통관품명_영문'] || '').trim();
 }
 // 수량>0(=서류에 실리는) 제품 중 영문명 빈 제품 — 게이트·경고용.
 function productsMissingDeclName() {
