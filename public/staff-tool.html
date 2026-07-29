@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.248</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.249</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -11000,7 +11000,10 @@ async function fetchOfficialRatesFromAPI(force, dateStr) {
     if (force) _params.push('force=1');
     if (dateStr) _params.push('date=' + encodeURIComponent(dateStr));
     const url = UNIPASS_API_URL + (_params.length ? ('?' + _params.join('&')) : '');
-    const r = await fetch(url);
+    // [v3.2.249] ★클라이언트측 타임아웃(15s) — 서버(Vercel)는 자체 10s×3회 재시도 상한이 있지만
+    //   클라이언트 fetch 자체엔 상한이 없어 네트워크 구간이 무한정 pending일 수 있음(CO 배치 경량화 대비 방어).
+    //   타임아웃 시 AbortError → 기존 catch(아래)가 그대로 처리(안전 폴백, 분기 변경 없음).
+    const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
     const data = await r.json();
     if (!r.ok || data.error || !(data.rates && data.rates.USD > 0)) {
       // Mock 폴백 — 인증키 미설정 / 파싱 실패 / USD 0
@@ -19133,10 +19136,116 @@ async function copyBookingText() {
 const _CO_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 function _coPortToken(s){ return String(s||'').split(',')[0].trim().toUpperCase(); }   // "SHIDAO, CHINA" → "SHIDAO"
 function _coMostCommon(arr){ const m={}; let best='', bn=0; arr.forEach(v=>{ if(!v) return; m[v]=(m[v]||0)+1; if(m[v]>bn){bn=m[v];best=v;} }); return best; }
+// [v3.2.249] ★CO 판정 경량화 — buildCoRequestText가 사서함마다 loadShipment()(Products·HSMapping
+//   무필터 전체스캔 포함, 실측 1회 63.5초+9.2초+α ≈ 80~90초)를 통째로 호출해 오늘 실데이터(화물 8건) 기준
+//   ~11분 걸리던 문제(2026-07-29 진단) 처방. loadShipment 본체는 이번 수정에서 절대 손대지 않음(전역 함수,
+//   별건). 대신 CO 판정(calcCoDetail→calcFtaSavingKrw→calcTariffForScenario→buildOrderUnits/buildCostsByOrder)이
+//   실제로 읽는 최소 데이터만 filterByFormula·fields[]로 타겟 조회해 state에 채우고, 판정 로직 자체
+//   (calcCoDetail/calcCoCny)는 그대로(재구현 없음) 호출한다.
+//   ★state.hsRatesByCode(HSMapping)는 Products에 실린 HS코드만 타겟 필터(전체 666건 스캔 안 함) —
+//     대부분 관세사확정 제품은 pf['기본세율'] 등이 이미 채워져 있어 이 폴백까지 안 감(pickRate 1순위).
+//   ★buildCostsByOrder가 DOM(#costBody) 우선 읽기라 renderCostItems() 호출 필요(네트워크 없음, 로컬 렌더만).
+//   ★환율: fetchOfficialRatesFromAPI가 이미 기준일(dateStr)별 sessionStorage 캐시 — 같은 입항일 사서함들은
+//     2번째부터 캐시 히트로 즉시 반환(별도 캐시 레이어 불필요).
+async function calcCoJudgeLite(shipmentId) {
+  const ship = await api('GET', `/${TABLES.Shipments}/${shipmentId}`);
+  const sf = ship.fields || {};
+  const shipmentName = sf['사서함'] || '';
+
+  const orders = await apiPaged(
+    `/${TABLES.Orders}?filterByFormula=${encodeURIComponent(`SEARCH('${shipmentName}',ARRAYJOIN({Shipment}))`)}`
+    + `&fields[]=${encodeURIComponent('실제출고요청일')}&fields[]=${encodeURIComponent('주문번호')}`
+  );
+
+  const orderNos = [...new Set(orders.map(o => (o.fields || {})['주문번호']).filter(Boolean))];
+  let products = [];
+  if (orderNos.length) {
+    const escNo = s => String(s).replace(/'/g, "\\'");
+    const prodFormula = 'OR(' + orderNos.map(n => `SEARCH('${escNo(n)}',ARRAYJOIN({Order}))`).join(',') + ')';
+    // [v3.2.249] ★현지배송비CNY·WTO세율은 현재 Products 스키마에 없는 필드(코드상 참조는 있으나 항상 undefined→0/NaN
+    //   폴백) — fields[]에 존재하지 않는 필드명을 넣으면 Airtable이 422를 던지므로 제외(전체 fetch는 fields[] 제한이
+    //   없어 이 문제가 없었음). 필드가 신설되면 이 배열에 추가.
+    const prodFieldNames = ['상품ID', '수량', '합계CNY', '단가CNY', '적용FTA', 'HS코드', 'Material',
+      'Description', '통관품명_영문', '박스번호', '기본세율', 'FTA_한중', 'FTA_RCEP중국', '아태세율'];
+    const prodFields = prodFieldNames.map(n => `&fields[]=${encodeURIComponent(n)}`).join('');
+    products = await apiPaged(`/${TABLES.Products}?filterByFormula=${encodeURIComponent(prodFormula)}${prodFields}`);
+  }
+
+  const boxes = await apiPaged(
+    `/${TABLES.Boxes}?filterByFormula=${encodeURIComponent(`SEARCH('${shipmentName}',ARRAYJOIN({Shipment}))`)}`
+    + `&fields[]=${encodeURIComponent('부피CBM')}&fields[]=${encodeURIComponent('무게KG')}&fields[]=${encodeURIComponent('박스순번')}`
+  );
+
+  const costItems = await apiPaged(
+    `/${TABLES.CostItems}?filterByFormula=${encodeURIComponent(`SEARCH('${shipmentName}',ARRAYJOIN({Shipment}))`)}`
+    + `&fields[]=${encodeURIComponent('금액KRW')}&fields[]=${encodeURIComponent('메모')}&fields[]=${encodeURIComponent('카테고리')}&fields[]=${encodeURIComponent('항목명')}&fields[]=Product`
+  );
+
+  // HSMapping — Products에 실제 등장한 HS코드만 타겟 필터(pickRate 3순위 폴백용, 전체스캔 금지).
+  const hsCodes = [...new Set(products.map(p => (p.fields || {})['HS코드']).filter(Boolean))];
+  const hsRatesByCode = {};
+  if (hsCodes.length) {
+    const escHs = s => String(s).replace(/'/g, "\\'");
+    const hsFormula = 'OR(' + hsCodes.map(c => `{HS코드}='${escHs(c)}'`).join(',') + ')';
+    const hsRecs = await apiPaged(`/${TABLES.HSMapping}?filterByFormula=${encodeURIComponent(hsFormula)}`
+      + `&fields[]=${encodeURIComponent('HS코드')}&fields[]=${encodeURIComponent('기본세율')}&fields[]=${encodeURIComponent('FTA_한중')}&fields[]=${encodeURIComponent('FTA_RCEP중국')}&fields[]=${encodeURIComponent('아태세율')}`);
+    hsRecs.forEach(m => {
+      const mf = m.fields || {};
+      const code = mf['HS코드'];
+      if (!code) return;
+      hsRatesByCode[code] = {
+        기본세율: mf['기본세율'] != null ? mf['기본세율'] : '',
+        FTA_한중: mf['FTA_한중'] != null ? mf['FTA_한중'] : '',
+        FTA_RCEP중국: mf['FTA_RCEP중국'] != null ? mf['FTA_RCEP중국'] : '',
+        아태세율: mf['아태세율'] != null ? mf['아태세율'] : '',
+      };
+    });
+  }
+
+  // 판정 함수들이 읽는 state 최소 세팅 (loadShipment 상단 리셋과 동일 항목만).
+  state.shipment = ship;
+  state.orders = orders;
+  state.products = products;
+  state.boxes = {};
+  boxes.forEach(b => {
+    const bf = b.fields || {};
+    const num = String(bf['박스순번'] || b.id);
+    state.boxes[num] = { cbm: bf['부피CBM'], kg: bf['무게KG'] };
+  });
+  state.costItems = costItems;
+  state.newCostRows = [];
+  state.modifiedProducts = new Set();
+  state.hsRatesByCode = hsRatesByCode;
+  state.arrivalDateOverride = null;
+  state.shipDateOverride = null;
+
+  // buildCostsByOrder가 DOM(#costBody) 우선 읽기 — 로컬 재렌더만(네트워크 없음).
+  if (typeof renderCostItems === 'function') renderCostItems();
+
+  // 환율 DOM — 저장값 우선 채움 → 입항일 주차 과세환율 라이브 재확인해 성공하면 덮어씀(loadShipment와 동일 순서/동일 결과값).
+  const rc = document.getElementById('rateCnyKrw'), ru = document.getElementById('rateCnyUsd'), rk = document.getElementById('rateUsdKrw');
+  if (rc) rc.value = sf['환율CNY_KRW'] || '';
+  if (ru) ru.value = sf['환율CNY_USD'] || '';
+  if (rk) rk.value = sf['환율USD_KRW'] || '';
+  const basis = (typeof getRateBasisInfo === 'function') ? getRateBasisInfo() : { date: '', estimate: true };
+  try {
+    const live = await fetchOfficialRatesFromAPI(false, basis.date);
+    if (live && live.rates && live.rates.USD > 0 && typeof refreshOfficialRates === 'function') {
+      await refreshOfficialRates(true, basis.date);
+    }
+  } catch (e) { /* 실패 시 저장값 유지 — loadShipment과 동일 폴백 */ }
+
+  const rate = parseFloat((rc && rc.value) || 0) || 0;
+  if (!(rate > 0)) return { ok: false, reason: 'rate_missing' };
+
+  // ★판정 로직 자체는 재구현 없이 기존 함수 그대로 호출.
+  const detail = (typeof calcCoDetail === 'function') ? calcCoDetail() : { co: 0 };
+  return { ok: true, co: detail.co, detail };
+}
 // [v3.2.248] ★CO 요청 문구 = 발급 대상만(전체 화물 아님). 발급판정은 기존 calcCoCny()
 //   (절세연동 3단계: ≥¥200→200/≥¥100→100/<¥100→미발급) 그대로 재사용 — 새 판정 작성 금지.
-//   calcCoCny()는 단건 로드 전제(state.products/boxes/DOM rate) → 부킹 배치 IP(17643~)와 동일하게
-//   _batchMode로 사서함마다 loadShipment() 후 판정, 끝나면 원래 사서함 복원.
+//   [v3.2.249] 발급판정 데이터 로드는 calcCoJudgeLite(경량, 위 참조)로 교체 — loadShipment 통째 호출 폐지.
+//   끝나면(finally) 원래 사서함은 기존과 동일하게 loadShipment로 복원.
 async function buildCoRequestText() {
   const rows = (bookingState.rows || []);
   const warnings = [];
@@ -19155,11 +19264,9 @@ async function buildCoRequestText() {
       const r = cargo[i];
       if (typeof _batchProgress !== 'undefined' && _batchProgress.step) _batchProgress.step(`CO 발급판정 중… — ${r.mailbox}`, i + 1, cargo.length);
       try {
-        await loadShipment(r.id);
-        const _rate = parseFloat((document.getElementById('rateCnyKrw') || {}).value) || 0;
-        if (!(_rate > 0)) { rateFailMailboxes.push(r.mailbox); continue; }   // 판정불가 → 안전측 제외(임의 포함 금지)
-        const _co = (typeof calcCoCny === 'function') ? calcCoCny() : 0;   // ★기존 판정함수 그대로 호출
-        if (_co > 0) eligible.push(r);
+        const judge = await calcCoJudgeLite(r.id);   // [v3.2.249] 경량 판정(loadShipment 미경유)
+        if (!judge.ok) { rateFailMailboxes.push(r.mailbox); continue; }   // 판정불가(환율 미로드 등) → 안전측 제외(임의 포함 금지)
+        if (judge.co > 0) eligible.push(r);
       } catch (e) { rateFailMailboxes.push(r.mailbox); }
     }
   } finally {
