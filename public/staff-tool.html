@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.249</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.250</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -12661,6 +12661,7 @@ async function assignInvoiceSeq(forwarder, shipDateIso) {
 }
 
 async function downloadInvoiceExcel(opts) {
+  if (typeof checkVersionDrift === 'function') checkVersionDrift();   // [v3.2.250] 버전 드리프트 배너(비차단)
   if (typeof ExcelJS === 'undefined') {
     toastError('ExcelJS 로딩 실패 — 인터넷 연결 확인 후 새로고침');
     return;
@@ -17630,6 +17631,7 @@ function closeBookingSummary() {
 //   양식·blob은 stage='final'과 동일(별도 stage 없음). 게이트만 _batchIpMode='co'로 완화(BL파일·포워딩사·CO/대조).
 //   ★무쓰기: 순번 persist·적용FTA확정 자동기록 전부 차단(둘 다 _batchIpMode==='co' 가드).
 async function downloadBatchIp(stage) {
+  if (typeof checkVersionDrift === 'function') checkVersionDrift();   // [v3.2.250] 버전 드리프트 배너(비차단)
   const rows = (bookingState.rows || []).slice();
   if (!rows.length) { toastWarn && toastWarn('먼저 [선적일별 부킹 요약]을 조회하세요'); return; }
   const isCo = (stage === 'co');
@@ -19320,6 +19322,7 @@ async function buildCoRequestText() {
   return { text: blocks.join('\n\n'), warnings: [...new Set(warnings)] };
 }
 async function copyCoRequest() {
+  if (typeof checkVersionDrift === 'function') checkVersionDrift();   // [v3.2.250] 버전 드리프트 배너(비차단)
   const { text, warnings } = await buildCoRequestText();
   if (!text) { if (typeof toastWarn === 'function') toastWarn(warnings[0] || 'CO 요청 메시지를 만들 수 없습니다'); else alert(warnings[0] || 'CO 요청 생성 불가'); return; }
   try {
@@ -19494,6 +19497,52 @@ window.addEventListener('DOMContentLoaded', function(){
     if (c && !c.textContent.trim()) c.textContent = window.APP_VERSION;
   } catch(e){}
 });
+</script>
+
+<script>
+// [v3.2.250] ★버전 드리프트 자동감지 — 배포 후 새로고침 안 한 탭이 구버전 JS를 계속 실행하는 문제
+//   (2026-07-30 CO 요청 복사 재발 신고의 실원인 후보) 방어. title 수동 확인 의존을 자동 배너로 보강.
+//   ★자동 새로고침 금지(작성 중 데이터 유실 위험) — 배너 안내만. 네트워크 실패·file://는 조용히 스킵(오탐 금지).
+//   ★부분 fetch(Range 0-32768) — id="appVer" span은 파일 앞부분(<style> 뒤)에 있어 32KB면 충분,
+//     1.4MB 전체를 5분 간격/클릭마다 받지 않음(Vercel 정적 파일은 Range 지원 확인됨).
+(function(){
+  var _checking = false;
+  function _versionFromChunk(text) {
+    var m = text.match(/id="appVer"[^>]*>([^<]*)</);
+    return m ? m[1].trim() : '';
+  }
+  function _showBanner(myVer, liveVer) {
+    if (document.getElementById('versionDriftBanner')) return;   // 이미 표시 중 — 중복 배너 금지
+    var el = document.createElement('div');
+    el.id = 'versionDriftBanner';
+    el.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:100000; background:#c0392b; color:#fff; padding:10px 34px 10px 16px; font-size:13px; font-weight:700; text-align:center; line-height:1.6; box-shadow:0 2px 10px rgba(0,0,0,.3);';
+    el.innerHTML =
+      '<div>⚠ 새 버전(' + liveVer + ')이 배포되었습니다 — Ctrl+Shift+R로 새로고침하세요. 현재 탭은 구버전(' + myVer + ')으로 실행 중입니다.</div>' +
+      '<div style="font-weight:400; opacity:.92;">⚠ 已发布新版本(' + liveVer + ') — 请按 Ctrl+Shift+R 刷新。当前页面运行的是旧版本(' + myVer + ')。</div>' +
+      '<span onclick="this.parentNode.remove()" style="position:absolute; right:12px; top:8px; cursor:pointer; font-weight:900; font-size:16px;">×</span>';
+    document.body.prepend(el);
+  }
+  window.checkVersionDrift = async function() {
+    if (_checking) return;   // 주기 체크·버튼 클릭 겹침 방지
+    try {
+      if (typeof location === 'undefined' || location.protocol === 'file:') return;   // 사장님 로컬 원본 — 자기참조 무의미
+      var myVer = window.APP_VERSION || '';
+      if (!myVer) return;
+      _checking = true;
+      var url = location.pathname + '?cb=' + Date.now();
+      var r = await fetch(url, { headers: { Range: 'bytes=0-32768' }, cache: 'no-store' });
+      if (!r.ok) return;   // 404·5xx 등 — 조용히 스킵(오탐 금지)
+      var chunk = await r.text();
+      var liveVer = _versionFromChunk(chunk);
+      if (liveVer && liveVer !== myVer) _showBanner(myVer, liveVer);
+    } catch (e) { /* 오프라인·네트워크 실패 — 조용히 스킵(오탐 금지) */ }
+    finally { _checking = false; }
+  };
+  setTimeout(function(){
+    checkVersionDrift();
+    setInterval(checkVersionDrift, 30 * 60 * 1000);
+  }, 5 * 60 * 1000);
+})();
 </script>
 </body>
 </html>
