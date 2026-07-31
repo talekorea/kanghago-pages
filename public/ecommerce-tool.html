@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.26</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.27</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -17247,6 +17247,14 @@ async function saveFrozenCnyCharges(opts) {
   opts = opts || {};
   if (!(state.shipment && state.shipment.id)) return { skip: '사서함 미로드' };
   const f = state.shipment.fields || {};
+  // [ecom-v0.27] ★오염 차단 — 이 함수는 7/12 fork 당시 복사된 무역 트랙 CNY 프리즈(BL/CO 업로드·1차IP 트리거)다.
+  //   전자상거래 사서함(통관트랙='전자상거래')에 무역 산식(CBM 해운비·핸들링 등)으로 계산된 값이 그대로
+  //   프리즈 저장되면 청구 사고로 직결(프리즈=불변). 전자상거래 자체 프리즈는 아직 미설계(Phase 2 범위) —
+  //   이번엔 오염 차단만, 새 로직 신설 금지.
+  if (f['통관트랙'] === '전자상거래') {
+    console.log('전자상거래 — 무역 프리즈 미적용');
+    return { skip: '전자상거래 — 무역 프리즈 미적용' };
+  }
   const alreadyFrozen = parseFloat(f['청구_BL_CNY']) > 0;   // 5필드 프리즈 완료 여부
   if (alreadyFrozen && !opts.withCo) return { skip: '이미 프리즈(스킵)' };   // ★중복 트리거 방지(값 불변)
   const c = computeFrozenCnyCharges();
