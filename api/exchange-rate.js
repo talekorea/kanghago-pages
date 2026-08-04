@@ -4,13 +4,15 @@
 // GET /api/exchange-rate?debug=1    → 진단 (serviceKey 마스킹)
 //
 // 작동 URL (검증됨):
-//   http://apis.data.go.kr/1220000/retrieveTrifFxrtInfo/getRetrieveTrifFxrtInfo
+//   https://apis.data.go.kr/1220000/retrieveTrifFxrtInfo/getRetrieveTrifFxrtInfo
 //     ?serviceKey={Encoding키}&aplyBgnDt={YYYYMMDD 월요일}&weekFxrtTpcd=2
 // 환경변수: DATAGO_SERVICE_KEY (없으면 UNIPASS_API_KEY 폴백)
 
 const { handleCors } = require('./_lib');
 
-const ENDPOINT = 'http://apis.data.go.kr/1220000/retrieveTrifFxrtInfo/getRetrieveTrifFxrtInfo';
+// [2026-08-04] ★http→https — data.go.kr이 평문 HTTP(80)에 응답을 끊음(연결은 되나 무한 pending)
+//   → 서버 자체 10s abort가 매번 터져 환율 0. HTTPS는 동일 경로 0.35s 정상 응답. 타임아웃은 원인 아님(무변경).
+const ENDPOINT = 'https://apis.data.go.kr/1220000/retrieveTrifFxrtInfo/getRetrieveTrifFxrtInfo';
 
 // [환율 수정] 주차(aplyBgnDt)별 캐시 — ?date= 별로 분리(입항일 주차 조회가 이번주 캐시로 오염되는 버그 방지)
 const _cache = {};
