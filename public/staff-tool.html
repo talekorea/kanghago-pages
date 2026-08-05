@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.250</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.251</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -17630,8 +17630,36 @@ function closeBookingSummary() {
 //   그날 선적분 전체 중 ★CO 발급 대상(calcCoCny()>0)만 묶는다. 절세<¥100은 CO 미발급 → 배제.
 //   양식·blob은 stage='final'과 동일(별도 stage 없음). 게이트만 _batchIpMode='co'로 완화(BL파일·포워딩사·CO/대조).
 //   ★무쓰기: 순번 persist·적용FTA확정 자동기록 전부 차단(둘 다 _batchIpMode==='co' 가드).
+// [v3.2.251] ★배치 IP 환율 폴백 — 저장 환율이 비면 그 사서함 기준일(입항일 주차) 고시환율을 실시간 조회해 채운다.
+//   근거(실제 원인): loadShipment의 refreshOfficialRates(4641행) 호출에 await가 없다(비동기 발사 후 방치).
+//   개별 열기는 사람이 화면을 보는 사이 채워져 정상이지만, 배치는 loadShipment 반환 즉시 downloadInvoiceExcel로
+//   진행해 아직 안 채워진 빈 칸을 읽고 '환율 누락'으로 스킵 → 두 경로 결과 불일치.
+//   ★저장 환율 있으면 손대지 않음(프리즈 존중 — 기존 동작 불변).
+//   ★Airtable 무쓰기 — DOM 입력칸에만 채우고 저장하지 않는다(배치 무쓰기 원칙 유지).
+//   ★기준일별 1회만 네트워크 — fetchOfficialRatesFromAPI(force=false)의 기준일별 sessionStorage 캐시를 그대로 재사용
+//     (force=true면 캐시를 우회해 사서함 수만큼 중복 호출되므로 배치에서는 절대 force 금지).
+//   ★실시간도 실패하면 채우지 않고 ok:false — 호출부는 기존 스킵 경로 그대로(임의값·Mock 주입 금지).
+async function _ensureRatesForBatch() {
+  const ru = document.getElementById('rateUsdKrw');
+  const rc = document.getElementById('rateCnyKrw');
+  const rcu = document.getElementById('rateCnyUsd');
+  const have = el => parseFloat((el || {}).value) > 0;
+  if (have(ru) && have(rc) && have(rcu)) return { ok: true, src: 'stored' };   // 저장값 우선
+  const basis = (typeof getRateBasisInfo === 'function') ? getRateBasisInfo() : { date: '' };
+  let live = null;
+  try { live = await fetchOfficialRatesFromAPI(false, basis.date); } catch (e) {}
+  if (!(live && live.rates && live.rates.USD > 0)) return { ok: false, src: 'none' };
+  const r = live.rates;
+  // 빈 칸만 채움 — 일부만 저장된 사서함에서 저장값을 덮지 않는다.
+  if (!have(ru)) ru.value = (+r.USD).toFixed(2);
+  if (!have(rc)) rc.value = (+r.CNY).toFixed(2);
+  if (!have(rcu)) rcu.value = (+(r.CNY / r.USD)).toFixed(4);
+  if (typeof recalculate === 'function') recalculate();   // refreshOfficialRates와 동일 후처리(무쓰기 — _batchMode가 PATCH 차단)
+  return { ok: true, src: 'live', date: basis.date };
+}
+
 async function downloadBatchIp(stage) {
-  if (typeof checkVersionDrift === 'function') checkVersionDrift();   // [v3.2.250] 버전 드리프트 배너(비차단)
+  if (typeof checkVersionDrift === 'function') checkVersionDrift();   // [v3.2.251] 버전 드리프트 배너(비차단)
   const rows = (bookingState.rows || []).slice();
   if (!rows.length) { toastWarn && toastWarn('먼저 [선적일별 부킹 요약]을 조회하세요'); return; }
   const isCo = (stage === 'co');
@@ -17644,7 +17672,7 @@ async function downloadBatchIp(stage) {
   try { const m = await import(/* webpackIgnore: true */ 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm'); JSZip = m.default || m; }
   catch (e) { toastError && toastError('ZIP 라이브러리 로드 실패 — 인터넷 확인'); return; }
   const zip = new JSZip();
-  const done = [], skipped = [];
+  const done = [], skipped = [], liveRateMb = [];   // [v3.2.251] liveRateMb = 저장 환율 없어 실시간 고시환율로 생성한 사서함(투명 표시용)
   state._batchMode = true; state._batchWriteBlocked = 0;
   if (isCo) state._batchIpMode = 'co';   // [v3.2.231] 게이트 완화·무쓰기 가드 활성 (finally에서 반드시 해제)
   _batchProgress.show(`${label} IP 전체 생성`);   // [v3.2.184] 진행 인디케이터
@@ -17658,6 +17686,10 @@ async function downloadBatchIp(stage) {
         //   r.통관트랙은 부킹요약 조회에서 실린 값 → loadShipment 전에 판정(불필요 로드 절약). CO발급용은 calcCoCny 필터보다 앞.
         if (String(r.통관트랙 || '').trim() === '전자상거래') { skipped.push({ mb: r.mailbox, reason: '전자상거래(관세사 대상 아님)' }); continue; }
         await loadShipment(r.id);   // _batchMode: 쓰기 차단·스키마 스킵. (booking 모달이 화면 덮어 깜빡임 가림)
+        // [v3.2.251] ★환율 폴백 — 저장 환율 비면 기준일 고시환율 실시간 조회로 채움(DOM만·무저장).
+        //   isCo 판정(아래 rateCnyKrw>0)보다 앞에 둬야 CO발급용 배치의 '환율 미로드 판정불가' 오스킵도 함께 해소된다.
+        const _rf = await _ensureRatesForBatch();
+        if (_rf.src === 'live') liveRateMb.push(r.mailbox);
         // [v3.2.231] ★2차 IP 배제 필터 — loadShipment 직후(환율·제품·박스 로드 완료 시점)에 판정.
         //   환율 미로드 → calcCoSavingCny()가 0을 반환해 "미발급"으로 오판 → 거짓 배제/포함 둘 다 방지하려 스킵.
         if (isCo) {
@@ -17682,7 +17714,7 @@ async function downloadBatchIp(stage) {
   }
   const blocked = state._batchWriteBlocked || 0;
   // [v3.2.101 ⓐ/ⓑ] 누락(스킵) 강화 — 스킵 목록 빨강 표시 + ZIP 생성 전 확인 모달 + ZIP에 _누락목록.txt 동봉.
-  _renderBatchIpResult(label, done, skipped, blocked);   // 빨강 스킵 목록 먼저 노출
+  _renderBatchIpResult(label, done, skipped, blocked, liveRateMb);   // 빨강 스킵 목록 먼저 노출
   if (!done.length) {
     toastWarn && toastWarn(`${label} IP 생성 0건 — 전부 미충족(${skipped.slice(0, 3).map(s => s.mb + ':' + s.reason).join(' / ')}${skipped.length > 3 ? ' …' : ''})`, { title: '📦 배치' });
     if (skipped.length) alert(`🚫 ${label} IP — 생성 가능 0건.\n\n전부 누락(아래):\n` + skipped.map(s => `• ${s.mb} — ${s.reason}`).join('\n'));
@@ -17710,9 +17742,9 @@ async function downloadBatchIp(stage) {
   const skipMsg = skipped.length ? ` · ⚠누락 ${skipped.length}건(목록.txt 동봉)` : '';
   // [v3.2.172] ★거짓 성공 제거 — 초록 성공 토스트 폐기. 배치=ZIP전용·Airtable 미저장을 경고색으로 명시.
   toastWarn && toastWarn(`${label} IP ${done.length}건 ZIP 다운로드${skipMsg}\n⚠ Airtable 미저장 — 관세사 대시보드 반영 X. 사서함별 '확정 후 자동저장'(열기) 또는 §7 'CO 전달' 필요.`, { title: '📦 배치=ZIP전용', duration: 9000 });
-  _renderBatchIpResult(label, done, skipped, blocked);
+  _renderBatchIpResult(label, done, skipped, blocked, liveRateMb);
 }
-function _renderBatchIpResult(label, done, skipped, blocked) {
+function _renderBatchIpResult(label, done, skipped, blocked, liveRateMb) {
   const box = document.getElementById('batchIpResult');
   if (!box) return;
   // [v3.2.172] ★거짓 성공 UX 제거 — 이 배치는 ZIP 다운로드 전용(무쓰기). "생성"이 아니라 "ZIP 담음"이며 Airtable·대시보드 미저장임을 빨강 경고로 명시.
@@ -17720,6 +17752,7 @@ function _renderBatchIpResult(label, done, skipped, blocked) {
     <div style="font-weight:700; color:#1B2A3B;">📦 ${label} IP 배치: ZIP 담음 ${done.length} · 스킵 ${skipped.length}</div>
     <div style="margin-top:5px; padding:6px 8px; background:#fdecef; border:1px solid #e88aa0; border-radius:5px; color:#b3123c; font-weight:700; font-size:11.5px; line-height:1.5;">⚠ 이 배치는 <u>ZIP 다운로드 전용</u> — Airtable·관세사 대시보드에는 <u>저장되지 않습니다</u> (쓰기 ${blocked}건 무쓰기). 대시보드(❌→✅) 반영은 사서함을 <b>열어서('확정 후 자동저장')</b> 또는 §7 서류 <b>'CO 전달'</b>로만 됩니다.</div>
     ${done.length ? `<div style="color:#1B2A3B; margin-top:4px;">📄 ZIP 포함(${done.length}): ${done.join(', ')}</div>` : ''}
+    ${(liveRateMb && liveRateMb.length) ? `<div style="color:#8a5a00; margin-top:3px;">💱 저장 환율 없어 <b>실시간 고시환율</b>로 생성(${liveRateMb.length}): ${liveRateMb.join(', ')} — 서류값은 정상이나 Airtable 환율칸은 여전히 빈칸(사서함을 열어야 저장됨)</div>` : ''}
     ${skipped.length ? `<div style="color:#c0392b; margin-top:3px;">⚠ 스킵(미생성): ${skipped.map(s => `${s.mb}(${s.reason})`).join(' · ')}</div>` : ''}
   </div>`;
 }
