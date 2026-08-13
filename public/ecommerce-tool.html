@@ -473,7 +473,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.27</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">🛒 전자상거래 통관 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" data-i18n-title="app.ver_title" title="전자상거래 전용 도구 — 무역(staff-tool)과 별도 버전 체계(ecom-*). 관세사 라인 미연동.">ecom-v0.28</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -13109,7 +13109,14 @@ async function saveAll(skipReload) {
     });
 
     // 원산지증명(CO) — v3.0.6: 인보이스 총액 700달러 기준 단일 청구 (전 제품 연결)
-    const coFee = calcTotalCoFee();
+    // ═══ [ecom-v0.28 · 2026-08-13 사장님 승인] staff-tool v3.2.252와 ★동일 방식 차단 ═══
+    //   ★구 CO KRW(₩30,000/₩50,000) CostItems 신규 기록 차단. 현행 CO = CNY(¥200/¥100/0 + 장수가산) 단일.
+    //   ★차단 지점 근거: 이 블록이 카테고리='원산지증명' CostItems의 ★유일한 생성 지점(grep 전수 확인).
+    //     coFee=0 고정 → 아래 if(coFee>0) 거짓 → overheadRecords.push 미실행 → ★레코드 자체가 생성되지 않음.
+    //   ★과거 CostItems는 프리즈 — 일절 미수정. calcCoFeeAuto·calcTotalCoFee·calcTotalOverhead는 이력 보존(dead 유지).
+    //   되돌리려면 이 상수만 true로.
+    const CO_KRW_COSTITEM_ENABLED = false;
+    const coFee = CO_KRW_COSTITEM_ENABLED ? calcTotalCoFee() : 0;
     if (coFee > 0) {
       const coInfo = calcCoFeeAuto();
       overheadRecords.push({
