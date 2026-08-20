@@ -251,7 +251,7 @@
   .pv-head .dots i:nth-child(1){background:#ff5f57}.pv-head .dots i:nth-child(2){background:#febc2e}.pv-head .dots i:nth-child(3){background:#28c840}
   .pv-url{flex:1;font-size:.8rem;color:#6b6f7a;background:#fff;border:1px solid #e1e3e9;border-radius:8px;padding:6px 12px;text-align:center}
   .pv-body{position:relative;width:100%;aspect-ratio:16/10;background:#fff}
-  .pv-body iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+  .pv-body .pv-shot{position:absolute;inset:0;background:#f2f4f7 url("/notice-preview.png") center top/100% auto no-repeat}
   .pv-open{display:inline-flex;align-items:center;gap:8px;margin-top:24px;padding:12px 28px;border-radius:980px;
     font-size:.96rem;font-weight:700;color:#fff;text-decoration:none;
     background:linear-gradient(135deg,var(--blue),var(--cyan));box-shadow:0 16px 38px -16px rgba(79,195,247,.9);transition:transform .2s,opacity .2s}
@@ -524,10 +524,10 @@
         <span class="pv-url">kanghago.com</span>
       </div>
       <div class="pv-body">
-        <iframe src="https://alipeed-app.vercel.app" loading="lazy" referrerpolicy="no-referrer" title="강하고 홈페이지 미리보기"></iframe>
+        <div class="pv-shot" role="img" aria-label="강하고 홈페이지 미리보기"></div>
       </div>
     </div>
-    <a class="pv-open rv" href="https://alipeed-app.vercel.app" target="_blank" rel="noopener">강하고 홈페이지 열기 →</a>
+    <a class="pv-open rv" href="https://kanghago.com" target="_blank" rel="noopener">강하고 홈페이지 열기 →</a>
     <p class="pv-cap rv">개발 중 화면으로, 정식 오픈 시 일부 달라질 수 있습니다.</p>
 
     <p class="roadmap-note rv">* 위 기능은 개발 일정에 따라 순차적으로 제공되며, 국내 운송비 카드 결제를 비롯한 추가 솔루션도 정식 오픈 이후 계속 확장됩니다.</p>
