@@ -210,13 +210,11 @@
     el.style.display = '';
   }
 
-  // [v3.2.140] 대행종류 라벨 — 실유형만. 수입자 그룹 2개(구매대행↔실화주: 결제·배송)일 때만 '혼재'. 결제+배송(동일 실화주)은 유형 나열(오해 방지). 표시 전용.
+  // [v3.2.253] 대행종류 라벨 — 실유형 나열만. v3.2.191~ 수입자 실화주 통일로 '구매대행↔실화주 혼재' 기준 폐기. 표시 전용.
   const _REAL_AGENT_TYPES = ['구매대행', '결제대행', '배송대행'];
   function agentTypeLabel(orders) {
     const set = [...new Set((orders || []).map(o => String((o.fields || {})['대행종류'] || '').trim()).filter(v => _REAL_AGENT_TYPES.includes(v)))];
     if (set.length === 0) return '-';
-    const grp = [...new Set(set.map(t => (t === '결제대행' || t === '배송대행') ? '실화주' : '구매대행'))];
-    if (grp.length >= 2) return '혼재(구매대행↔실화주: ' + set.join('+') + ')';
     return set.join('+');
   }
   // [v3.2.37] 고객정보 패널(관세사 통관 실무) — 상호·사업자번호·주소·연락처·이메일 + 영문/통관고유부호. 표시 전용(마스킹 없음).
@@ -345,7 +343,7 @@
       if (customerLabel) {
         customerLabel.textContent = custName ? (custCompany ? `${custName} (${custCompany})` : custName) : '-';
       }
-      // [v3.2.37] 대행종류 라벨(표시만) — 실유형(구매·결제·배송)만, 2종↑=혼재. 합배송·엑셀업로드 제외.
+      // [v3.2.253] 대행종류 라벨(표시만) — 실유형(구매·결제·배송) 나열. 합배송·엑셀업로드 제외. 수입자는 전 대행 실화주 단일.
       const _atEl = document.getElementById('agentTypeLabel');
       if (_atEl) _atEl.textContent = agentTypeLabel(orders);
       // [v3.2.37] 고객정보 패널(관세사 통관 실무용) — 상호·사업자번호·주소·연락처·이메일 + 영문/통관고유부호. 표시만.
