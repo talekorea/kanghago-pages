@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.253</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.254</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -4341,6 +4341,11 @@ async function loadShipment(forceId) {
   state.modifiedCostIds = new Set();
   state.newCostRows = [];
   state.deletedCostIds = new Set();
+  // [v3.2.254 ⓒ] ★고객 잔존 차단 — loadShipment는 state.customer를 초기화하지 않아, loadCustomer가 실패·스킵되면
+  //   직전 사서함의 고객이 그대로 남아 게이트(납세의무자·사업자번호)를 '거짓 통과'시킬 수 있었다(반대 방향 사고).
+  //   전환 즉시 비우고, 로드 성공 시에만 채운다.
+  state.customer = null;
+  state._customerLoadError = null;
   state._boxDirty = false;   // [v3.2.146 ①] 사서함 전환 시 박스수정 플래그 초기화
   if (typeof _renderBoxDirtyBanner === 'function') _renderBoxDirtyBanner();
   if (typeof resetShipUiFields === 'function') resetShipUiFields();   // [사서함 전환] §4/5/6 이전 잔존 제거 후 새 주문 기준 재로드
@@ -4625,7 +4630,10 @@ async function loadShipment(forceId) {
     updateWorkflowStatus();
 
     // 고객 정보 로드 (Customers 테이블이 존재할 때만)
-    await loadCustomer(shipmentName);
+    // [v3.2.254 ⓑ] loadCustomer는 이제 실패 시 throw — 후속 로드(환율·BL·§10 응답카드)까지 죽이지 않도록 여기서 잡는다.
+    //   ★조용한 무시 아님: 사유는 로그 패널 + state._customerLoadError에 남아 배치 스킵 사유로 그대로 표기된다.
+    try { await loadCustomer(shipmentName); }
+    catch (e) { console.warn('[loadShipment] loadCustomer 실패:', e && e.message); }
     setupCustomerListeners();
 
     // v2.9.8: BL 번호 + 고객 응답 정보 로드
@@ -9376,28 +9384,79 @@ async function autoMatchProductsFromHistory() {
   }
 }
 
+// [v3.2.254 ⓐ] ★Customers 테이블 ID 보장 — TABLES.Customers만 유일하게 런타임 발견 대상('' 초기값)이라
+//   ensureSchema 미실행 경로(부킹요약 → CO발급용/최종 IP 배치)에서 빈값으로 남고, loadCustomer가 조용히 리턴 →
+//   state.customer=null → 게이트가 '신고 헤더필드 미입력: 납세의무자·사업자번호'로 오진단하던 구멍을 막는다.
+//   폴백 절차 = pushExcelToAirtable(엑셀 경로)와 동일: ensureSchema → 실패 시 meta API 직접 발견.
+//   ★배치 중엔 ensureSchema(스키마 쓰기 가능) 건너뛰고 meta GET(읽기 전용)만 — _batchMode 무쓰기 보장 불변.
+async function ensureCustomersTableId() {
+  if (TABLES.Customers) return TABLES.Customers;
+  if (!state._batchMode) {
+    try { if (typeof ensureSchema === 'function') await ensureSchema(); }
+    catch (e) { console.warn('[customer] ensureSchema:', e && e.message); }
+  }
+  if (!TABLES.Customers) {
+    try {
+      const meta = await fetch('https://api.airtable.com/v0/meta/bases/' + BASE_ID + '/tables', {
+        headers: { 'Authorization': 'Bearer ' + airtablePat() }
+      }).then(r => r.json());
+      const custT = (meta.tables || []).find(t => t.name === 'Customers');
+      if (custT) TABLES.Customers = custT.id;
+    } catch (e) { console.warn('[customer] Customers meta 폴백 실패:', e && e.message); }
+  }
+  return TABLES.Customers;
+}
+
+// [v3.2.254 ⓑ] ★조용한 null 금지 — res.ok 미검사(429/4xx가 records undefined로 흘러 null)와 catch 삼킴을 제거.
+//   실패는 ① 로그 패널 '고객 정보 로드 실패: {사유}' ② state._customerLoadError에 사유 보존 ③ throw — 3중으로 드러낸다.
+//   게이트(finalHeaderMissing)는 state.customer만 보므로, 사유 보존이 '미입력' 오표기를 끊는 단일 근거가 된다.
 async function loadCustomer(shipmentName) {
-  if (!TABLES.Customers || !shipmentName) return;
+  if (!shipmentName) return;
+  state._customerLoadError = null;
   const baseKey = baseMailbox(shipmentName);   // [선적분 키] 복합ID → 고객 사서함(base)로 조회
+  const _fail = (why) => {
+    state._customerLoadError = why;
+    state.customer = null;
+    state.modifiedCustomer = false;
+    try { fillCustomerForm(); } catch (e) {}   // 이전 사서함 값이 화면에 잔존하지 않게 비움
+    try {
+      const _el = document.getElementById('customerStatus');
+      if (_el) _el.innerHTML = `<span style="color:#c0392b; font-weight:700;">🚫 고객 정보 로드 실패 — ${why}</span>`;
+    } catch (e) {}
+    log('고객 정보 로드 실패: ' + why, 'err');
+    throw new Error('고객 정보 로드 실패: ' + why);
+  };
+  if (!(await ensureCustomersTableId())) {
+    _fail('Customers 테이블 ID 미해결 — 스키마 점검·meta 폴백 모두 실패(PAT 권한·네트워크 확인)');
+  }
+  let res;
   try {
-    const res = await fetch(
+    res = await fetch(
       'https://api.airtable.com/v0/' + BASE_ID + '/' + TABLES.Customers +
       '?filterByFormula=' + encodeURIComponent(`{사서함번호}='${baseKey}'`) + '&maxRecords=1',
       { headers: { 'Authorization': 'Bearer ' + airtablePat() } }
     );
-    const data = await res.json();
-    state.customer = (data.records && data.records[0]) || null;
-    state.modifiedCustomer = false;
-    fillCustomerForm();
-    if (state.customer) {
-      log(`✓ 고객 정보 로드: ${state.customer.fields['회원명'] || '(이름 없음)'} (${shipmentName})`, 'ok');
-      document.getElementById('customerStatus').innerHTML = `💾 저장됨 · ${t('cust.last_used')}: ${state.customer.fields['마지막사용일'] || '-'}`;
-    } else {
-      log(`ℹ ${shipmentName}에 등록된 고객 없음 — 정보 입력 후 저장 시 자동 등록`, 'dim');
-      document.getElementById('customerStatus').innerHTML = `<span style="color:var(--gold);">⚠ ${t('cust.new')}</span>`;
-    }
-  } catch (e) {
-    log('고객 정보 로드 실패: ' + e.message, 'err');
+  } catch (e) { _fail('네트워크 오류 — ' + ((e && e.message) || e)); }
+  if (!res.ok) {
+    let body = '';
+    try { body = (await res.text()).substring(0, 200); } catch (e) {}
+    _fail(`HTTP ${res.status}${res.status === 429 ? '(Airtable 요청 과다 — 잠시 후 재시도)' : (res.status === 401 ? '(PAT 인증 실패)' : (res.status === 403 ? '(PAT 권한 부족)' : ''))}: ${body}`);
+  }
+  let data;
+  try { data = await res.json(); }
+  catch (e) { _fail('응답 파싱 실패 — ' + ((e && e.message) || e)); }
+  if (!data || !Array.isArray(data.records)) {
+    _fail('응답에 records 없음 — ' + JSON.stringify(data || {}).substring(0, 200));
+  }
+  state.customer = data.records[0] || null;
+  state.modifiedCustomer = false;
+  fillCustomerForm();
+  if (state.customer) {
+    log(`✓ 고객 정보 로드: ${state.customer.fields['회원명'] || '(이름 없음)'} (${shipmentName})`, 'ok');
+    document.getElementById('customerStatus').innerHTML = `💾 저장됨 · ${t('cust.last_used')}: ${state.customer.fields['마지막사용일'] || '-'}`;
+  } else {
+    log(`ℹ ${shipmentName}에 등록된 고객 없음 — 정보 입력 후 저장 시 자동 등록`, 'dim');
+    document.getElementById('customerStatus').innerHTML = `<span style="color:var(--gold);">⚠ ${t('cust.new')}</span>`;
   }
 }
 
@@ -17702,6 +17761,11 @@ async function downloadBatchIp(stage) {
           const _co = (typeof calcCoCny === 'function') ? calcCoCny() : 0;
           if (!(_co > 0)) { skipped.push({ mb: r.mailbox, reason: `절세<¥100 CO 미발급(¥${_sav.toFixed(0)})` }); continue; }
         }
+        // [v3.2.254] ★오진단 재발 방지 — '고객정보 로드 실패' ≠ '데이터 미입력'. 게이트 평가 전에 분기한다.
+        //   게이트(finalHeaderMissing)는 state.customer만 보므로, 로드 실패도 '신고 헤더필드 미입력: 납세의무자·사업자번호'로
+        //   찍혀 Airtable에 값이 멀쩡히 있는데 입력 누락으로 오진단됐다(2026-09-01 AP2783-260901).
+        //   ★Customers에 고객이 없는 진짜 미등록은 여기서 걸지 않고 기존 게이트로 흘려보낸다(= 실제 '미입력'이 맞음).
+        if (state._customerLoadError) { skipped.push({ mb: r.mailbox, reason: `고객정보 로드 실패(데이터 미입력 아님) — ${state._customerLoadError}` }); continue; }
         const res = await downloadInvoiceExcel({ stage: genStage, returnBlob: true });
         if (res && res.blob) { zip.file(res.filename, res.blob); done.push(r.mailbox); }
         else { skipped.push({ mb: r.mailbox, reason: (res && res.skip) || '게이트 미충족' }); }
