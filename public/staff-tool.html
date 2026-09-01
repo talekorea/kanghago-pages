@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.254</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.255</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -3353,11 +3353,29 @@ async function ensureSchema() {
   if (state.schemaChecked) return;
   log('스키마 점검 중...', 'dim');
 
-  const meta = await fetch('https://api.airtable.com/v0/meta/bases/' + BASE_ID + '/tables', {
+  // [v3.2.255 #1] ★res.ok 미검사 제거 — 401/403/429면 meta.tables가 undefined → tables=[]로
+  //   '전 테이블 미발견'인 채 조용히 통과하고 TABLES.Customers/ProductHistory가 ''로 남는다(v3.2.254 사건의 상류).
+  //   ★throw 대신 조기 return — 호출부(loadShipment의 ensureHSMappingTariffFields 등)를 죽이지 않고,
+  //     schemaChecked도 세우지 않아 다음 기회에 재점검된다. 실패는 로그 패널에 명시.
+  const _metaRes = await fetch('https://api.airtable.com/v0/meta/bases/' + BASE_ID + '/tables', {
     headers: { 'Authorization': 'Bearer ' + airtablePat() }
-  }).then(r => r.json());
+  });
+  if (!_metaRes.ok) {
+    let _mb = ''; try { _mb = (await _metaRes.text()).substring(0, 200); } catch (e) {}
+    const _hint = _metaRes.status === 401 ? '(PAT 인증 실패)' : (_metaRes.status === 403 ? '(PAT 권한 부족 — schema.bases:read 필요)' : (_metaRes.status === 429 ? '(요청 과다 — 잠시 후 재시도)' : ''));
+    log(`✗ 스키마 점검 실패 — meta 조회 HTTP ${_metaRes.status}${_hint}: ${_mb}`, 'err');
+    log('  → Customers·ProductHistory가 미해결로 남습니다(고객 정보 로드·학습 매칭 영향). 새로고침 후 재시도하세요.', 'err');
+    if (typeof toastWarn === 'function') toastWarn(`스키마 점검 실패 (HTTP ${_metaRes.status}) — 고객 정보 로드에 영향`, { title: '⚠ 스키마' });
+    return;
+  }
+  const meta = await _metaRes.json();
 
   const tables = meta.tables || [];
+  if (!tables.length) {
+    log('✗ 스키마 점검 — meta 응답에 tables 없음. Customers·ProductHistory 미해결로 남습니다.', 'err');
+    if (typeof toastWarn === 'function') toastWarn('스키마 점검 — 테이블 목록이 비었습니다(PAT 권한 확인)', { title: '⚠ 스키마' });
+    return;
+  }
   const tableMap = {};
   tables.forEach(t => { tableMap[t.id] = t; });
 
@@ -7353,11 +7371,17 @@ async function autoFillBlFromAttachment() {
   if (!bl || !bl.url) return;
   if (!/\.pdf$/i.test(bl.filename || '') && bl.type !== 'application/pdf') return;   // 이미지 BL → 미추출
   try {
-    const r = await fetch(bl.url); const blob = await r.blob();
+    const r = await fetch(bl.url);
+    if (!r.ok) throw new Error('BL 첨부 다운로드 HTTP ' + r.status);
+    const blob = await r.blob();
     const text = await extractBlTextFromPdf(new File([blob], bl.filename || 'bl.pdf', { type: 'application/pdf' }));
     const bf = extractBlFields(text);
     if (bf.hasText) _blFields = bf;
-  } catch (e) { /* CORS/파싱 실패 → _blFields null(삼각에서 BL 미추출 표시) */ }
+    else if (typeof log === 'function') log('⚠ BL 자동추출 실패 — PDF에 텍스트 없음(스캔본). 삼각대조는 수동 확인 필요', 'warn');
+  } catch (e) {
+    // [v3.2.255 #3] _blFields=null 유지(기존 동작)하되 무음 금지 — 삼각대조(BL∩CO∩IP) 판정 근거가 빠진 상태임을 알린다.
+    if (typeof log === 'function') log('⚠ BL 자동추출 실패 — 수동 확인 필요 (' + ((e && e.message) || e) + ')', 'warn');
+  }
 }
 
 // 파일 → base64 data URL
@@ -7406,7 +7430,12 @@ async function _recordPlainFtaIfCoUnneeded(shipmentId) {
     if (state.shipment && state.shipment.fields) state.shipment.fields['적용FTA확정'] = '일반';
     if (typeof log === 'function') log('✓ CO 미발급 확정(절세<¥100) → 적용FTA확정=일반 기록 — 관세사 ZIP은 IP+BL만', 'ok');
   } catch (e) {
-    console.warn('[v3.2.230 적용FTA확정=일반 기록]', e && e.message);   // 실패해도 다운로드 계속(빈값 → CO 필요로 안전 판정)
+    // [v3.2.255 #12] ★성공 위장 금지 — 기록 실패면 적용FTA확정이 빈값으로 남아 세율모드(CO 필요 여부) 판정 근거가 없다.
+    //   다운로드는 계속하되(빈값 → CO 필요로 안전측), 실패를 반드시 인지시킨다.
+    const _why = (e && e.message) || String(e);
+    if (typeof log === 'function') log('✗ 적용FTA확정=일반 기록 실패 — ' + _why + ' (CO 미발급 확정이 저장되지 않음 — 관세사 ZIP 구성·게이트 판정에 영향)', 'err');
+    if (typeof toastWarn === 'function') toastWarn('⚠ 적용FTA확정(일반) 기록 실패 — ' + _why + '\nCO 미발급 확정이 저장되지 않았습니다. 사서함에서 수동 확인하세요.', { title: '⚠ FTA확정 미기록', duration: 9000 });
+    console.warn('[v3.2.230 적용FTA확정=일반 기록]', _why);
   }
 }
 
@@ -7434,16 +7463,23 @@ async function _snapshotIp(shipmentId, stage, blob, filename) {
     if (atts.length < 1) return { ok: false, error: '업로드 후 GET에 첨부 0장 (저장 실패)' };
     // 낙관적 in-memory 반영(자동저장 훅 재발화 방지)
     try { if (state.shipment && state.shipment.id === shipmentId) state.shipment.fields[NAME] = atts.slice(-1); } catch (e) {}
-    // [v3.2.245] 최종IP 스냅샷 총수량 저장(재발행 게이트용) — 단건 컨텍스트에서만. 필드 미생성 시 422 → 무시(IP는 이미 저장됨).
+    // [v3.2.245] 최종IP 스냅샷 총수량 저장(재발행 게이트용) — 단건 컨텍스트에서만.
+    let _qtyErr = '';
     if (stage === 'final' && state.shipment && state.shipment.id === shipmentId) {
       try {
         const _tot = (state.products || []).reduce((s, p) => { const q = parseFloat((p.fields || {})['수량']) || 0; return s + (q > 0 ? q : 0); }, 0);
         const _pv = state._allowSeqWrite; state._allowSeqWrite = true;
         try { await api('PATCH', `/${TABLES.Shipments}/${shipmentId}`, { fields: { '최종IP총수량': _tot }, typecast: true }); state.shipment.fields['최종IP총수량'] = _tot; }
         finally { state._allowSeqWrite = _pv; }
-      } catch (e) { console.warn('[최종IP총수량 저장 — 필드 미생성 가능]', e && e.message); }
+      } catch (e) {
+        // [v3.2.255 #11] console만 → 로그 패널 + 표시. IP 첨부는 저장됐으므로 ok:true는 유지하되 실패를 반환값에도 남긴다.
+        _qtyErr = (e && e.message) || String(e);
+        log('⚠ 최종IP 총수량 저장 실패 — ' + _qtyErr + ' (최종IP 파일은 저장됨. 재발행 게이트 판정에 영향)', 'warn');
+        if (typeof toastWarn === 'function') toastWarn('⚠ 최종IP 총수량 저장 실패 — ' + _qtyErr, { title: '⚠ 부분 저장 실패' });
+        console.warn('[최종IP총수량 저장 — 필드 미생성 가능]', _qtyErr);
+      }
     }
-    return { ok: true, count: atts.length };
+    return _qtyErr ? { ok: true, count: atts.length, qtyError: _qtyErr } : { ok: true, count: atts.length };
   } catch (e) {
     console.warn('[IP 스냅샷 저장/trim]', stage, shipmentId, e && e.message);
     return { ok: false, error: String((e && e.message) || e) };
@@ -11309,9 +11345,14 @@ async function fetchOfficialRates(forceOverwrite) {
   // 대안: 한국수출입은행 API (인증키 필요, CORS 이슈)
   try {
     const res = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+    // [v3.2.255 #2] ★res.ok·rates 존재 검사 — 실패 응답에서 data.rates.KRW를 읽어 터지거나,
+    //   rates가 비어도 조용히 지나가 '환율 없이 계산 진행'하던 경로 차단. 환율=과세가격·청구액 직결.
+    if (!res.ok) throw new Error(`환율 API HTTP ${res.status}`);
     const data = await res.json();
+    if (!data || !data.rates) throw new Error('환율 API 응답에 rates 없음');
     const krw = data.rates.KRW;
     const cny = data.rates.CNY;
+    if (!krw || !cny) throw new Error(`환율 API에 KRW/CNY 없음 (KRW=${krw}, CNY=${cny})`);
     if (krw && cny) {
       const cnyUsd = 1 / cny;
       const usdKrw = krw;
@@ -11338,7 +11379,9 @@ async function fetchOfficialRates(forceOverwrite) {
       }
     }
   } catch (e) {
+    // [v3.2.255 #2] 명시 에러 — 환율 칸은 건드리지 않고(계산 진행 금지) 사용자에게 수기 입력을 요구.
     log('자동 조회 실패: ' + e.message + ' — 수기 입력 필요', 'err');
+    if (typeof toastWarn === 'function') toastWarn('환율 자동 조회 실패 — ' + e.message + '\n환율을 수기 입력해야 청구금액이 계산됩니다.', { title: '⚠ 환율 미적용', duration: 8000 });
   }
 }
 
@@ -11456,13 +11499,27 @@ async function saveAll(skipReload) {
         // [B v3.2.62] Orders.실제출고요청일 = Shipments.선적일 동기화(정본 일치). 연결된 전체 주문 중 다른 날짜만 PATCH.
         if (_ordersSyncTo) {
           const toFix = (state.orders || []).filter(o => String((o.fields || {})['실제출고요청일'] || '').slice(0, 10) !== _ordersSyncTo);
+          // [v3.2.255 #8] ★루프는 완주 — 한 건이 실패해도 나머지 주문 동기화를 끊지 않고, 실패분만 모아 요약 표시.
+          const _ordFail = [];
           for (const o of toFix) {
-            await api('PATCH', `/${TABLES.Orders}/${o.id}`, { fields: { '실제출고요청일': _ordersSyncTo }, typecast: true });
-            o.fields['실제출고요청일'] = _ordersSyncTo;
+            try {
+              await api('PATCH', `/${TABLES.Orders}/${o.id}`, { fields: { '실제출고요청일': _ordersSyncTo }, typecast: true });
+              o.fields['실제출고요청일'] = _ordersSyncTo;
+            } catch (oe) { _ordFail.push(((o.fields || {})['주문번호']) || o.id); }
           }
-          if (toFix.length) log(`✓ Orders 실제출고요청일 ${toFix.length}건 → ${_ordersSyncTo} 동기화(부킹·정산 일치)`, 'ok');
+          const _okN = toFix.length - _ordFail.length;
+          if (_okN) log(`✓ Orders 실제출고요청일 ${_okN}건 → ${_ordersSyncTo} 동기화(부킹·정산 일치)`, 'ok');
+          if (_ordFail.length) {
+            log(`✗ Orders 실제출고요청일 ${_ordFail.length}건 저장 실패: ${_ordFail.join(', ')} — 부킹·정산 날짜가 어긋납니다`, 'err');
+            if (typeof toastWarn === 'function') toastWarn(`⚠ Orders 실제출고요청일 ${_ordFail.length}건 저장 실패: ${_ordFail.join(', ')}\n부킹요약·정산 날짜가 사서함과 어긋난 상태입니다.`, { title: '⚠ 동기화 실패', duration: 9000 });
+          }
         }
-      } catch (ge) { console.warn('[Phase1-G] 선적항/선명/대조/Orders동기화 저장 실패(필드 미생성 가능 — Airtable에 5필드 수동추가 필요):', ge.message); }
+      } catch (ge) {
+        // [v3.2.255 #8] console만 → 로그 패널 + 사용자 표시. 선적항·선명·대조확인상태는 IP/BL 삼각대조 정본.
+        log('✗ 선적항/선명/대조확인/Orders동기화 저장 실패 — ' + ge.message + ' (Airtable 5필드 미생성 가능)', 'err');
+        if (typeof toastWarn === 'function') toastWarn('⚠ 선적항·선명·대조확인 저장 실패 — ' + ge.message + '\n서류 대조 정보가 저장되지 않았습니다(수동 확인 필요).', { title: '⚠ 저장 실패', duration: 9000 });
+        console.warn('[Phase1-G] 선적항/선명/대조/Orders동기화 저장 실패:', ge.message);
+      }
     }
 
     // 2. Products 업데이트 (적용FTA, 박스번호, 단가USD/합계USD — 직원 권한 필드만)
@@ -13334,7 +13391,17 @@ async function downloadInvoiceExcel(opts) {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toastSuccess('인보이스/패킹 엑셀 다운로드 완료', { title: '📊 발행', subtitle: a.download });
     // [v3.2.204] 트리거1 — 1차 IP 다운 시 CNY 5필드+환율 프리즈(최초 1회 고정, 이미 있으면 스킵). 계산 코어 불변.
-    if (stage === 'first') { try { await saveFrozenCnyCharges({ trigger: 'ip1' }); } catch (e) { console.warn('[트리거1 IP1 CNY]', e && e.message); } }
+    // [v3.2.255 #10] ★성공 위장 금지 — 프리즈 실패 시 청구 CNY 5필드·환율이 고정되지 않아
+    //   이후 환율 변동으로 청구액이 달라진다. console만이던 것을 로그 패널 + 경고 토스트로 승격.
+    if (stage === 'first') {
+      try { await saveFrozenCnyCharges({ trigger: 'ip1' }); }
+      catch (e) {
+        const _why = (e && e.message) || String(e);
+        log('✗ 청구 CNY 프리즈 실패 — ' + _why + ' (엑셀은 다운로드됨. 청구금액이 고정되지 않아 환율 변동 시 달라질 수 있음)', 'err');
+        if (typeof toastWarn === 'function') toastWarn('⚠ 청구 CNY 프리즈 실패 — ' + _why + '\n엑셀은 받았지만 청구금액이 고정되지 않았습니다. 사서함을 다시 열어 저장하세요.', { title: '⚠ 청구금액 미고정', duration: 10000 });
+        console.warn('[트리거1 IP1 CNY]', _why);
+      }
+    }
     // [v3.2.173] ★거짓성공 근절 — 다운로드는 됐어도 관세사 대시보드 저장(_snapshotIp)이 실패면 명확히 경고.
     if (_snap && !_snap.ok) toastWarn && toastWarn('⚠ 단, 관세사 대시보드 저장 실패 — ' + (_snap.error || '저장 오류') + '\n(사진 많은 사서함은 5MB 초과 — 압축 후에도 초과면 사진 축소 필요)', { title: '⚠ 대시보드 미저장', duration: 9000 });
   } catch (e) {
@@ -13373,12 +13440,19 @@ async function autoSaveBL() {
     if (blNumber !== prevBl) { state.shipment.fields['대조확인상태'] = '대조대기'; state.shipment.fields['대조확인일시'] = ''; state.shipment.fields['대조확인자'] = ''; }
     state.shipment.fields['선적항'] = port;
     state.shipment.fields['선명'] = vessel;
+    let _g1Failed = false;
     try {
       const gFields = { '선적항': port, '선명': vessel };
       if (blNumber !== prevBl) { gFields['대조확인상태'] = '대조대기'; gFields['대조확인일시'] = null; gFields['대조확인자'] = ''; }
       await api('PATCH', `/${TABLES.Shipments}/${state.shipment.id}`, { fields: gFields, typecast: true });
-    } catch (ge) { console.warn('[Phase1-G] 선적항/선명/대조 저장 실패(필드 미생성 가능):', ge.message); }
-    if (st) { st.textContent = '✓ 자동 저장됨'; st.style.color = '#0a7b40'; }
+    } catch (ge) {
+      // [v3.2.255 #9] console만 → 로그 패널 + 사용자 표시. BL 변경 시 대조확인상태 리셋이 저장 안 되면 구 대조 결과가 살아남는다.
+      _g1Failed = true;
+      log('✗ 선적항/선명/대조확인 저장 실패 — ' + ge.message + ' (BL은 저장됨, 대조확인 리셋 미반영 가능)', 'err');
+      if (typeof toastWarn === 'function') toastWarn('⚠ 선적항·선명·대조확인 저장 실패 — ' + ge.message + '\n대조확인 상태가 이전 값으로 남아 있을 수 있습니다(§10에서 수동 확인).', { title: '⚠ 부분 저장 실패', duration: 9000 });
+      console.warn('[Phase1-G] 선적항/선명/대조 저장 실패:', ge.message);
+    }
+    if (st) { st.textContent = _g1Failed ? '⚠ BL만 저장됨 — 선적항/선명/대조확인 실패' : '✓ 자동 저장됨'; st.style.color = _g1Failed ? '#a14a00' : '#0a7b40'; }
     updateBlNoHeader();
     renderDocMatchBadge();
     if (typeof renderWorkflowSteps === 'function') renderWorkflowSteps();
@@ -18870,8 +18944,16 @@ function _vesselVoyage(text) {
 // [v3.2.130] 선명 덮어쓰기 정책 — 비었으면 BL값 기록 / 수동값 있으면 토스트+미기록(적출항 _setShipPortIp과 동형).
 async function _setShipVessel(shipId, vessel, label) {
   if (!shipId || !vessel) return false;
-  let cur = '';
-  try { const rec = await api('GET', `/${TABLES.Shipments}/${shipId}`); cur = String((rec.fields || {})['선명'] || '').trim(); } catch (e) {}
+  // [v3.2.255 #4] ★GET 실패 ≠ 빈값 — 예전엔 조회가 깨져도 cur=''로 남아 '비었으니 기록' 분기로 들어가
+  //   수동값 우선 정책이 무력화되고 선명을 덮어썼다. 실패면 덮어쓰기 중단(빈값 정상 케이스는 그대로 진행).
+  let cur = '', _getOk = true, _getErr = '';
+  try { const rec = await api('GET', `/${TABLES.Shipments}/${shipId}`); cur = String((rec.fields || {})['선명'] || '').trim(); }
+  catch (e) { _getOk = false; _getErr = (e && e.message) || String(e); }
+  if (!_getOk) {
+    if (typeof log === 'function') log(`⚠ ${label || shipId} 선명 — 기존값 확인 실패(${_getErr}) → 덮어쓰기 건너뜀`, 'warn');
+    if (typeof toastWarn === 'function') toastWarn(`${label || ''} 선명 기존값 확인 실패 — 덮어쓰기 건너뜀(수동 확인)`, { title: '선명' });
+    return false;
+  }
   if (!cur) { try { await api('PATCH', `/${TABLES.Shipments}/${shipId}`, { fields: { '선명': vessel }, typecast: true }); return true; } catch (e) { return false; } }
   if (cur.toUpperCase() !== vessel.toUpperCase()) { if (typeof toastWarn === 'function') toastWarn(`${label || ''} 선명 수동값('${cur}') ≠ BL('${vessel}') — 덮어쓰지 않음(수동 확인)`, { title: '선명' }); return false; }
   return false;   // 이미 동일
@@ -18879,8 +18961,15 @@ async function _setShipVessel(shipId, vessel, label) {
 // [v3.2.122] 선적항(IP) 덮어쓰기 정책 — 비었거나 기본 'Weihai, China'면 검증된 en 기록 / 다른 수동값이면 토스트+미기록(수동 우선).
 async function _setShipPortIp(shipId, en, label) {
   if (!shipId || !en) return false;
-  let cur = '';
-  try { const rec = await api('GET', `/${TABLES.Shipments}/${shipId}`); cur = String((rec.fields || {})['선적항'] || '').trim(); } catch (e) {}
+  // [v3.2.255 #5] ★GET 실패 ≠ 빈값 — _setShipVessel과 동형. 조회 실패 시 '비었음'으로 오인해 선적항을 덮어쓰던 경로 차단.
+  let cur = '', _getOk = true, _getErr = '';
+  try { const rec = await api('GET', `/${TABLES.Shipments}/${shipId}`); cur = String((rec.fields || {})['선적항'] || '').trim(); }
+  catch (e) { _getOk = false; _getErr = (e && e.message) || String(e); }
+  if (!_getOk) {
+    if (typeof log === 'function') log(`⚠ ${label || shipId} 선적항 — 기존값 확인 실패(${_getErr}) → 덮어쓰기 건너뜀`, 'warn');
+    if (typeof toastWarn === 'function') toastWarn(`${label || ''} 선적항 기존값 확인 실패 — 덮어쓰기 건너뜀(수동 확인)`, { title: '선적항' });
+    return false;
+  }
   const isEmptyOrDefault = !cur || cur.replace(/[\s,]/g, '').toUpperCase() === 'WEIHAICHINA';
   if (isEmptyOrDefault) { try { await api('PATCH', `/${TABLES.Shipments}/${shipId}`, { fields: { '선적항': en }, typecast: true }); return true; } catch (e) { return false; } }
   if (cur.toUpperCase() !== en.toUpperCase()) { if (typeof toastWarn === 'function') toastWarn(`${label || ''} 선적항 수동값('${cur}') ≠ BL('${en}') — 덮어쓰지 않음(수동 확인)`, { title: '선적항' }); return false; }
@@ -19131,6 +19220,8 @@ async function saveBatchDocs() {
   }
   const el = document.getElementById('batchDocResult');
   let saved = 0, skipped = 0, failed = 0, masterSkip = 0, blNoUpdated = 0, masterSaved = 0, portSet = 0;
+  // [v3.2.255 #6·#7] ★루프 안 실패를 무음으로 버리지 않는다 — throw로 루프를 끊지 말고 여기 모아 완료 시 요약 표시.
+  const fieldFails = [];   // {mb, field, why}
   // [v3.2.128] BL·CO 모두 replace — 사서함+서류종류별 1회만 비움(append 누적 방지).
   //   같은 사서함의 같은 종류 파일이 이 배치에 여러 개면: 첫 건에서 1회 clear → 이후는 누적(한 배치 = 한 묶음).
   //   재업로드(다음 배치)면 기존 첨부는 다시 clear되어 교체됨. 일괄 흐름은 차단 없이 ⚠ 결과 요약으로 표시.
@@ -19183,20 +19274,32 @@ async function saveBatchDocs() {
                     && /^[A-Z0-9-]{6,20}$/.test(_bn) && /[A-Z]/.test(_bn) && /\d/.test(_bn);
       if (it.docType === 'bl' && _blOk) {
         const row = bookingState.rows.find(x => x.id === it.shipId);
-        let cur = '';
-        try { const rec = await api('GET', `/${TABLES.Shipments}/${it.shipId}`); cur = String((rec.fields || {})['BL번호'] || '').trim(); } catch (e) {}
+        // [v3.2.255 #6] ★GET 실패 ≠ 빈값 — 조회가 깨지면 cur=''로 남아 아래 `if (!cur)` 덮어쓰기 분기로 들어가
+        //   기존 BL번호를 덮어쓸 수 있었다(통관·면장 오염). 실패면 저장 건너뛰고 수집.
+        let cur = '', _blGetOk = true, _blGetErr = '';
+        try { const rec = await api('GET', `/${TABLES.Shipments}/${it.shipId}`); cur = String((rec.fields || {})['BL번호'] || '').trim(); }
+        catch (e) { _blGetOk = false; _blGetErr = (e && e.message) || String(e); }
         // [v3.2.125] 빈칸+형식검증 통과 → 자동저장 / 기존값과 다름 → ★자동저장 안 함 + ⚠(선적항 정책과 동일, confirm 다이얼로그 제거).
-        if (!cur) { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { 'BL번호': it.blNumber }, typecast: true }); blNoUpdated++; if (row) it._blSaved = it.blNumber; }
+        if (!_blGetOk) { fieldFails.push({ mb: it.mailbox, field: 'BL번호', why: '기존값 확인 실패 — ' + _blGetErr }); it._blSkipped = true; }
+        else if (!cur) { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { 'BL번호': it.blNumber }, typecast: true }); blNoUpdated++; if (row) it._blSaved = it.blNumber; }
         else if (cur !== it.blNumber) { if (typeof toastWarn === 'function') toastWarn(`[${it.mailbox}] BL번호 기존('${cur}') ≠ 추출('${it.blNumber}') — 자동저장 안 함(수동 확인)`, { title: 'BL번호' }); it._blSkipped = true; }
       }
       // [v3.2.80] 하우스BL 출발지 → 그 사서함 Shipments.출발지 (추출 성공 시).
-      if ((it.docType === 'bl' || it.docType === 'co') && it.port) { try { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { '출발지': it.port }, typecast: true }); portSet++; } catch (e) {} }   // [v3.2.88] 출발지(ko·배차)
-      if ((it.docType === 'bl' || it.docType === 'co') && it.portEn) { try { await _setShipPortIp(it.shipId, it.portEn, it.mailbox); } catch (e) {} }   // [v3.2.122] 선적항(en·IP) — 정책 적용
-      if (it.docType === 'bl' && it.vessel) { try { await _setShipVessel(it.shipId, it.vessel, it.mailbox); } catch (e) {} }   // [v3.2.130] 선명·항차(BL에서) — 정책 적용
+      // [v3.2.255 #7] 빈 catch 제거 — 실패는 fieldFails에 수집(루프는 완주), 완료 요약에 표시.
+      if ((it.docType === 'bl' || it.docType === 'co') && it.port) { try { await api('PATCH', `/${TABLES.Shipments}/${it.shipId}`, { fields: { '출발지': it.port }, typecast: true }); portSet++; } catch (e) { fieldFails.push({ mb: it.mailbox, field: '출발지', why: (e && e.message) || String(e) }); } }   // [v3.2.88] 출발지(ko·배차)
+      if ((it.docType === 'bl' || it.docType === 'co') && it.portEn) { try { await _setShipPortIp(it.shipId, it.portEn, it.mailbox); } catch (e) { fieldFails.push({ mb: it.mailbox, field: '선적항', why: (e && e.message) || String(e) }); } }   // [v3.2.122] 선적항(en·IP) — 정책 적용
+      if (it.docType === 'bl' && it.vessel) { try { await _setShipVessel(it.shipId, it.vessel, it.mailbox); } catch (e) { fieldFails.push({ mb: it.mailbox, field: '선명', why: (e && e.message) || String(e) }); } }   // [v3.2.130] 선명·항차(BL에서) — 정책 적용
       if (el) el.querySelectorAll('tbody tr')[i] && (el.querySelectorAll('tbody tr')[i].style.background = '#e8f5e9');
     } catch (e) { failed++; console.warn('[일괄저장]', it.filename, e.message); }
   }
-  if (typeof toastSuccess === 'function') toastSuccess(`✓ 일괄 저장 — 사서함 ${saved} / 마스터 ${masterSaved} / BL번호 ${blNoUpdated} / 출발지 ${portSet} / 미매칭 ${skipped} / 실패 ${failed}`, { title: '📁 서류' });
+  // [v3.2.255 #6·#7] ★부가 필드 저장 실패 요약 — 있으면 성공 토스트 대신 경고로 승격(거짓 성공 금지).
+  if (fieldFails.length) {
+    const _fl = fieldFails.map(f => `${f.mb} ${f.field}`).join(' · ');
+    if (typeof log === 'function') fieldFails.forEach(f => log(`⚠ [${f.mb}] ${f.field} 저장 실패 — ${f.why}`, 'warn'));
+    if (typeof toastWarn === 'function') toastWarn(`⚠ ${fieldFails.length}건 저장 실패: ${_fl}\n(서류 첨부는 저장됨 — 해당 필드만 수동 확인)`, { title: '📁 서류 부가필드', duration: 9000 });
+  }
+  if (typeof toastSuccess === 'function') toastSuccess(`✓ 일괄 저장 — 사서함 ${saved} / 마스터 ${masterSaved} / BL번호 ${blNoUpdated} / 출발지 ${portSet} / 미매칭 ${skipped} / 실패 ${failed}${fieldFails.length ? ` / ⚠부가필드 실패 ${fieldFails.length}` : ''}`, { title: '📁 서류' });
+  if (el && fieldFails.length) el.innerHTML += `<div style="margin-top:8px; padding:8px; background:#fdecef; border:1px solid #e88aa0; border-radius:5px; font-size:12px; color:#b3123c; font-weight:700;">⚠ 부가필드 저장 실패 ${fieldFails.length}건 (서류 첨부는 저장됨 — 아래 항목만 수동 확인): ${fieldFails.map(f => `${f.mb} <u>${f.field}</u>`).join(' · ')}</div>`;
   if (el) el.innerHTML += `<div style="margin-top:8px; padding:8px; background:#f5f5f5; border-radius:5px; font-size:12px;">결과: 사서함 저장 <strong>${saved}</strong> · 마스터BL <strong>${masterSaved}</strong>건(선적일 사서함, 내부전용) · BL번호 갱신 <strong>${blNoUpdated}</strong> · 출발지 <strong>${portSet}</strong> · 미매칭 <strong>${skipped}</strong> · 마스터 미적용 <strong>${masterSkip}</strong> · 실패 <strong>${failed}</strong>. (BL·CO=replace[재업로드 시 기존 교체]·BL번호/출발지→Shipments)</div>`;
   // [v3.2.180] CO 자동대조 + (토글 시)자동 대조확인 저장 — 표식은 항상, 저장은 🟢∧토글만.
   try {
