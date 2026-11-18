@@ -2835,6 +2835,7 @@ const I18N = {
     'lcl.ecom_block': "LCL 새 방식 무역 사서함 — CI 는 직원 도구(staff-tool)에서 발행하세요(전자상거래 도구는 새 방식 CI 를 발행하지 않음)",
     'lcl.gate_need_shipdate': "선적일을 입력하세요 — Shipments.선적일 빈 값(대체 날짜 {alt}) · 컷오버 뒤 무역 사서함은 최종 · CO발급용 2차 IP 차단 · 프리즈 보류",
     'lcl.pend_freeze': "선적일 빈 값 — 선적일을 입력한 뒤 다시 발행하세요",
+    'lcl.freeze_hold': "청구_해운비_CNY 저장값 ¥{sea} 이 있는데 프리즈 표식(청구_BL_CNY)이 없음 — 기존 값 덮어쓰기 방지로 청구 CNY 자동 저장 보류(관리자 확인 필요)",
     'lcl.tariff_label': "과세가격 (CI 신고가 KRW · 해운비 포함)",
     'lcl.tariff_note': "(해운비 ¥{total} 을 제품 신고단가에 배분 · 정액 운임 가산 없음)",
     'oh.desc.parcel': '9,000원/박스',
@@ -3460,6 +3461,7 @@ const I18N = {
     'lcl.ecom_block': "LCL新方式贸易邮箱 — 请在员工工具(staff-tool)开具 CI(跨境电商工具不开具新方式 CI)",
     'lcl.gate_need_shipdate': "请输入装船日 — Shipments.装船日为空(替代日期 {alt}) · 切换日后的贸易邮箱禁止最终IP · CO用第2次IP · 暂不冻结",
     'lcl.pend_freeze': "装船日为空 — 请输入装船日后重新开具",
+    'lcl.freeze_hold': "已有 청구_해운비_CNY 保存值 ¥{sea} 但无冻结标记(청구_BL_CNY) — 为防止覆盖原值,暂停自动保存收费 CNY(需管理员确认)",
     'lcl.tariff_label': "完税价格 (CI 申报价 KRW · 含海运费)",
     'lcl.tariff_note': "(海运费 ¥{total} 已分摊到产品申报单价 · 不再加固定运费)",
     'oh.desc.parcel': '9,000韩元/箱',
@@ -4085,6 +4087,7 @@ const I18N = {
     'lcl.ecom_block': "LCL new-method trade mailbox — issue the CI in the staff tool (staff-tool); this e-commerce tool does not issue new-method CIs",
     'lcl.gate_need_shipdate': "Enter the ship date — Shipments.선적일 is empty (fallback date {alt}) · after cutover, final IP and CO 2nd IP are blocked and freeze is on hold",
     'lcl.pend_freeze': "ship date is empty — enter it and issue again",
+    'lcl.freeze_hold': "a saved sea freight (청구_해운비_CNY ¥{sea}) exists but the freeze marker (청구_BL_CNY) is missing — billing CNY auto-save held to avoid overwriting it (admin check needed)",
     'lcl.tariff_label': "Customs value (CI declared value KRW · sea freight included)",
     'lcl.tariff_note': "(sea freight ¥{total} allocated into product declared unit prices · no flat freight added)",
     'oh.desc.parcel': '9,000 KRW/box',
@@ -4817,12 +4820,12 @@ function lclV2Active(shipFields) {
 }
 // [T-0030 2판 D15] 컷오버 켜짐 · 무역 트랙 · Shipments.선적일 빈 값(또는 날짜로 못 읽음) → 대체 날짜 getShipDate() 가 컷오버 이전이면 기존 방식(false).
 //   그 밖(대체 날짜 ≥ 컷오버 · 날짜 전혀 없음) = true → 최종 · CO발급용 2차 IP 차단 + 선적일 입력 안내 · 프리즈 보류. 컷오버 '' = 항상 false.
-function lclV2Pending(shipFields) {
+function lclV2Pending(shipFields, altDate) {   // [3판 F2] altDate = 다른 사서함 판정용 대체 날짜(배차마스터) · 없으면 현재 사서함 getShipDate()
   if (!LCL_V2_CUTOVER) return false;
   const f = shipFields || ((typeof state !== 'undefined' && state && state.shipment && state.shipment.fields) || {});
   if (String(f['통관트랙'] || '').trim() === '전자상거래') return false;
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(f['선적일'] || '').trim().slice(0, 10))) return false;   // 선적일 있음 → lclV2Active 가 판정
-  const alt = String((typeof getShipDate === 'function' ? getShipDate() : '') || '').trim().slice(0, 10);
+  const alt = String((altDate != null ? altDate : (typeof getShipDate === 'function' ? getShipDate() : '')) || '').trim().slice(0, 10);
   return !(/^\d{4}-\d{2}-\d{2}$/.test(alt) && alt < LCL_V2_CUTOVER);
 }
 // 요일 → 요율. 토·일·빈 값·판독 불가 = ok:false(계산 안 함 · R2).
@@ -4848,6 +4851,8 @@ function lclV2BillCbm(totalCbm, totalKg) {
 }
 // 해운비CNY = 청구CBM ≤ 0.3 → ¥200 / 아니면 청구CBM × 요율(소수 2자리). 박스 없음(청구CBM 0) = 계산 불가.
 function lclV2SeaCny(totalCbm, totalKg, shipDateStr) {
+  // [T-0030 3판 J] CBM · kg 가 유한한 수가 아니면(Infinity · 1e400) 계산 불가.
+  if (Math.abs(parseFloat(totalCbm)) === Infinity || Math.abs(parseFloat(totalKg)) === Infinity) return { ok: false, cny: 0, billCbm: 0, rate: { name: 'CBM·kg 판독 불가', unit: 0, currency: 'CNY', ok: false, reason: 'nonfinite' }, reason: 'nonfinite' };
   const rate = lclV2RateGroup(shipDateStr);
   const billCbm = lclV2BillCbm(totalCbm, totalKg);
   if (!rate.ok) return { ok: false, cny: 0, billCbm, rate, reason: rate.reason };
@@ -4857,7 +4862,9 @@ function lclV2SeaCny(totalCbm, totalKg, shipDateStr) {
 }
 // R4 배분(순수 함수) — products [{id, orderKey, qty, boxNos}] · boxes {bn:{cbm,kg}} · totalCny.
 //   박스 비중 w = MAX(박스CBM, 박스kg÷300) · 배정 수량 합 0 인 박스는 비중 제외 · 박스 안 = distributeQty 배정 수량 비율.
-//   제품 몫 0.01 반올림 · 끝전은 마지막(몫>0) 제품 → Σ제품 몫 = 총액.
+//   [T-0030 3판 F1] 제품 몫 = 최대 잔여 방식: 정확한 몫(원시값 6자리 정리)을 0.01 아래로 내림 → 모자란 0.01 을 소수 잔여가 큰 제품부터 하나씩(동률 = 제품 순서).
+//   결과 항상 ≥ 0 · Σ제품 몫 = 총액 · 각 몫과 정확한 몫의 차 < 0.01. 음수 · 비유한 값이 나오면 ok=false(최종 · CO발급용 IP 차단).
+//   [3판 F4] 총액 0 = 몫 전부 0 · ok(차단 아님). 총액 음수 · 비유한 = ok=false.
 function lclV2AllocateCore(products, boxes, totalCny) {
   const total = Math.round((parseFloat(totalCny) || 0) * 100) / 100;
   const out = { ok: false, total, byProduct: {}, byOrder: {}, sum: 0, reason: '', weightSum: 0 };
@@ -4880,7 +4887,8 @@ function lclV2AllocateCore(products, boxes, totalCny) {
     if (wb > 0) { wOf[bn] = wb; W += wb; }
   });
   out.weightSum = W;
-  if (!(total > 0)) { out.reason = 'nototal'; return out; }
+  if (!Number.isFinite(total) || total < 0) { out.reason = 'badtotal'; return out; }
+  if (total === 0) { out.ok = true; return out; }   // [3판 F4] 프리즈 0 → 몫 전부 0
   if (!(W > 0)) { out.reason = 'noweight'; return out; }
   Object.keys(wOf).forEach(bn => {
     const sq = inBox[bn].reduce((s, x) => s + x.q, 0);
@@ -4888,29 +4896,39 @@ function lclV2AllocateCore(products, boxes, totalCny) {
     inBox[bn].forEach(x => { raw[x.id] = (raw[x.id] || 0) + boxShare * x.q / sq; });
   });
   const ids = (products || []).map(p => p.id).filter(id => (raw[id] || 0) > 0);
-  let acc = 0;
-  ids.forEach((id, i) => {
-    const v = (i === ids.length - 1) ? Math.round((total - acc) * 100) / 100 : Math.round(raw[id] * 100) / 100;
-    out.byProduct[id] = v;
-    acc = Math.round((acc + v) * 100) / 100;
-  });
+  const cents = Math.round(total * 100);
+  const parts = ids.map((id, i) => { const c = Math.round(raw[id] * 100 * 1e6) / 1e6; const fl = Math.floor(c); return { id, i, fl, rem: c - fl }; });
+  let short = cents - parts.reduce((s, x) => s + x.fl, 0);
+  parts.slice().sort((a, b) => (b.rem - a.rem) || (a.i - b.i)).forEach(x => { if (short > 0) { x.fl += 1; short--; } });
+  if (parts.some(x => !Number.isFinite(x.fl) || x.fl < 0)) { out.reason = 'negative'; return out; }
+  parts.forEach(x => { out.byProduct[x.id] = x.fl / 100; });
+  const acc = parts.reduce((s, x) => s + x.fl, 0) / 100;
   out.sum = acc;
   (products || []).forEach(p => { const v = out.byProduct[p.id]; if (v) out.byOrder[p.orderKey] = Math.round(((out.byOrder[p.orderKey] || 0) + v) * 100) / 100; });
   out.ok = Math.abs(acc - total) < 0.005;
   if (!out.ok) out.reason = 'summismatch';
   return out;
 }
-// R3 CI 반영 총액 = 프리즈 청구_해운비_CNY(있으면) · 없으면 R2 실시간 값. 프리즈 ≠ 실시간이면 mismatch(§8 경고 · 차단 아님).
+// [T-0030 3판 F4] 청구_해운비_CNY 저장값 판독 — 유한한 숫자(0 포함) = has · 필드 없음/빈 값 = 미저장 · 그 밖 = bad(계산 불가).
+function lclV2FrozenSea(f) {
+  const v = (f || {})['청구_해운비_CNY'];
+  if (v === undefined || v === null || String(v).trim() === '') return { has: false, val: 0, bad: false };
+  const n = Number(v);
+  if (!Number.isFinite(n)) return { has: false, val: 0, bad: true };
+  return { has: true, val: Math.round(n * 100) / 100, bad: false };
+}
+// R3 CI 반영 총액 = 프리즈 청구_해운비_CNY(유한한 숫자면 0 포함 · 3판 F4) · 없거나 빈 값이면 R2 실시간 값. 프리즈 ≠ 실시간이면 mismatch(§8 경고 · 차단 아님).
 function lclV2FreightTotal() {
   const f = (state.shipment && state.shipment.fields) || {};
   const rcu = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
   const ruk = parseFloat((document.getElementById('rateUsdKrw') || {}).value) || 0;
   const live = calcSeaFreightKRW(getTotalCbm(), getSeaShipDate(), ruk, getTotalKg(), rcu);
   const liveCny = (live && live.lclV2 && !live.error) ? live.cny : 0;
-  const frozen = Math.round((parseFloat(f['청구_해운비_CNY']) || 0) * 100) / 100;
-  const total = frozen > 0 ? frozen : liveCny;
-  return { total, source: frozen > 0 ? 'frozen' : 'live', frozen, live: liveCny, liveInfo: live,
-           mismatch: frozen > 0 && liveCny > 0 && Math.abs(frozen - liveCny) >= 0.005 };
+  const fz = lclV2FrozenSea(f);
+  const frozen = fz.has ? fz.val : 0;
+  const total = fz.has ? frozen : liveCny;
+  return { total, source: fz.has ? 'frozen' : 'live', frozen, live: liveCny, liveInfo: live, bad: fz.bad,
+           mismatch: fz.has && liveCny > 0 && Math.abs(frozen - liveCny) >= 0.005 };
 }
 // 현재 사서함 상태로 R3+R4 한 번에. 새 방식이 아니면 null.
 function lclV2Compute() {
@@ -4920,7 +4938,11 @@ function lclV2Compute() {
     const f = p.fields || {};
     return { id: p.id, orderKey: groupKeyOf(f['상품ID']), qty: parseInt(f['수량'], 10) || 0, boxNos: parseBoxNumbers(f['박스번호'] || '') };
   });
-  const alloc = lclV2AllocateCore(prods, state.boxes || {}, ft.total);
+  let alloc = lclV2AllocateCore(prods, state.boxes || {}, ft.total);
+  // [3판 J] CBM · kg · 환율(CNY→USD)이 유한한 수가 아니거나 저장값 판독 불가 = 계산 불가 · [3판 F4] 실시간 총액 0 = 계산 불가(프리즈 0 은 정상)
+  const _inf = x => Math.abs(parseFloat(x)) === Infinity;
+  if (ft.bad || _inf(getTotalCbm()) || _inf(getTotalKg()) || _inf((document.getElementById('rateCnyUsd') || {}).value)) alloc = { ok: false, total: ft.total, byProduct: {}, byOrder: {}, sum: 0, reason: 'nonfinite', weightSum: alloc.weightSum };
+  else if (ft.source !== 'frozen' && !(ft.total > 0)) alloc = Object.assign(alloc, { ok: false, reason: 'nototal' });
   return { ft, alloc };
 }
 // R7 — 새 방식 최종 IP 차단 사유(1차는 경고만). _publishGateReason 밖(다운로드 함수)에서 사용.
@@ -4933,7 +4955,7 @@ function lclV2GateIssues(cmp) {
   const rg = lclV2RateGroup(getSeaShipDate());
   if (!rg.ok) issues.push(_lclT('lcl.gate_shipday', { date: getSeaShipDate() || '—', why: rg.name }));
   const rcu = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
-  if (!Object.keys(state.boxes || {}).length || !(rcu > 0) || !(c.ft.total > 0)) issues.push(_lclT('lcl.gate_nocalc', {}));
+  if (!Object.keys(state.boxes || {}).length || !(rcu > 0) || !Number.isFinite(rcu) || c.alloc.reason === 'nonfinite' || (c.ft.source !== 'frozen' && !(c.ft.total > 0))) issues.push(_lclT('lcl.gate_nocalc', {}));   // [3판 F4 · J] 프리즈 0 = 정상 · 비유한 = 계산 불가
   else if (!c.alloc.ok) issues.push(_lclT('lcl.gate_sum', { sum: c.alloc.sum.toFixed(2), total: c.ft.total.toFixed(2) }));
   return issues;
 }
@@ -4951,6 +4973,15 @@ function _lclSeaInfoHtml(sea, cbm, kg) {
 // i18n 치환 — t(key) 결과의 {이름} 을 값으로.
 function _lclT(key, vars) {
   return String(t(key)).replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] != null) ? String(vars[k]) : m);
+}
+// [T-0030 3판 F3] 새 방식 프리즈 호출부 공통 확인 — 청구_해운비_CNY 에 숫자(0 포함)가 이미 있는데 프리즈 표식(청구_BL_CNY>0)이 없으면
+//   자동 저장 보류(기존 해운비 덮어쓰기 방지) → 보류 사유 문구 반환. 새 방식이 아니거나 해당 없음 = ''(호출부는 기존 그대로 진행).
+function lclV2FreezeHold(shipFields) {
+  const f = shipFields || ((state && state.shipment && state.shipment.fields) || {});
+  if (!lclV2Active(f)) return '';
+  const fz = lclV2FrozenSea(f);
+  if (!fz.has || parseFloat(f['청구_BL_CNY']) > 0) return '';
+  return _lclT('lcl.freeze_hold', { sea: fz.val.toFixed(2) });
 }
 // R8 — saveFrozenCnyCharges 반환값 확인(새 방식에서만). 저장 실패·보류면 경고 토스트.
 function _lclV2CheckFreeze(res) {
@@ -9241,7 +9272,7 @@ async function handleBlCoFileUpload(kind, fileInput) {
     // [v3.2.163] ★BL∧CO 둘 다 업로드된 순간 = 확정 IP 자동등록(BL번호·선적항·특혜세율 반영). 다운로드 없이 최종IP파일에 등록.
     try { await _autoRegisterFinalIp(); } catch (e) { console.warn('[확정 IP 자동등록]', e && e.message); }
     // [v3.2.204] 트리거 — BL업로드=트리거1(5필드 프리즈, 이미 있으면 스킵) / CO업로드=트리거2(CO 갱신+알리코인 재계산). 계산 코어 불변.
-    try { if (typeof lclV2Pending === 'function' && lclV2Pending()) _lclV2CheckFreeze({ skip: _lclT('lcl.pend_freeze', {}) }); else await saveFrozenCnyCharges(kind === 'co' ? { trigger: 'co', withCo: true } : { trigger: 'bl' }); } catch (e) { console.warn('[트리거 CNY 저장]', e && e.message); }   // [ecom-v0.30 2판 D15] 선적일 빈 무역 사서함 = 프리즈 보류
+    try { const _hold = (typeof lclV2FreezeHold === 'function') ? lclV2FreezeHold() : ''; if (typeof lclV2Pending === 'function' && lclV2Pending()) _lclV2CheckFreeze({ skip: _lclT('lcl.pend_freeze', {}) }); else if (_hold) _lclV2CheckFreeze({ skip: _hold }); else await saveFrozenCnyCharges(kind === 'co' ? { trigger: 'co', withCo: true } : { trigger: 'bl' }); } catch (e) { console.warn('[트리거 CNY 저장]', e && e.message); }   // [3판 F3] 부분 프리즈 = 보류   // [ecom-v0.30 2판 D15] 선적일 빈 무역 사서함 = 프리즈 보류
   } catch (e) {
     console.error(e);
     if (typeof toastError === 'function') toastError('첨부 업로드 실패: ' + (e.message || e));
@@ -14934,7 +14965,7 @@ async function downloadInvoiceExcel(opts) {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toastSuccess('인보이스/패킹 엑셀 다운로드 완료', { title: '📊 발행', subtitle: a.download });
     // [v3.2.204] 트리거1 — 1차 IP 다운 시 CNY 5필드+환율 프리즈(최초 1회 고정, 이미 있으면 스킵). 계산 코어 불변.
-    if (stage === 'first') { try { if (_lclPend) _lclV2CheckFreeze({ skip: _lclT('lcl.pend_freeze', {}) }); else await saveFrozenCnyCharges({ trigger: 'ip1' }); } catch (e) { console.warn('[트리거1 IP1 CNY]', e && e.message); } }   // [2판 D15] 선적일 빈 사서함 = 프리즈 보류
+    if (stage === 'first') { try { const _hold = lclV2FreezeHold(); if (_lclPend) _lclV2CheckFreeze({ skip: _lclT('lcl.pend_freeze', {}) }); else if (_hold) _lclV2CheckFreeze({ skip: _hold }); else await saveFrozenCnyCharges({ trigger: 'ip1' }); } catch (e) { console.warn('[트리거1 IP1 CNY]', e && e.message); } }   // [2판 D15] 선적일 빈 사서함 = 프리즈 보류
     // [v3.2.173] ★거짓성공 근절 — 다운로드는 됐어도 관세사 대시보드 저장(_snapshotIp)이 실패면 명확히 경고.
     if (_snap && !_snap.ok) toastWarn && toastWarn('⚠ 단, 관세사 대시보드 저장 실패 — ' + (_snap.error || '저장 오류') + '\n(사진 많은 사서함은 5MB 초과 — 압축 후에도 초과면 사진 축소 필요)', { title: '⚠ 대시보드 미저장', duration: 9000 });
   } catch (e) {
@@ -20358,8 +20389,8 @@ const FULLVIEW_COLUMNS = [
   { key: 'kgSum',     label: '12.전체무게',    get: r => Number(r.kgSum || 0).toFixed(1) },
   { key: 'cbmPer',    label: '13.박스당CBM',   get: r => r.boxCount ? (r.cbmSum / r.boxCount).toFixed(4) : '' },
   { key: 'kgPer',     label: '14.박스당무게',  get: r => r.boxCount ? (r.kgSum / r.boxCount).toFixed(2) : '' },
-  { key: 'seaCost',   label: '15.해운비원가',  get: r => r.해운비원가 ? Number(r.해운비원가).toLocaleString() : '' },
-  { key: 'seaRev',    label: '16.해운비매출',  get: r => r.해운비매출 ? Number(r.해운비매출).toLocaleString() : '' },
+  { key: 'seaCost',   label: '15.해운비원가',  get: r => r.해운비확인 ? '사서함에서 확인' : (r.해운비원가 ? Number(r.해운비원가).toLocaleString() : '') },   // [T-0030 3판 F2]
+  { key: 'seaRev',    label: '16.해운비매출',  get: r => r.해운비확인 ? '사서함에서 확인' : (r.해운비매출 ? Number(r.해운비매출).toLocaleString() : '') },
   { key: 'customsWh', label: '17.세관창고료',  get: r => (r.세관창고료 === '' || r.세관창고료 == null) ? '' : Number(r.세관창고료).toLocaleString() },
   { key: 'method',    label: '18.배송방법',    get: r => r.배송방법 || r.shipMethod || '' },
   { key: 'phone',     label: '19.수취인연락처', get: r => r.수취인연락처 || '' },
@@ -20467,10 +20498,13 @@ async function fetchDispatchMaster(daysOverride) {
     const _dispQ = _dispCore.concat(['배차방식', '배송유형']).map(n => '&fields[]=' + encodeURIComponent(n)).join('');   // [v3.2.226] 배송유형(고객) 추가
     const _dispQCore = _dispCore.map(n => '&fields[]=' + encodeURIComponent(n)).join('');
     const baseQ = ['사서함','고객사서함','상태','BL번호','테이프색상','메모','수취_주소','수취_전화','도착지주소','통관트랙'].map(n => '&fields[]=' + encodeURIComponent(n)).join('');   // [ecommerce] 통관트랙 = 무역 혼입 차단 판정용
+    // [T-0030 3판 F2] 컷오버 켜짐만 — 해운비 판정 문맥(그 사서함의 선적일 · 통관트랙)을 함께 조회. 컷오버 '' = 기준 조회 그대로.
+    //   이 필드까지 실패하면 마지막에 기준 조회(u)로 받고 _lclNoCtx 표시 → 해운비 칸 = 「사서함에서 확인」(틀린 금액 0).
+    const _lclQ = LCL_V2_CUTOVER ? ['선적일', '통관트랙'].map(n => '&fields[]=' + encodeURIComponent(n)).filter(q => !baseQ.includes(q)).join('') : '';
     const ships = (await Promise.all(chunkArray(shipIds, 50).map(async chunk => {
       const f = `OR(${chunk.map(id => `RECORD_ID()='${id}'`).join(',')})`;
       const u = `/${TABLES.Shipments}?filterByFormula=${encodeURIComponent(f)}` + baseQ;
-      try { return await apiPaged(u + _dispQ); } catch (e) { try { return await apiPaged(u + _dispQCore); } catch (e2) { return await apiPaged(u); } }   // [v3.2.193] 배차방식 미생성 시 core만(422 폴백)
+      try { return await apiPaged(u + _lclQ + _dispQ); } catch (e) { try { return await apiPaged(u + _lclQ + _dispQCore); } catch (e2) { try { return await apiPaged(u + _lclQ); } catch (e3) { if (!_lclQ) throw e3; return (await apiPaged(u)).map(r => Object.assign(r, { _lclNoCtx: true })); } } }   // [v3.2.193] 배차방식 미생성 시 core만(422 폴백)
     }))).flat().filter(s => isEcommerce(s));   // [ecommerce] ★무역 혼입 차단 — 전자상거래만(통관트랙 빈값=무역 제외)
     // (3) Boxes per ship + rows
     const rows = await Promise.all(ships.map(async s => {
@@ -20496,11 +20530,15 @@ async function fetchDispatchMaster(daysOverride) {
       const taxpayer = cust.회사명 || cust.회원명 || memberByShip[s.id] || '고객';   // [v3.2.191] ★수입자 전부 실화주 통일 — 대행종류 무관 납세의무자=고객(구매/미상→테일코리아 하드코딩 폐지)
       // [v3.2.164] 해운비 원가/매출(계산) — calcSeaFreightKRW(cbm·선적일·환율). ★환율은 현재 로드된 #rateUsdKrw(없으면 0 → KRW 0). 저장 안 함.
       const _rateUK = parseFloat((document.getElementById('rateUsdKrw') || {}).value) || 0;
-      let _seaCost = 0, _seaRev = 0;
-      try { const _sea = calcSeaFreightKRW(cbmSum, shipDateMap[s.id], _rateUK, undefined, undefined, { '선적일': shipDateMap[s.id] || '' }); _seaCost = Math.round((_sea.costUsd || 0) * _rateUK); _seaRev = _sea.krw || 0; } catch (e) {}
+      let _seaCost = 0, _seaRev = 0, _seaChk = false;
+      // [T-0030 3판 F2] 판정 · 계산 = 그 사서함의 Shipments.선적일 · 통관트랙 · 무게(현재 로드된 사서함 아님). 컷오버 '' = 기준 호출 인수 그대로.
+      //   새 방식 = 그 사서함 선적일 · kgSum 으로 CNY 요율. 선적일 빈 무역 사서함(대체 날짜 = 주문일 · 컷오버 이후 또는 없음) · 문맥 조회 실패 = 금액 대신 「사서함에서 확인」.
+      const _lclCtx = LCL_V2_CUTOVER ? { '선적일': sf['선적일'] || '', '통관트랙': sf['통관트랙'] || '' } : undefined;
+      if (_lclCtx && (s._lclNoCtx || lclV2Pending(_lclCtx, shipDateMap[s.id] || ''))) _seaChk = true;
+      else try { const _lclOn = !!_lclCtx && lclV2Active(_lclCtx); const _sea = _lclOn ? calcSeaFreightKRW(cbmSum, _lclCtx['선적일'], _rateUK, kgSum, undefined, _lclCtx) : calcSeaFreightKRW(cbmSum, shipDateMap[s.id], _rateUK, undefined, undefined, _lclCtx); _seaCost = Math.round((_sea.costUsd || 0) * _rateUK); _seaRev = _sea.krw || 0; } catch (e) {}
       return {
         id: s.id, mailbox, 고객사서함: sf['고객사서함'] || base, shipDate: shipDateMap[s.id] || '',
-        해운비원가: _seaCost, 해운비매출: _seaRev, 세관창고료: sf['세관창고료'] ?? '',   // [v3.2.164] 전체보기 15·16·17
+        해운비원가: _seaCost, 해운비매출: _seaRev, 해운비확인: _seaChk, 세관창고료: sf['세관창고료'] ?? '',   // [v3.2.164] 전체보기 15·16·17 · [3판 F2] 해운비확인 = 금액 대신 「사서함에서 확인」
         member: cust.회원명 || memberByShip[s.id] || '', 납세의무자: taxpayer,
         포워딩사: sf['포워딩사'] || '', 한국포워딩사: sf['한국포워딩사'] || '', blNo: String(sf['BL번호'] || '').trim(),
         테이프색상: sf['테이프색상'] || '', 마킹: _transportMarkRange(base, seqs),
