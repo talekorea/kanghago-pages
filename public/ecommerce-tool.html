@@ -2832,7 +2832,11 @@ const I18N = {
     'lcl.inv_sea': "{name} ¥{unit}/CBM · 청구CBM {bill}",
     'lcl.auto_status': "✓ 자동(LCL) — 청구CBM {bill} ({name} ¥{unit}/CBM) → 알리코인 ¥{cny}",
     'lcl.batch_freeze_warn': "1차 배치 — 프리즈 안 된 사서함 {n}건: {list}",
-    'lcl.ecom_block': "LCL 새 방식 무역 사서함 — CI 는 직원 도구(staff-tool)에서 발행하세요(전자상거래 도구 CI 는 해운비 미반영)",
+    'lcl.ecom_block': "LCL 새 방식 무역 사서함 — CI 는 직원 도구(staff-tool)에서 발행하세요(전자상거래 도구는 새 방식 CI 를 발행하지 않음)",
+    'lcl.gate_need_shipdate': "선적일을 입력하세요 — Shipments.선적일 빈 값(대체 날짜 {alt}) · 컷오버 뒤 무역 사서함은 최종 · CO발급용 2차 IP 차단 · 프리즈 보류",
+    'lcl.pend_freeze': "선적일 빈 값 — 선적일을 입력한 뒤 다시 발행하세요",
+    'lcl.tariff_label': "과세가격 (CI 신고가 KRW · 해운비 포함)",
+    'lcl.tariff_note': "(해운비 ¥{total} 을 제품 신고단가에 배분 · 정액 운임 가산 없음)",
     'oh.desc.parcel': '9,000원/박스',
     'oh.co.title': '🏷️ 원산지증명(CO) 50,000원/FTA그룹',
     'oh.co.desc': '상품 표 적용FTA 컬럼에서 한중/없음 선택. 적용된 FTA 그룹마다 50,000원 청구 + 해당 그룹 제품에 분배.',
@@ -3453,7 +3457,11 @@ const I18N = {
     'lcl.inv_sea': "{name} ¥{unit}/CBM · 计费CBM {bill}",
     'lcl.auto_status': "✓ 自动(LCL) — 计费CBM {bill} ({name} ¥{unit}/CBM) → 阿里币 ¥{cny}",
     'lcl.batch_freeze_warn': "第1次批量 — 未冻结的邮箱 {n}个: {list}",
-    'lcl.ecom_block': "LCL新方式贸易邮箱 — 请在员工工具(staff-tool)开具 CI(跨境电商工具 CI 未含海运费)",
+    'lcl.ecom_block': "LCL新方式贸易邮箱 — 请在员工工具(staff-tool)开具 CI(跨境电商工具不开具新方式 CI)",
+    'lcl.gate_need_shipdate': "请输入装船日 — Shipments.装船日为空(替代日期 {alt}) · 切换日后的贸易邮箱禁止最终IP · CO用第2次IP · 暂不冻结",
+    'lcl.pend_freeze': "装船日为空 — 请输入装船日后重新开具",
+    'lcl.tariff_label': "完税价格 (CI 申报价 KRW · 含海运费)",
+    'lcl.tariff_note': "(海运费 ¥{total} 已分摊到产品申报单价 · 不再加固定运费)",
     'oh.desc.parcel': '9,000韩元/箱',
     'oh.co.title': '🏷️ 原产地证明(CO) 50,000韩元/FTA组',
     'oh.co.desc': '在产品表"适用FTA"列选择中韩/亚太/不适用。每个适用FTA组收取 50,000韩元 + 在该组产品间分摊。',
@@ -4074,7 +4082,11 @@ const I18N = {
     'lcl.inv_sea': "{name} ¥{unit}/CBM · billable CBM {bill}",
     'lcl.auto_status': "✓ Auto (LCL) — billable CBM {bill} ({name} ¥{unit}/CBM) → Alicoin ¥{cny}",
     'lcl.batch_freeze_warn': "1st batch — {n} mailbox(es) not frozen: {list}",
-    'lcl.ecom_block': "LCL new-method trade mailbox — issue the CI in the staff tool (staff-tool); this e-commerce tool CI has no sea freight",
+    'lcl.ecom_block': "LCL new-method trade mailbox — issue the CI in the staff tool (staff-tool); this e-commerce tool does not issue new-method CIs",
+    'lcl.gate_need_shipdate': "Enter the ship date — Shipments.선적일 is empty (fallback date {alt}) · after cutover, final IP and CO 2nd IP are blocked and freeze is on hold",
+    'lcl.pend_freeze': "ship date is empty — enter it and issue again",
+    'lcl.tariff_label': "Customs value (CI declared value KRW · sea freight included)",
+    'lcl.tariff_note': "(sea freight ¥{total} allocated into product declared unit prices · no flat freight added)",
     'oh.desc.parcel': '9,000 KRW/box',
     'oh.co.title': '🏷️ Certificate of Origin (CO) 50,000 KRW per FTA group',
     'oh.co.desc': 'Select KC/APTA/None in the Applied FTA column. 50,000 KRW per FTA group used, distributed among products in that group.',
@@ -4802,6 +4814,16 @@ function lclV2Active(shipFields) {
   if (String(f['통관트랙'] || '').trim() === '전자상거래') return false;
   const sj = String(f['선적일'] || '').trim().slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(sj) && sj >= LCL_V2_CUTOVER;
+}
+// [T-0030 2판 D15] 컷오버 켜짐 · 무역 트랙 · Shipments.선적일 빈 값(또는 날짜로 못 읽음) → 대체 날짜 getShipDate() 가 컷오버 이전이면 기존 방식(false).
+//   그 밖(대체 날짜 ≥ 컷오버 · 날짜 전혀 없음) = true → 최종 · CO발급용 2차 IP 차단 + 선적일 입력 안내 · 프리즈 보류. 컷오버 '' = 항상 false.
+function lclV2Pending(shipFields) {
+  if (!LCL_V2_CUTOVER) return false;
+  const f = shipFields || ((typeof state !== 'undefined' && state && state.shipment && state.shipment.fields) || {});
+  if (String(f['통관트랙'] || '').trim() === '전자상거래') return false;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(f['선적일'] || '').trim().slice(0, 10))) return false;   // 선적일 있음 → lclV2Active 가 판정
+  const alt = String((typeof getShipDate === 'function' ? getShipDate() : '') || '').trim().slice(0, 10);
+  return !(/^\d{4}-\d{2}-\d{2}$/.test(alt) && alt < LCL_V2_CUTOVER);
 }
 // 요일 → 요율. 토·일·빈 값·판독 불가 = ok:false(계산 안 함 · R2).
 function lclV2RateGroup(shipDateStr) {
@@ -9219,7 +9241,7 @@ async function handleBlCoFileUpload(kind, fileInput) {
     // [v3.2.163] ★BL∧CO 둘 다 업로드된 순간 = 확정 IP 자동등록(BL번호·선적항·특혜세율 반영). 다운로드 없이 최종IP파일에 등록.
     try { await _autoRegisterFinalIp(); } catch (e) { console.warn('[확정 IP 자동등록]', e && e.message); }
     // [v3.2.204] 트리거 — BL업로드=트리거1(5필드 프리즈, 이미 있으면 스킵) / CO업로드=트리거2(CO 갱신+알리코인 재계산). 계산 코어 불변.
-    try { await saveFrozenCnyCharges(kind === 'co' ? { trigger: 'co', withCo: true } : { trigger: 'bl' }); } catch (e) { console.warn('[트리거 CNY 저장]', e && e.message); }
+    try { if (typeof lclV2Pending === 'function' && lclV2Pending()) _lclV2CheckFreeze({ skip: _lclT('lcl.pend_freeze', {}) }); else await saveFrozenCnyCharges(kind === 'co' ? { trigger: 'co', withCo: true } : { trigger: 'bl' }); } catch (e) { console.warn('[트리거 CNY 저장]', e && e.message); }   // [ecom-v0.30 2판 D15] 선적일 빈 무역 사서함 = 프리즈 보류
   } catch (e) {
     console.error(e);
     if (typeof toastError === 'function') toastError('첨부 업로드 실패: ' + (e.message || e));
@@ -12549,7 +12571,9 @@ function renderTariffEstimate() {
       <!-- v3.2.13 #60: 관부가세 = FTA 절세 안내 패널 (결제금액 미포함 — 관세사 직접 청구) -->
       <div style="margin-top:12px; padding:12px 16px; background:#FAF6EE; border-left:4px solid #C9973A; border-radius:6px; font-size:12px; color:#666;">
         <div style="font-weight:700; color:var(--navy); margin-bottom:6px;">💡 FTA 절세 안내 (결제금액 미포함 — 관세사 직접 청구)</div>
-        <div>· 과세가격 (신고가 + 해상운임 KRW): <strong>₩${Math.round(current.totalInvoiceKrw).toLocaleString()}</strong> <span style="font-size:10px; color:#888;">(해상운임 CIF 안분 포함 — 신고가 불변)</span></div>
+        ${(() => { const _lcT = (typeof lclV2Compute === 'function') ? lclV2Compute() : null;   /* [T-0030 2판 R6] 새 방식 = CI 신고가(해운비 녹음) 그대로 과세 · 정액 운임 없음 */
+          return _lcT ? `<div>· ${_lclT('lcl.tariff_label', {})}: <strong>₩${Math.round(current.totalInvoiceKrw).toLocaleString()}</strong> <span style="font-size:10px; color:#888;">${_lclT('lcl.tariff_note', { total: _lcT.ft.total.toFixed(2) })}</span></div>`
+            : `<div>· 과세가격 (신고가 + 해상운임 KRW): <strong>₩${Math.round(current.totalInvoiceKrw).toLocaleString()}</strong> <span style="font-size:10px; color:#888;">(해상운임 CIF 안분 포함 — 신고가 불변)</span></div>`; })()}
         <div>· 관세 (예상): ₩${Math.round(current.totalDutyKrw).toLocaleString()}</div>
         <div>· 수입 부가세 (예상): ₩${Math.round(current.totalVatKrw).toLocaleString()}</div>
         <div style="margin-top:4px; color:#0a7b40;">→ 관세사가 화주에게 별도 청구. 강하고 청구서엔 미포함.</div>
@@ -14225,7 +14249,12 @@ function buildOrderUnits() {
 //   CI/PL은 input.usd(이 식으로 채워짐) → getProductUnitUsd로 추종. 관세도 동일 식 사용(단일 소스).
 function productDeclUnitCny(p, unit) {
   const baseCny = parseFloat((p && p.fields || {})['단가CNY']) || 0;
-  return baseCny + ((unit && unit.부대per단가CNY) || 0);
+  const _decl = baseCny + ((unit && unit.부대per단가CNY) || 0);
+  // [T-0030 2판 R6·D14] 새 방식만 — 해운비 제품 몫(R3 총액 · R4 배분) ÷ 수량을 더한다. CI · PL(input.usd)과 §8 과세가격이 이 한 곳을 같이 쓴다(이중 가산 0).
+  const _lc = (typeof lclV2Compute === 'function') ? lclV2Compute() : null;
+  if (!_lc) return _decl;
+  const _q = parseInt(((p && p.fields) || {})['수량'], 10) || 0;
+  return _q > 0 ? _decl + (_lc.alloc.byProduct[p.id] || 0) / _q : _decl;
 }
 
 // 주문 단위 신고 단가 USD (주문 평균 — §8 미리보기·라인 합계용. ★제품별은 productDeclUnitCny)
@@ -14266,6 +14295,7 @@ function getProductUnitUsd(p) {
 //   ★calcSeaFreightKRW(§6/§9 고객 청구 해운비)와 의도적으로 별개 — 단일소스로 합치지 말 것.
 //   (추후 §8 과세표준 가산 검토 시 이 함수 재사용 전제 — 현재 IV만 사용)
 function calcIvFreightUSD(cbm, kg) {
+  if (typeof lclV2Active === 'function' && lclV2Active()) return 0;   // [T-0030 2판 R6·D14] 새 방식 = 해운비가 신고단가에 녹음 → 정액 운임 가산 0
   var c = parseFloat(cbm) || 0, w = parseFloat(kg) || 0;
   return (c >= 10 || w >= 1000) ? 30 : ((c > 5 || w >= 500) ? 20 : 10);
 }
@@ -14366,6 +14396,13 @@ async function downloadInvoiceExcel(opts) {
 
   // [ecom-v0.30 T-0030 R10] LCL 새 방식 무역 사서함 — 이 도구의 CI 는 해운비 미반영이라 staff 와 다른 CI 가 나온다 → 1차·최종 모두 발행 차단(staff-tool 에서 발행).
   if (typeof lclV2Active === 'function' && lclV2Active()) miss.push(_lclT('lcl.ecom_block', {}));
+  // [ecom-v0.30 2판 D15] 컷오버 뒤 선적일 빈 무역 사서함 — staff 와 같이 최종 · CO발급용 2차 IP 차단 + 선적일 입력 안내 · 1차는 경고만(프리즈 보류).
+  const _lclPend = (typeof lclV2Pending === 'function') && lclV2Pending();
+  if (_lclPend) {
+    const _pm = _lclT('lcl.gate_need_shipdate', { alt: getShipDate() || '—' });
+    if (stage === 'final') miss.push(_pm);
+    else if (!_rb) toastWarn(_lclT('lcl.first_warn', { list: _pm }), { title: '🚢 LCL', duration: 10000 });
+  }
   if (miss.length) {
     if (_rb) return { skip: miss.join(', ') };   // [배치] 게이트 미충족 → 사유 반환(스킵)
     const gateLabel = (stage === 'first') ? '1차' : '최종';
@@ -14897,7 +14934,7 @@ async function downloadInvoiceExcel(opts) {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toastSuccess('인보이스/패킹 엑셀 다운로드 완료', { title: '📊 발행', subtitle: a.download });
     // [v3.2.204] 트리거1 — 1차 IP 다운 시 CNY 5필드+환율 프리즈(최초 1회 고정, 이미 있으면 스킵). 계산 코어 불변.
-    if (stage === 'first') { try { await saveFrozenCnyCharges({ trigger: 'ip1' }); } catch (e) { console.warn('[트리거1 IP1 CNY]', e && e.message); } }
+    if (stage === 'first') { try { if (_lclPend) _lclV2CheckFreeze({ skip: _lclT('lcl.pend_freeze', {}) }); else await saveFrozenCnyCharges({ trigger: 'ip1' }); } catch (e) { console.warn('[트리거1 IP1 CNY]', e && e.message); } }   // [2판 D15] 선적일 빈 사서함 = 프리즈 보류
     // [v3.2.173] ★거짓성공 근절 — 다운로드는 됐어도 관세사 대시보드 저장(_snapshotIp)이 실패면 명확히 경고.
     if (_snap && !_snap.ok) toastWarn && toastWarn('⚠ 단, 관세사 대시보드 저장 실패 — ' + (_snap.error || '저장 오류') + '\n(사진 많은 사서함은 5MB 초과 — 압축 후에도 초과면 사진 축소 필요)', { title: '⚠ 대시보드 미저장', duration: 9000 });
   } catch (e) {
