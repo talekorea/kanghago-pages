@@ -2836,6 +2836,7 @@ const I18N = {
     'lcl.gate_need_shipdate': "선적일을 입력하세요 — Shipments.선적일 빈 값(대체 날짜 {alt}) · 컷오버 뒤 무역 사서함은 최종 · CO발급용 2차 IP 차단 · 프리즈 보류",
     'lcl.pend_freeze': "선적일 빈 값 — 선적일을 입력한 뒤 다시 발행하세요",
     'lcl.freeze_hold': "청구_해운비_CNY 저장값 ¥{sea} 이 있는데 프리즈 표식(청구_BL_CNY)이 없음 — 기존 값 덮어쓰기 방지로 청구 CNY 자동 저장 보류(관리자 확인 필요)",
+    'lcl.freeze_nonfinite': "박스 CBM · kg 판독 불가(숫자 아님 · 음수) — 해운비 계산 불가로 청구 CNY 자동 저장 보류(박스 값 확인 필요)",
     'lcl.tariff_label': "과세가격 (CI 신고가 KRW · 해운비 포함)",
     'lcl.tariff_note': "(해운비 ¥{total} 을 제품 신고단가에 배분 · 정액 운임 가산 없음)",
     'oh.desc.parcel': '9,000원/박스',
@@ -3462,6 +3463,7 @@ const I18N = {
     'lcl.gate_need_shipdate': "请输入装船日 — Shipments.装船日为空(替代日期 {alt}) · 切换日后的贸易邮箱禁止最终IP · CO用第2次IP · 暂不冻结",
     'lcl.pend_freeze': "装船日为空 — 请输入装船日后重新开具",
     'lcl.freeze_hold': "已有 청구_해운비_CNY 保存值 ¥{sea} 但无冻结标记(청구_BL_CNY) — 为防止覆盖原值,暂停自动保存收费 CNY(需管理员确认)",
+    'lcl.freeze_nonfinite': "箱子 CBM · kg 无法识别(非数字 · 负数) — 海运费无法计算,暂停自动保存收费 CNY(请检查箱子数值)",
     'lcl.tariff_label': "完税价格 (CI 申报价 KRW · 含海运费)",
     'lcl.tariff_note': "(海运费 ¥{total} 已分摊到产品申报单价 · 不再加固定运费)",
     'oh.desc.parcel': '9,000韩元/箱',
@@ -4088,6 +4090,7 @@ const I18N = {
     'lcl.gate_need_shipdate': "Enter the ship date — Shipments.선적일 is empty (fallback date {alt}) · after cutover, final IP and CO 2nd IP are blocked and freeze is on hold",
     'lcl.pend_freeze': "ship date is empty — enter it and issue again",
     'lcl.freeze_hold': "a saved sea freight (청구_해운비_CNY ¥{sea}) exists but the freeze marker (청구_BL_CNY) is missing — billing CNY auto-save held to avoid overwriting it (admin check needed)",
+    'lcl.freeze_nonfinite': "box CBM · kg unreadable (not a number · negative) — sea freight cannot be calculated, billing CNY auto-save held (check box values)",
     'lcl.tariff_label': "Customs value (CI declared value KRW · sea freight included)",
     'lcl.tariff_note': "(sea freight ¥{total} allocated into product declared unit prices · no flat freight added)",
     'oh.desc.parcel': '9,000 KRW/box',
@@ -4851,8 +4854,8 @@ function lclV2BillCbm(totalCbm, totalKg) {
 }
 // 해운비CNY = 청구CBM ≤ 0.3 → ¥200 / 아니면 청구CBM × 요율(소수 2자리). 박스 없음(청구CBM 0) = 계산 불가.
 function lclV2SeaCny(totalCbm, totalKg, shipDateStr) {
-  // [T-0030 3판 J] CBM · kg 가 유한한 수가 아니면(Infinity · 1e400) 계산 불가.
-  if (Math.abs(parseFloat(totalCbm)) === Infinity || Math.abs(parseFloat(totalKg)) === Infinity) return { ok: false, cny: 0, billCbm: 0, rate: { name: 'CBM·kg 판독 불가', unit: 0, currency: 'CNY', ok: false, reason: 'nonfinite' }, reason: 'nonfinite' };
+  // [T-0030 3판 J · 4판 J] CBM · kg 가 빈 값 · 0 · 유한한 양수가 아니면(NaN · 판독 불가 문자 · 음수 · Infinity · 1e400) 계산 불가.
+  if (lclV2BadNum(totalCbm) || lclV2BadNum(totalKg)) return { ok: false, cny: 0, billCbm: 0, rate: { name: 'CBM·kg 판독 불가', unit: 0, currency: 'CNY', ok: false, reason: 'nonfinite' }, reason: 'nonfinite' };
   const rate = lclV2RateGroup(shipDateStr);
   const billCbm = lclV2BillCbm(totalCbm, totalKg);
   if (!rate.ok) return { ok: false, cny: 0, billCbm, rate, reason: rate.reason };
@@ -4917,6 +4920,16 @@ function lclV2FrozenSea(f) {
   if (!Number.isFinite(n)) return { has: false, val: 0, bad: true };
   return { has: true, val: Math.round(n * 100) / 100, bad: false };
 }
+// [T-0030 4판 J] 새 방식 CBM · kg 판독. 허용 = 빈 값(없음 · null · 공백) · 숫자 0 · 유한한 양수 → false. 그 밖(NaN · 판독 불가 문자 · 음수 · 비유한) → true.
+function lclV2BadNum(v) {
+  if (v === undefined || v === null || String(v).trim() === '') return false;
+  const n = Number(v);
+  return !(Number.isFinite(n) && n >= 0);
+}
+// [T-0030 4판 J] 박스 원시 CBM · kg 검사 — 합계 함수(getTotalCbm · getTotalKg)가 parseFloat(...)||0 으로 NaN · 문자를 0 으로 지우기 전에 state.boxes 를 직접 본다.
+function lclV2BoxesBad() {
+  return Object.values(state.boxes || {}).some(b => lclV2BadNum((b || {}).cbm) || lclV2BadNum((b || {}).kg));
+}
 // R3 CI 반영 총액 = 프리즈 청구_해운비_CNY(유한한 숫자면 0 포함 · 3판 F4) · 없거나 빈 값이면 R2 실시간 값. 프리즈 ≠ 실시간이면 mismatch(§8 경고 · 차단 아님).
 function lclV2FreightTotal() {
   const f = (state.shipment && state.shipment.fields) || {};
@@ -4940,8 +4953,9 @@ function lclV2Compute() {
   });
   let alloc = lclV2AllocateCore(prods, state.boxes || {}, ft.total);
   // [3판 J] CBM · kg · 환율(CNY→USD)이 유한한 수가 아니거나 저장값 판독 불가 = 계산 불가 · [3판 F4] 실시간 총액 0 = 계산 불가(프리즈 0 은 정상)
+  //   [4판 J] 박스 원시 CBM · kg 판독 불가(NaN · 문자 · 음수 · 비유한) = 계산 불가(합계가 0 으로 지우기 전 검사 · 다른 축이 양수여도)
   const _inf = x => Math.abs(parseFloat(x)) === Infinity;
-  if (ft.bad || _inf(getTotalCbm()) || _inf(getTotalKg()) || _inf((document.getElementById('rateCnyUsd') || {}).value)) alloc = { ok: false, total: ft.total, byProduct: {}, byOrder: {}, sum: 0, reason: 'nonfinite', weightSum: alloc.weightSum };
+  if (ft.bad || lclV2BoxesBad() || _inf(getTotalCbm()) || _inf(getTotalKg()) || _inf((document.getElementById('rateCnyUsd') || {}).value)) alloc = { ok: false, total: ft.total, byProduct: {}, byOrder: {}, sum: 0, reason: 'nonfinite', weightSum: alloc.weightSum };
   else if (ft.source !== 'frozen' && !(ft.total > 0)) alloc = Object.assign(alloc, { ok: false, reason: 'nototal' });
   return { ft, alloc };
 }
@@ -4979,6 +4993,7 @@ function _lclT(key, vars) {
 function lclV2FreezeHold(shipFields) {
   const f = shipFields || ((state && state.shipment && state.shipment.fields) || {});
   if (!lclV2Active(f)) return '';
+  if (lclV2BoxesBad()) return _lclT('lcl.freeze_nonfinite', {});   // [4판 J] 박스 CBM · kg 판독 불가 = 계산 불가 → 프리즈 보류
   const fz = lclV2FrozenSea(f);
   if (!fz.has || parseFloat(f['청구_BL_CNY']) > 0) return '';
   return _lclT('lcl.freeze_hold', { sea: fz.val.toFixed(2) });
