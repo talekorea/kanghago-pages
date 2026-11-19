@@ -4809,7 +4809,7 @@ function calcSeaFreightKRW(totalCbm, shipDateStr, rateUsdKrw, totalKg, rateCnyUs
 // ========== [ecom-v0.30 = staff v3.2.256 T-0030 R10] LCL v2(무역 산식 복사본 — staff 와 같은 글자) — 해운비 CNY 요율 + CI 제품 단가 반영 ==========
 //   ★LCL_V2_CUTOVER = '' → 새 방식 꺼짐(전 출력 = v3.2.255 기준과 동일). 값(YYYY-MM-DD)은 배포 날 사장님이 정한다.
 //   새 방식 = 컷오버 설정 ∧ Shipments.선적일 ≥ 컷오버 ∧ 통관트랙 ≠ '전자상거래'(R1). 요금 개편과 CI 반영은 같은 조건으로 함께 켜진다.
-const LCL_V2_CUTOVER = '';
+const LCL_V2_CUTOVER = '2026-11-23';
 const LCL_V2_RATE_CNY = { '월수금': 550, '화목': 580 };   // CNY/CBM (D4) — 토·일 선적 없음(D6)
 const LCL_V2_MIN_CBM = 0.3;                                // 청구CBM ≤ 0.3 → 최소요금(D9)
 const LCL_V2_MIN_CNY = 200;                                // 최소요금 ¥200(요일 무관)
