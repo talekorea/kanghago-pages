@@ -3455,13 +3455,15 @@ function _lclT(key, vars) {
 }
 // [T-0030 3판 F3] 새 방식 프리즈 호출부 공통 확인 — 청구_해운비_CNY 에 숫자(0 포함)가 이미 있는데 프리즈 표식(청구_BL_CNY>0)이 없으면
 //   자동 저장 보류(기존 해운비 덮어쓰기 방지) → 보류 사유 문구 반환. 새 방식이 아니거나 해당 없음 = ''(호출부는 기존 그대로 진행).
-function lclV2FreezeHold(shipFields) {
+function lclV2FreezeHold(shipFields, opts) {
   const f = shipFields || ((state && state.shipment && state.shipment.fields) || {});
   if (!lclV2Active(f)) return '';
   if (lclV2BoxesBad()) return _lclT('lcl.freeze_nonfinite', {});   // [4판 J] 박스 CBM · kg 판독 불가 = 계산 불가 → 프리즈 보류
   const fz = lclV2FrozenSea(f);
-  // [v3.2.257 T-0048 2판] 신고가 배분 · 환산 오류 = 프리즈 보류(CO 절세 판정이 신고가를 읽음). 이미 프리즈(청구_BL_CNY>0)면 saveFrozenCnyCharges 가 덮지 않으므로 해당 없음.
+  // [v3.2.257 T-0048 2판] 신고가 배분 · 환산 오류 = 프리즈 보류(CO 절세 판정이 신고가를 읽음). 이미 프리즈(청구_BL_CNY>0)면 5필드는 saveFrozenCnyCharges 가 덮지 않음(CO 재저장은 아래 3판 F7).
   if (!(parseFloat(f['청구_BL_CNY']) > 0) && typeof t48GateIssues === 'function') { const _t48i = t48GateIssues(); if (_t48i.length) return '프리즈 보류 — ' + _t48i.join(' · '); }
+  // [v3.2.257 T-0048 3판 F7] 이미 프리즈여도 CO 업로드(withCo)는 청구_CO_CNY · 청구_알리코인_CNY 를 다시 저장한다 → 신고가 오류면 그 재저장도 보류(저장값 보존).
+  if (opts && opts.withCo && parseFloat(f['청구_BL_CNY']) > 0 && typeof t48GateIssues === 'function') { const _t48c = t48GateIssues(); if (_t48c.length) return 'CO · 알리코인 재저장 보류(저장값 유지) — ' + _t48c.join(' · '); }
   if (!fz.has || parseFloat(f['청구_BL_CNY']) > 0) return '';
   return _lclT('lcl.freeze_hold', { sea: fz.val.toFixed(2) });
 }
@@ -7937,7 +7939,7 @@ async function handleBlCoFileUpload(kind, fileInput) {
     // [v3.2.163] ★BL∧CO 둘 다 업로드된 순간 = 확정 IP 자동등록(BL번호·선적항·특혜세율 반영). 다운로드 없이 최종IP파일에 등록.
     try { await _autoRegisterFinalIp(); } catch (e) { console.warn('[확정 IP 자동등록]', e && e.message); }
     // [v3.2.204] 트리거 — BL업로드=트리거1(5필드 프리즈, 이미 있으면 스킵) / CO업로드=트리거2(CO 갱신+알리코인 재계산). 계산 코어 불변.
-    try { const _hold = (typeof lclV2FreezeHold === 'function') ? lclV2FreezeHold() : ''; if (typeof lclV2Pending === 'function' && lclV2Pending()) _lclV2CheckFreeze({ skip: _lclT('lcl.pend_freeze', {}) }); else if (_hold) _lclV2CheckFreeze({ skip: _hold }); else { const _fz = await saveFrozenCnyCharges(kind === 'co' ? { trigger: 'co', withCo: true } : { trigger: 'bl' }); if (typeof lclV2Active === 'function' && lclV2Active()) _lclV2CheckFreeze(_fz); } } catch (e) { console.warn('[트리거 CNY 저장]', e && e.message); }   // [3판 F3] 부분 프리즈 = 보류   // [v3.2.256 R8] 새 방식만 반환값 확인 · [2판 D15] 선적일 빈 사서함 = 프리즈 보류
+    try { const _hold = (typeof lclV2FreezeHold === 'function') ? lclV2FreezeHold(null, { withCo: kind === 'co' }) : ''; if (typeof lclV2Pending === 'function' && lclV2Pending()) _lclV2CheckFreeze({ skip: _lclT('lcl.pend_freeze', {}) }); else if (_hold) _lclV2CheckFreeze({ skip: _hold }); else { const _fz = await saveFrozenCnyCharges(kind === 'co' ? { trigger: 'co', withCo: true } : { trigger: 'bl' }); if (typeof lclV2Active === 'function' && lclV2Active()) _lclV2CheckFreeze(_fz); } } catch (e) { console.warn('[트리거 CNY 저장]', e && e.message); }   // [3판 F3] 부분 프리즈 = 보류   // [v3.2.256 R8] 새 방식만 반환값 확인 · [2판 D15] 선적일 빈 사서함 = 프리즈 보류
   } catch (e) {
     console.error(e);
     if (typeof toastError === 'function') toastError('첨부 업로드 실패: ' + (e.message || e));
