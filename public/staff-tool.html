@@ -458,7 +458,7 @@
   <button class="lang-btn" data-lang="en" onclick="setLang('en')" data-i18n="lang.en">English</button>
 </div>
 
-<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.256</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
+<h1><span data-i18n="app.title">인보이스 통합 도구</span> <span style="font-size:14px;color:var(--gold);font-weight:normal;" id="appVer" title="이 버전이 최신인지 사장님과 대조 — 다르면 브라우저 새로고침(Ctrl+Shift+R) 또는 최신 파일로 교체">v3.2.257</span> <span id="staffHeaderInfo" style="font-size:11px; color:#888; font-weight:normal; margin-left:8px;"></span> <span id="blNoHeader" style="font-size:12px; font-weight:700; color:#1B5E9A; font-family:ui-monospace,monospace; margin-left:8px;"></span></h1>
 <p class="intro" data-i18n="app.intro">HS코드 · 세율 · 환율 · 작업비(제품별) · 박스 · 부대비용 · 원산지증명 FTA를 한 화면에서 처리. 자동 분배 계산으로 제품별 최종 USD 단가를 미리 봅니다.</p>
 
 <!-- Phase C-C1·C4: 5단계 워크플로 진행판 (게이트 상태 포함) -->
@@ -1195,6 +1195,13 @@
     </table>
   </div>
   </div><!-- /invoicePreviewWrap [v3.2.211] -->
+  <!-- [v3.2.257 T-0048 R4] 3단계 가격표 — 새 방식(lclV2Active) 사서함만 채움 · 기존 사서함은 빈 칸(표시 0) -->
+  <div id="t48PriceWrap" style="display:none; margin-top:14px;"></div>
+  <!-- [v3.2.257 T-0048 R5] 알리코인 차감 내역서 — Shipments 저장(프리즈)값만 · 인쇄용 1장 -->
+  <div id="t48StatementWrap" style="margin-top:12px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+    <button type="button" id="t48StatementBtn" onclick="openAlicoinStatement()" style="padding:7px 14px; background:#1A3358; border:1px solid #1A3358; border-radius:6px; color:#fff; cursor:pointer; font-size:12px; font-weight:700;">🧾 알리코인 차감 내역서 (인쇄 1장)</button>
+    <span id="t48StatementReason" style="font-size:11px; color:#c0392b;"></span>
+  </div>
   <!-- v2.9.14: 환율 정보 블록 (인보이스/패킹리스트 출력 시 표기) -->
   <div id="invoiceRateInfo" style="margin-top:14px; padding:12px 16px; background:#f8f5ee; border:1px solid #e8d8b8; border-radius:6px; font-size:12px; color:#1B2A3B; line-height:1.7;">
     <div style="font-weight:700; margin-bottom:6px;">📋 환율 정보 (인보이스 출력용)</div>
@@ -5106,7 +5113,7 @@ function buildGroupHeader(gk, ordered) {
   // v3.0.7 [Phase B.2]: 주문 단위 신고 계산 (Phase A 식)
   //   신고 단가 = (원가 + 현지배송비 + 작업비) ÷ 총수량. 구매수수료는 미합산.
   const 원가CNY = items.reduce((s,p) => s + (parseFloat((p.fields||{})['합계CNY'])||0), 0);
-  const 현지배송비CNY = items.reduce((m,p) => Math.max(m, parseFloat((p.fields||{})['현지배송비CNY'])||0), 0);
+  let 현지배송비CNY = items.reduce((m,p) => Math.max(m, parseFloat((p.fields||{})['현지배송비CNY'])||0), 0);
   // 이 주문의 작업비 (Phase A: buildCostsByOrder 사용)
   let 작업비CNY = 0;
   try {
@@ -5117,6 +5124,14 @@ function buildGroupHeader(gk, ordered) {
     const ratioKrw = totalProductsCny ? cob.globalKrw * (원가CNY / totalProductsCny) : 0;
     const ratioCny = rateCnyKrw > 0 ? (ratioKrw / rateCnyKrw) : 0;
     작업비CNY = directCny + ratioCny;
+  } catch (e) { /* 초기 렌더 단계에선 무시 */ }
+  // [v3.2.257 T-0048] 새 방식 — 헤더도 신고가와 같은 몫(Orders 운송비 · 작업비 줄별 배분의 이 주문 제품 몫 합). 기존 = 위 값 그대로.
+  try {
+    const _t48h = (typeof t48ProductShares === 'function') ? t48ProductShares() : null;
+    if (_t48h) {
+      현지배송비CNY = items.reduce((s, p) => s + ((_t48h.byProduct[p.id] || {}).ship || 0), 0);
+      작업비CNY = items.reduce((s, p) => s + ((_t48h.byProduct[p.id] || {}).labor || 0), 0);
+    }
   } catch (e) { /* 초기 렌더 단계에선 무시 */ }
   const 신고총액CNY = 원가CNY + 현지배송비CNY + 작업비CNY;
   const 신고단가CNY = qty > 0 ? 신고총액CNY / qty : 0;   // (주문 평균 — 참고)
@@ -6256,10 +6271,22 @@ function addCostRowToTable(c, isNew) {
     const label = `주문 ${gk}${desc ? ' · ' + desc : ''}`;
     productOpts += `<option value="${gk}"${gk===selectedOrderKey?' selected':''}>${label}</option>`;
   });
+  // [v3.2.257 T-0048 R2] 박스 지정(새 방식 사서함만 보임) — 저장 = 메모 꼬리표 [박스:N]([주문:X] 와 나란히 · Airtable 필드 추가 0).
+  //   기존 사서함은 칸을 숨기되 값은 유지(메모에 꼬리표가 있으면 저장 때 그대로 다시 씀). 옵션 = 제품 박스번호 ∪ state.boxes ∪ 저장값(로드 순서와 무관하게 값 보존).
+  const memoBoxMatch = memo.match(/\[박스:([^\]]+)\]/);
+  const selectedBox = memoBoxMatch ? memoBoxMatch[1] : '';
+  const _boxSet = new Set(Object.keys(state.boxes || {}));
+  (state.products || []).forEach(p => parseBoxNumbers((p.fields || {})['박스번호'] || '').forEach(n => _boxSet.add(n)));
+  if (selectedBox) _boxSet.add(selectedBox);
+  const _boxList = [..._boxSet].sort((a, b) => (parseInt(a, 10) - parseInt(b, 10)) || String(a).localeCompare(String(b)));
+  let boxOpts = `<option value="">박스 지정 안 함</option>`;
+  _boxList.forEach(n => { boxOpts += `<option value="${escAttr(n)}"${n === selectedBox ? ' selected' : ''}>박스 ${escAttr(n)} (그 박스 안 수량대로)</option>`; });
+  const _t48Row = (typeof lclV2Active === 'function') && lclV2Active();
 
   tr.innerHTML = `
     <td>
       <select data-field="productId" style="width:100%;">${productOpts}</select>
+      <select data-field="boxNo" style="width:100%; margin-top:3px;${_t48Row ? '' : ' display:none;'}" title="박스 작업(예 박스 포장)은 박스를 고르면 그 박스에 든 제품 수량대로 나눕니다">${boxOpts}</select>
     </td>
     <td>
       <select data-field="preset" style="width:100%;">${presetOpts}</select>
@@ -6335,6 +6362,16 @@ function addCostRowToTable(c, isNew) {
     refreshAll();
   });
   tr.querySelector('select[data-field="productId"]').addEventListener('change', () => {
+    // [v3.2.257 T-0048] 주문 · 박스 지정은 하나만 — 주문을 고르면 박스 지정 해제
+    const _bs = tr.querySelector('select[data-field="boxNo"]');
+    if (_bs && tr.querySelector('select[data-field="productId"]').value) _bs.value = '';
+    tr.classList.add('modified');
+    if (!isNew) state.modifiedCostIds.add(c.id);
+    refreshAll();
+  });
+  tr.querySelector('select[data-field="boxNo"]').addEventListener('change', () => {
+    // [v3.2.257 T-0048] 박스를 고르면 주문 지정 해제(박스 안 수량으로 나눔)
+    if (tr.querySelector('select[data-field="boxNo"]').value) tr.querySelector('select[data-field="productId"]').value = '';
     tr.classList.add('modified');
     if (!isNew) state.modifiedCostIds.add(c.id);
     refreshAll();
@@ -6407,7 +6444,9 @@ function recalculate() {
   const tls = document.getElementById('totalLocalShipCny');
   if (tls) {
     let totalShipCny = 0;
-    if (typeof buildLocalShipShareCNY === 'function') buildLocalShipShareCNY().forEach(v => { totalShipCny += parseFloat(v) || 0; });
+    const _t48s = (typeof t48ProductShares === 'function') ? t48ProductShares() : null;   // [v3.2.257 T-0048] 새 방식 = Orders 운송비 몫 합
+    if (_t48s) totalShipCny = _t48s.shipTotal;
+    else if (typeof buildLocalShipShareCNY === 'function') buildLocalShipShareCNY().forEach(v => { totalShipCny += parseFloat(v) || 0; });
     tls.textContent = '¥' + totalShipCny.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
@@ -10981,6 +11020,7 @@ function renderInvoicePreview() {
   if (!rateCnyUsd || !rateUsdKrw) {
     tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-dim);">${t('preview.no_rate')}</td></tr>`;
     document.getElementById('invoiceTotal').textContent = '$0';
+    if (typeof renderT48Panels === 'function') renderT48Panels();   // [v3.2.257 T-0048]
     return;
   }
 
@@ -11055,6 +11095,7 @@ function renderInvoicePreview() {
   });
 
   document.getElementById('invoiceTotal').textContent = '$' + totalInvoiceUsd.toFixed(2);
+  if (typeof renderT48Panels === 'function') renderT48Panels();   // [v3.2.257 T-0048] R4 가격표 · R5 버튼 상태(input.usd 채운 뒤)
 
   // v2.9.14: 환율 정보 블록 (인보이스 출력 시 표기용)
   const rateBody = document.getElementById('invoiceRateInfoBody');
@@ -12010,6 +12051,8 @@ async function saveAll(skipReload) {
       //   Product 링크엔 안 넣음(주문키는 Product 레코드 ID가 아니라 문자열).
       //   Phase A의 buildCostsByOrder가 이 패턴을 읽어 작업비를 그 주문에 귀속.
       if (productId) memo = `[주문:${productId}] ${memo}`;
+      const boxNoSel = tr.querySelector('select[data-field="boxNo"]')?.value || '';   // [v3.2.257 T-0048 R2] 박스 지정 꼬리표
+      if (boxNoSel) memo = `[박스:${boxNoSel}] ${memo}`;
       const fields = {
         '항목ID': state.shipment.fields['사서함'] + '_' + cat + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,5),
         'Shipment': [state.shipment.id],
@@ -12058,6 +12101,8 @@ async function saveAll(skipReload) {
       const productId = tr.querySelector('select[data-field="productId"]')?.value || '';
       // v3.0.7 [Phase B.3]: 주문키 → 메모에 [주문:xxx] 패턴 (위 신규 저장과 동일 규칙)
       if (productId) memo = `[주문:${productId}] ${memo}`;
+      const boxNoSel = tr.querySelector('select[data-field="boxNo"]')?.value || '';   // [v3.2.257 T-0048 R2] 박스 지정 꼬리표(위 신규 저장과 같은 규칙)
+      if (boxNoSel) memo = `[박스:${boxNoSel}] ${memo}`;
       const updFields = {
         '카테고리': cat,
         '항목명': name,
@@ -12932,6 +12977,7 @@ function finalHeaderMissing() {
 function buildCostsByOrder() {
   const byOrder = {};
   let globalKrw = 0;
+  const lines = [];   // [v3.2.257 T-0048 R2] 줄 단위 {cny, orderKey, boxNo} — 새 방식 배분(t48ProductShares)만 읽음. byOrder · globalKrw(기존 규칙)는 그대로.
   const rateCnyKrw = parseFloat((document.getElementById('rateCnyKrw')||{}).value) || 0;
 
   // 1. 화면 현재 행 (실시간 — 직원 입력 즉시 반영)
@@ -12950,6 +12996,8 @@ function buildCostsByOrder() {
       const orderSel = tr.querySelector('select[data-field="productId"]');
       const orderKey = orderSel ? (orderSel.value || '') : '';
       const krw = (curr === 'CNY') ? (rateCnyKrw ? total * rateCnyKrw : 0) : total;
+      const boxSel = tr.querySelector('select[data-field="boxNo"]');
+      lines.push({ cny: (curr === 'CNY') ? total : (rateCnyKrw > 0 ? krw / rateCnyKrw : 0), orderKey: (orderKey && !/^rec[A-Za-z0-9]{14}$/.test(orderKey)) ? orderKey : '', boxNo: boxSel ? (boxSel.value || '') : '' });
       if (orderKey && !/^rec[A-Za-z0-9]{14}$/.test(orderKey)) {
         // 주문키 (Phase B.3 신규 방식)
         const cny = rateCnyKrw > 0 ? (krw / rateCnyKrw) : 0;
@@ -12970,6 +13018,8 @@ function buildCostsByOrder() {
     const memo = String(f['메모'] || '');
     if (memo.includes('[부대비용:') || memo.includes('[원산지증명')) return;   // 부대비용/CO 제외
     const m = memo.match(/\[주문:([^\]]+)\]/);
+    const mb = memo.match(/\[박스:([^\]]+)\]/);
+    lines.push({ cny: rateCnyKrw > 0 ? (krw / rateCnyKrw) : 0, orderKey: m ? m[1] : '', boxNo: mb ? mb[1] : '' });
     if (m) {
       const cny = rateCnyKrw > 0 ? (krw / rateCnyKrw) : 0;
       byOrder[m[1]] = (byOrder[m[1]] || 0) + cny;
@@ -12978,7 +13028,7 @@ function buildCostsByOrder() {
     }
   });
 
-  return { byOrder, globalKrw };
+  return { byOrder, globalKrw, lines };
 }
 
 // 주문 단위로 제품을 묶고, 신고 항목들을 계산 (v3.0.7 [Phase A.1·2])
@@ -12994,18 +13044,23 @@ function buildOrderUnits() {
   const { byOrder: costByOrder, globalKrw: globalCostKrw } = buildCostsByOrder();
   const rateCnyKrw = parseFloat((document.getElementById('rateCnyKrw')||{}).value) || 0;
   const totalProductsCny = (state.products||[]).reduce((s,p)=>s+(parseFloat((p.fields||{})['합계CNY'])||0),0);
+  // [v3.2.257 T-0048 R1·R2] 새 방식(lclV2Active) 사서함만 — 제품별 운송비 · 작업비 몫. 아니면 null(아래 기존 식 그대로).
+  const _t48 = (typeof t48ProductShares === 'function') ? t48ProductShares() : null;
 
   const units = [];
   map.forEach((items, gk) => {
     const totalQty = items.reduce((s,p) => s + (parseInt((p.fields||{})['수량'],10)||0), 0);
     const 원가CNY = items.reduce((s,p) => s + (parseFloat((p.fields||{})['합계CNY'])||0), 0);
     // 현지배송비: 주문 단위 값(스니펫 v2.5+ 정책). 중복 저장 방어로 최댓값.
-    const 현지배송비CNY = items.reduce((m,p) => Math.max(m, parseFloat((p.fields||{})['현지배송비CNY'])||0), 0);
+    // [v3.2.257 T-0048 R1] 새 방식 = Orders.현지배송비CNY(주문 몫 · t48ProductShares) · 기존 = Products 최댓값(그대로).
+    const 현지배송비CNY = _t48 ? items.reduce((s,p) => s + ((_t48.byProduct[p.id] || {}).ship || 0), 0)
+                              : items.reduce((m,p) => Math.max(m, parseFloat((p.fields||{})['현지배송비CNY'])||0), 0);
     // 작업비: 이 주문에 명시된 작업비 + 전체분배 작업비의 이 주문 몫(합계CNY 비율)
     const directCostCny = costByOrder[gk] || 0;
     const ratioKrw = totalProductsCny ? globalCostKrw * (원가CNY / totalProductsCny) : 0;
     const ratioCostCny = rateCnyKrw > 0 ? (ratioKrw / rateCnyKrw) : 0;
-    const 작업비CNY = directCostCny + ratioCostCny;
+    // [v3.2.257 T-0048 R2] 새 방식 = 줄별 배분(주문 · 박스 · 사서함 전체 수량) 제품 몫 합 · 기존 = 금액 비율(그대로).
+    const 작업비CNY = _t48 ? items.reduce((s,p) => s + ((_t48.byProduct[p.id] || {}).labor || 0), 0) : directCostCny + ratioCostCny;
     // 신고 총액·단가
     const 신고총액CNY = 원가CNY + 현지배송비CNY + 작업비CNY;
     const 신고단가CNY = totalQty > 0 ? 신고총액CNY / totalQty : 0;   // ★주문 평균(§8 미리보기·헬퍼·헤더 요약용 — 제품별 신고가는 productDeclUnitCny)
@@ -13021,6 +13076,7 @@ function buildOrderUnits() {
       items,
       totalQty,
       원가CNY, 현지배송비CNY, 작업비CNY, 신고총액CNY, 신고단가CNY, 부대per단가CNY,
+      _t48,   // [v3.2.257 T-0048] 새 방식 제품별 몫(productDeclUnitCny 가 읽음) · 기존 = null
       Description: meta['Description'] || '',
       Material: meta['Material'] || '',
       HS코드: meta['HS코드'] || '',
@@ -13039,13 +13095,94 @@ function buildOrderUnits() {
   return units;
 }
 
+// ========== [v3.2.257 T-0048] 신고가 4요소 = 제품가 + 중국 내륙운임 + 현지 작업비 + 해운비 — 새 방식(lclV2Active) 사서함만 ==========
+//   컷오버 판정 = lclV2Active 하나(새 날짜 상수 0). 아니면 null → buildOrderUnits · productDeclUnitCny 는 기존 식 그대로.
+//   R1 운송비 = Orders.현지배송비CNY · 주문 ↔ 제품 키 = 주문번호 = groupKeyOf(상품ID)(주문 묶음 · buildOrderUnits 와 같은 키) · 주문 안 수량 균등.
+//   R2 작업비 = buildCostsByOrder().lines 줄마다 — [박스:N] 그 박스 안 수량(lclV2AllocateCore 와 같은 parseBoxNumbers + distributeQty)
+//              · [주문:X] 그 주문 수량 · 지정 없음 = 사서함 전체 수량. 지정 대상에 수량이 없으면 사서함 전체로 나누고 경고(Σ 보존).
+//   끝전 = 줄(주문 운송비 · 작업비 줄)마다 소수 2자리 · 최대 잔여 0.01(동률 = 제품 순서) · Σ 제품 몫 = 줄 금액(2자리).
+function t48Round2(v) { return Math.round((parseFloat(v) || 0) * 100) / 100; }
+function t48Split(totalCny, targets, acc) {   // targets [{id, w>0}] → acc[id] += 몫(2자리) · 반환 = 배분한 센트 합/100
+  const cents = Math.round((parseFloat(totalCny) || 0) * 100);
+  const W = (targets || []).reduce((s, x) => s + x.w, 0);
+  if (!cents || !(W > 0)) return 0;
+  const sign = cents < 0 ? -1 : 1, C = Math.abs(cents);
+  const parts = targets.map((x, i) => { const c = Math.round(C * x.w / W * 1e6) / 1e6; const fl = Math.floor(c); return { id: x.id, i, fl, rem: c - fl }; });
+  let short = C - parts.reduce((s, x) => s + x.fl, 0);
+  parts.slice().sort((a, b) => (b.rem - a.rem) || (a.i - b.i)).forEach(x => { if (short > 0) { x.fl += 1; short--; } });
+  parts.forEach(x => { acc[x.id] = Math.round(((acc[x.id] || 0) + sign * x.fl / 100) * 100) / 100; });
+  return sign * parts.reduce((s, x) => s + x.fl, 0) / 100;
+}
+// 주문번호 → 현지배송비CNY(Orders). 같은 주문번호 레코드가 둘 이상이면 최댓값(기존 Products 판독과 같은 중복 방어).
+function t48OrderShipMap() {
+  const m = {}, multi = [];
+  (state.orders || []).forEach(o => {
+    const f = o.fields || {};
+    const k = String(f['주문번호'] == null ? '' : f['주문번호']).trim();
+    if (!k) return;
+    const v = parseFloat(f['현지배송비CNY']);
+    m[k] = Math.max(m[k] || 0, Number.isFinite(v) ? v : 0);
+    if ((f['Shipment'] || []).length > 1 && v > 0) multi.push(k);
+  });
+  return { map: m, multi };
+}
+function t48ProductShares() {
+  if (typeof lclV2Active !== 'function' || !lclV2Active()) return null;
+  const prods = (state.products || []).map(p => {
+    const f = p.fields || {};
+    return { id: p.id, gk: groupKeyOf(f['상품ID']), q: parseInt(f['수량'], 10) || 0, boxNos: parseBoxNumbers(f['박스번호'] || '') };
+  });
+  const live = prods.filter(x => x.q > 0);
+  const all = live.map(x => ({ id: x.id, w: x.q }));
+  const byGk = {};
+  live.forEach(x => { (byGk[x.gk] = byGk[x.gk] || []).push({ id: x.id, w: x.q }); });
+  const ship = {}, labor = {}, warn = [];
+  // R1 운송비 — 주문 몫 → 주문 안 수량 균등
+  const om = t48OrderShipMap();
+  let shipTotal = 0;
+  const shipByOrder = {};
+  Object.keys(om.map).forEach(k => {
+    const v = t48Round2(om.map[k]);
+    if (!v) return;
+    if (!byGk[k]) { warn.push(`주문 ${k} 중국 운송비 ¥${v.toFixed(2)} — 이 사서함에 수량 있는 제품이 없어 신고가에 넣지 않음`); return; }
+    shipTotal = t48Round2(shipTotal + t48Split(v, byGk[k], ship));
+    shipByOrder[k] = v;
+  });
+  om.multi.forEach(k => warn.push(`주문 ${k} 이 사서함 둘 이상에 연결 — 중국 운송비가 사서함마다 들어갈 수 있음(확인 필요)`));
+  // R2 작업비 — 줄마다
+  let laborTotal = 0;
+  const laborLines = [];
+  const cob = (typeof buildCostsByOrder === 'function') ? buildCostsByOrder() : { lines: [] };
+  (cob.lines || []).forEach(L => {
+    const amt = t48Round2(L.cny);
+    if (!amt) return;
+    let kind = 'all', tgt = all;
+    if (L.boxNo) {
+      kind = 'box';
+      tgt = [];
+      live.forEach(x => { const i = x.boxNos.indexOf(String(L.boxNo)); if (i < 0) return; const d = distributeQty(x.q, x.boxNos.length)[i]; if (d > 0) tgt.push({ id: x.id, w: d }); });
+    } else if (L.orderKey) { kind = 'order'; tgt = byGk[L.orderKey] || []; }
+    if (!tgt.length && kind !== 'all') { warn.push(`작업비 ¥${amt.toFixed(2)} — ${kind === 'box' ? '박스 ' + L.boxNo : '주문 ' + L.orderKey} 에 수량 있는 제품이 없어 사서함 전체 수량으로 나눔`); kind = 'all'; tgt = all; }
+    laborTotal = t48Round2(laborTotal + t48Split(amt, tgt, labor));
+    laborLines.push({ kind, amt, orderKey: L.orderKey || '', boxNo: L.boxNo || '' });
+  });
+  const byProduct = {};
+  prods.forEach(x => { byProduct[x.id] = { ship: ship[x.id] || 0, labor: labor[x.id] || 0 }; });
+  return { byProduct, shipTotal, shipByOrder, laborTotal, laborLines, warn };
+}
+
 // [v3.2.153] ★제품별 통관 신고단가 CNY = 제품 실단가(독립) + 부대비용 per-unit(작업비+현지배송비 ÷총수량).
 //   균등 왜곡 제거: 단가 다른 제품이 한 그룹이어도 각자 실단가로 신고. Σ(productDeclUnitCny×수량)=신고총액CNY(불변).
 //   ★해운비는 Phase 1 제외(§8 알리코인 CBM 배분에서 별도). 신고가엔 제품원가+작업비+현지배송비만.
 //   CI/PL은 input.usd(이 식으로 채워짐) → getProductUnitUsd로 추종. 관세도 동일 식 사용(단일 소스).
 function productDeclUnitCny(p, unit) {
   const baseCny = parseFloat((p && p.fields || {})['단가CNY']) || 0;
-  const _decl = baseCny + ((unit && unit.부대per단가CNY) || 0);
+  // [v3.2.257 T-0048 R3] 새 방식 = 제품가 + (운송비 몫 + 작업비 몫) ÷ 수량 (+ 아래 해운비 몫 ÷ 수량). 기존 = 부대per단가(주문 균등) 그대로.
+  const _t48 = unit && unit._t48;
+  const _t48q = parseInt(((p && p.fields) || {})['수량'], 10) || 0;
+  const _t48s = _t48 ? (_t48.byProduct[p.id] || {}) : null;
+  const _decl = _t48 ? baseCny + (_t48q > 0 ? ((_t48s.ship || 0) + (_t48s.labor || 0)) / _t48q : 0)
+                     : baseCny + ((unit && unit.부대per단가CNY) || 0);
   // [T-0030 2판 R6·D14] 새 방식만 — 해운비 제품 몫(R3 총액 · R4 배분) ÷ 수량을 더한다. CI · PL(input.usd)과 §8 과세가격이 이 한 곳을 같이 쓴다(이중 가산 0).
   const _lc = (typeof lclV2Compute === 'function') ? lclV2Compute() : null;
   if (!_lc) return _decl;
@@ -15265,6 +15402,124 @@ function recalcShippingMatrix() {
 }
 
 // [v3.2.211] §7 인보이스 미리보기 접힘 토글 — 기본 접힘, 버튼 클릭 시 펼침.
+// ========== [v3.2.257 T-0048 R4] 3단계 가격표 — 새 방식 사서함만 ==========
+//   제품별 ① 제품가(단가CNY×수량) ② +중국 운송비 ③ +작업비 ④ +해운비 = 신고가 · 각 칸 누계 CNY 와 USD(사서함 환율CNY_USD = #rateCnyUsd).
+//   ④ USD = CI 줄 금액과 같은 식(renderInvoicePreview input.usd: productDeclUnitCny × 환율 × 수량 → 2자리) → Σ = CI 총액. CI · PL 서식 불변(표시 전용).
+function t48Esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+function t48PriceRows() {
+  const sh = (typeof t48ProductShares === 'function') ? t48ProductShares() : null;
+  if (!sh) return null;
+  const lc = (typeof lclV2Compute === 'function') ? lclV2Compute() : null;
+  const rate = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0;
+  const r2 = v => Math.round(v * 100) / 100;
+  const rows = [];
+  buildOrderUnits().forEach(u => (u.items || []).forEach(p => {
+    const f = p.fields || {};
+    const q = parseInt(f['수량'], 10) || 0;
+    if (!(q > 0)) return;
+    const s = sh.byProduct[p.id] || { ship: 0, labor: 0 };
+    const sea = lc ? (lc.alloc.byProduct[p.id] || 0) : 0;
+    const c1 = (parseFloat(f['단가CNY']) || 0) * q, c2 = c1 + s.ship, c3 = c2 + s.labor, c4 = c3 + sea;
+    rows.push({ id: p.id, pid: f['상품ID'] || '', name: (typeof declItemName === 'function') ? declItemName(f) : '', q, ship: s.ship, labor: s.labor, sea,
+      cny: [c1, c2, c3, c4], usd: [r2(c1 * rate), r2(c2 * rate), r2(c3 * rate), parseFloat((productDeclUnitCny(p, u) * rate * q).toFixed(2))] });
+  }));
+  const tot = { q: 0, ship: 0, labor: 0, sea: 0, cny: [0, 0, 0, 0], usd: [0, 0, 0, 0] };
+  rows.forEach(x => { tot.q += x.q; tot.ship += x.ship; tot.labor += x.labor; tot.sea += x.sea; for (let i = 0; i < 4; i++) { tot.cny[i] += x.cny[i]; tot.usd[i] += x.usd[i]; } });
+  tot.cny = tot.cny.map(r2); tot.usd = tot.usd.map(r2); tot.ship = r2(tot.ship); tot.labor = r2(tot.labor); tot.sea = r2(tot.sea);
+  return { rows, tot, rate, warn: sh.warn || [], seaOk: !!(lc && lc.alloc.ok), shipTotal: sh.shipTotal, laborTotal: sh.laborTotal };
+}
+function renderT48Panels() {
+  const wrap = document.getElementById('t48PriceWrap');
+  if (wrap) {
+    const R = t48PriceRows();
+    if (!R) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
+    else {
+      const m = v => '¥' + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const d = v => '$' + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const cell = (c, u, add) => `<td class="num" style="text-align:right;">${m(c)}<br><span style="color:var(--text-dim);">${d(u)}</span>${add != null ? `<br><span style="font-size:10px; color:var(--text-dim);">+${m(add)}</span>` : ''}</td>`;
+      const body = R.rows.map((x, i) => `<tr><td>${i + 1}</td><td style="font-size:11px;">${t48Esc(x.pid)}<br><span style="color:var(--text-dim);">${t48Esc(x.name)}</span></td><td class="num">${x.q}</td>`
+        + cell(x.cny[0], x.usd[0]) + cell(x.cny[1], x.usd[1], x.ship) + cell(x.cny[2], x.usd[2], x.labor) + cell(x.cny[3], x.usd[3], x.sea).replace('<td class="num" style="text-align:right;">', '<td class="num" style="text-align:right; font-weight:700;">') + '</tr>').join('');
+      const T = R.tot;
+      wrap.innerHTML = `<div style="font-weight:700; margin-bottom:6px; color:#1A3358;">📊 신고가 3단계 가격표 (새 방식 · 제품가 → +중국 운송비 → +작업비 → +해운비 = 신고가) · 환율 CNY→USD ${R.rate}</div>`
+        + `<div class="table-wrap"><table id="t48PriceTable"><thead><tr><th>#</th><th>제품</th><th class="num">수량</th><th class="num">① 제품가</th><th class="num">② + 중국 운송비</th><th class="num">③ + 작업비</th><th class="num">④ + 해운비 = 신고가</th></tr></thead><tbody>${body}</tbody>`
+        + `<tfoot><tr style="font-weight:700; background:#f3f1ec;"><td colspan="2">합계</td><td class="num" style="text-align:right;">${T.q}</td>${cell(T.cny[0], T.usd[0])}${cell(T.cny[1], T.usd[1], T.ship)}${cell(T.cny[2], T.usd[2], T.labor)}${cell(T.cny[3], T.usd[3], T.sea)}</tr></tfoot></table></div>`
+        + `<div style="font-size:11px; color:var(--text-dim); margin-top:4px;">④ 달러 = CI 줄 금액(제품마다 소수 2자리) · ④ 합계 = CI 총액. BL · CO · 핸들링 · 도큐먼트피 · 구매수수료 · 국내운임은 신고가에 넣지 않습니다.${R.seaOk ? '' : ' ⚠ 해운비 몫 계산 불가 — ④ 해운비 0 으로 표시'}</div>`
+        + (R.warn.length ? `<div style="font-size:11px; color:#c0392b; margin-top:4px;">${R.warn.map(t48Esc).join('<br>')}</div>` : '');
+      wrap.style.display = '';
+    }
+  }
+  if (typeof t48UpdateStatementBtn === 'function') t48UpdateStatementBtn();
+}
+
+// ========== [v3.2.257 T-0048 R5] 알리코인 차감 내역서 — Shipments 저장(프리즈)값만 · 화면 실시간 금액 사용 0 · 새 Vercel 함수 0 ==========
+const T48_ST_FIELDS = [['청구_BL_CNY', 'BL 발행비'], ['청구_해운비_CNY', '해운비 (FREIGHT PREPAID)'], ['청구_CO_CNY', '원산지증명서(CO) 발급비'], ['핸들링CNY', '핸들링'], ['도큐먼트피CNY', '도큐먼트피 (DOCUMENT FEE)']];
+function t48StatementData() {
+  const f = state && state.shipment && state.shipment.fields;
+  if (!f) return { block: '사서함을 먼저 불러오세요' };
+  const has = k => f[k] !== undefined && f[k] !== null && String(f[k]).trim() !== '';
+  if (!has('청구_알리코인_CNY')) return { block: '알리코인 저장 전 — 1차 IP 발행 때 저장(프리즈)된 뒤 뽑을 수 있습니다' };
+  const bad = ['청구_알리코인_CNY'].concat(T48_ST_FIELDS.map(x => x[0])).filter(k => has(k) && !Number.isFinite(Number(f[k])));
+  if (bad.length) return { block: '저장값 판독 불가: ' + bad.join(', ') };
+  if (!(Number(f['청구_BL_CNY']) > 0)) return { block: '프리즈 표식(청구_BL_CNY) 없음 — 저장 전이라 뽑을 수 없습니다' };
+  const raw = T48_ST_FIELDS.map(([k, label]) => ({ k, label, raw: has(k) ? Number(f[k]) : 0 }));
+  const items = raw.map(x => Object.assign(x, { v: t48Round2(x.raw) }));
+  const totalRaw = Number(f['청구_알리코인_CNY']);
+  const total = t48Round2(totalRaw);
+  const sumRaw = raw.reduce((s, x) => s + x.raw, 0);
+  const sum = t48Round2(items.reduce((s, x) => s + x.v, 0));
+  if (Math.abs(sumRaw - totalRaw) >= 0.005 || Math.abs(sum - total) >= 0.005) return { block: `저장 합계 불일치 — 항목 합 ¥${sum.toFixed(2)} ≠ 청구_알리코인_CNY ¥${total.toFixed(2)}` };
+  return { block: '', items, total, f };
+}
+function buildAlicoinStatementHtml(d) {
+  const f = d.f;
+  const cf = (state.customer && state.customer.fields) || {};
+  const cust = [cf['회원명'], cf['회사명']].map(x => String(x || '').trim()).filter(Boolean).join(' · ') || '—';
+  const m = v => '¥' + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // 청구CBM · 요일단가 = 박스 · 선적일 기준 참고(저장 필드 없음 · calcSeaFreightKRW 호출만). 금액은 전부 저장값.
+  let cbmLine = '—', rateLine = '—', note = '';
+  try {
+    const rcu = parseFloat((document.getElementById('rateCnyUsd') || {}).value) || 0, ruk = parseFloat((document.getElementById('rateUsdKrw') || {}).value) || 0;
+    const sea = calcSeaFreightKRW(getTotalCbm(), getSeaShipDate(), ruk, getTotalKg(), rcu);
+    const v2 = !!(sea && sea.lclV2);
+    if (sea && !sea.error && sea.billCbm > 0) { cbmLine = sea.billCbm.toFixed(v2 ? 1 : 2) + ' CBM'; rateLine = `${t48Esc((sea.rate || {}).name || '')} ${v2 ? '¥' : '$'}${(sea.rate || {}).unit}/CBM${v2 && sea.billCbm <= LCL_V2_MIN_CBM ? ' (최소요금 ¥200)' : ''}`; }
+    if (v2 && sea && !sea.error && Math.abs(t48Round2(sea.cny) - d.items[1].v) >= 0.005) note = `참고: 지금 박스 기준 해운비 ¥${t48Round2(sea.cny).toFixed(2)} 와 저장값 ¥${d.items[1].v.toFixed(2)} 가 다릅니다(내역서 금액 = 저장값).`;
+  } catch (e) { /* 참고 칸만 비움 */ }
+  const rk = Number(f['환율CNY_KRW']);
+  const krw = Number.isFinite(rk) && rk > 0 ? `₩${Math.round(d.total * rk).toLocaleString()} (환율 CNY→KRW ${rk})` : '—';
+  const today = new Date(); const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const rows = d.items.map(x => `<tr><td>${t48Esc(x.label)}</td><td class="n">${m(x.v)}</td></tr>`).join('');
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>알리코인 차감 내역서 ${t48Esc(f['사서함'] || '')}</title>
+<style>@page{size:A4;margin:16mm}body{font-family:Pretendard,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#1A3358;background:#fff;margin:0;padding:24px}
+h1{font-size:20px;margin:0 0 4px}.sub{font-size:12px;color:#555;margin-bottom:16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px}
+th,td{border:1px solid #c9ced8;padding:7px 10px;text-align:left}th{background:#eef1f6;width:28%}.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.tot td{font-weight:800;background:#eef1f6}.foot{border:2px solid #1A3358;padding:10px 12px;font-weight:700;font-size:13px}.note{font-size:11px;color:#555;margin-top:8px}</style></head>
+<body><h1>알리코인 차감 내역서</h1><div class="sub">강하고 · 발행 ${ymd} · 이번 선적 물류 부대비용</div>
+<table><tr><th>사서함</th><td>${t48Esc(f['사서함'] || '')}</td></tr><tr><th>고객</th><td>${t48Esc(cust)}</td></tr><tr><th>선적일</th><td>${t48Esc(String(f['선적일'] || '').slice(0, 10) || '—')}</td></tr>
+<tr><th>BL번호</th><td>${t48Esc(f['BL번호'] || '—')}</td></tr><tr><th>청구CBM</th><td>${cbmLine}</td></tr><tr><th>요일단가</th><td>${rateLine}</td></tr></table>
+<table><thead><tr><th style="width:auto">항목</th><th class="n" style="width:30%">금액 (CNY)</th></tr></thead><tbody>${rows}
+<tr class="tot"><td>합계 (알리코인 차감)</td><td class="n">${m(d.total)}</td></tr><tr><td>참고 원화</td><td class="n">${krw}</td></tr></tbody></table>
+<div class="foot">알리코인(예치금)에서 차감 · FREIGHT PREPAID · 계좌이체 금액 아님</div>
+<div class="note">제품 대금 · 중국 운송비 · 작업비는 이 내역서에 들어가지 않습니다. 금액은 사서함에 저장된 값입니다.${note ? '<br>' + t48Esc(note) : ''}</div>
+</body></html>`;
+}
+function t48UpdateStatementBtn() {
+  const btn = document.getElementById('t48StatementBtn'), why = document.getElementById('t48StatementReason');
+  if (!btn) return;
+  const d = t48StatementData();
+  btn.disabled = !!d.block;
+  btn.style.opacity = d.block ? '0.45' : '1';
+  btn.style.cursor = d.block ? 'not-allowed' : 'pointer';
+  if (why) why.textContent = d.block ? ('막힘: ' + d.block) : '';
+}
+function openAlicoinStatement() {
+  const d = t48StatementData();
+  if (d.block) { if (typeof toastWarn === 'function') toastWarn(d.block, { title: '알리코인 차감 내역서' }); t48UpdateStatementBtn(); return; }
+  const w = window.open('', '_blank');
+  if (!w) { if (typeof toastWarn === 'function') toastWarn('팝업이 막혀 내역서를 열 수 없습니다 — 이 사이트 팝업 허용 후 다시', { title: '알리코인 차감 내역서' }); return; }
+  w.document.open(); w.document.write(buildAlicoinStatementHtml(d)); w.document.close();
+  try { w.focus(); setTimeout(() => { try { w.print(); } catch (e) {} }, 300); } catch (e) {}
+}
+
 function toggleInvoicePreview(btn) {
   const wrap = document.getElementById('invoicePreviewWrap'); if (!wrap) return;
   const show = wrap.style.display === 'none';
