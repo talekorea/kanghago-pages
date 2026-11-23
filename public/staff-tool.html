@@ -6275,6 +6275,8 @@ function addCostRowToTable(c, isNew) {
     const label = `주문 ${gk}${desc ? ' · ' + desc : ''}`;
     productOpts += `<option value="${gk}"${gk===selectedOrderKey?' selected':''}>${label}</option>`;
   });
+  // [v3.2.257 T-0048 4판] 새 방식 사서함만 — 메모의 [주문:X] 가 이 사서함 주문 목록에 없으면 「전체분배」로 조용히 풀리지 않게 값을 유지(박스 칸과 같은 값 보존 · t48ProductShares 가 labor_notarget 으로 차단).
+  if (selectedOrderKey && !orderKeys.includes(selectedOrderKey) && typeof lclV2Active === 'function' && lclV2Active()) productOpts += `<option value="${escAttr(selectedOrderKey)}" selected>주문 ${escAttr(selectedOrderKey)} · ⚠ 이 사서함에 이 주문 제품 없음</option>`;
   // [v3.2.257 T-0048 R2] 박스 지정(새 방식 사서함만 보임) — 저장 = 메모 꼬리표 [박스:N]([주문:X] 와 나란히 · Airtable 필드 추가 0).
   //   기존 사서함은 칸을 숨기되 값은 유지(메모에 꼬리표가 있으면 저장 때 그대로 다시 씀). 옵션 = 제품 박스번호 ∪ state.boxes ∪ 저장값(로드 순서와 무관하게 값 보존).
   const memoBoxMatch = memo.match(/\[박스:([^\]]+)\]/);
@@ -13119,7 +13121,7 @@ function buildOrderUnits() {
 //   컷오버 판정 = lclV2Active 하나(새 날짜 상수 0). 아니면 null → buildOrderUnits · productDeclUnitCny 는 기존 식 그대로.
 //   R1 운송비 = Orders.현지배송비CNY · 주문 ↔ 제품 키 = 주문번호 = groupKeyOf(상품ID)(주문 묶음 · buildOrderUnits 와 같은 키) · 주문 안 수량 균등.
 //   R2 작업비 = buildCostsByOrder().lines 줄마다 — [박스:N] 그 박스 안 수량(lclV2AllocateCore 와 같은 parseBoxNumbers + distributeQty)
-//              · [주문:X] 그 주문 수량 · 지정 없음 = 사서함 전체 수량. 지정 대상에 수량이 없으면 사서함 전체로 나누고 경고(Σ 보존).
+//              · [주문:X] 그 주문 수량 · 지정 없음 = 사서함 전체 수량. 지정 대상에 수량이 없으면 [4판] 차단(labor_notarget · 대체 배분 안 함).
 //   끝전 = 줄(주문 운송비 · 작업비 줄)마다 소수 2자리 · 최대 잔여 0.01(동률 = 제품 순서) · Σ 제품 몫 = 줄 금액(2자리).
 function t48Round2(v) { return Math.round((parseFloat(v) || 0) * 100) / 100; }
 function t48Split(totalCny, targets, acc) {   // targets [{id, w>0}] → acc[id] += 몫(2자리) · 반환 = 배분한 센트 합/100
@@ -13190,7 +13192,6 @@ function t48ProductShares() {
     if (L.err === 'amount') { E('labor_value', `작업비 금액 판독 불가(${L.src} · ${String(L.raw).replace(/[<>&"']/g, '').slice(0, 24)}) — 음수 · 비유한 · 숫자 아님`); return; }
     if (L.err === 'rate') { E('labor_rate', `작업비 원화 금액(${L.src} · ₩${String(L.raw).replace(/[<>&"']/g, '').slice(0, 24)})을 위안화로 바꿀 환율 CNY→KRW 없음(0 · 빈 값 · 비유한)`); return; }
     const amt = t48Round2(L.cny);
-    laborSrc = t48Round2(laborSrc + amt);
     if (!amt) return;
     let kind = 'all', tgt = all;
     if (L.boxNo) {
@@ -13198,7 +13199,9 @@ function t48ProductShares() {
       tgt = [];
       live.forEach(x => { const i = x.boxNos.indexOf(String(L.boxNo)); if (i < 0) return; const d = distributeQty(x.q, x.boxNos.length)[i]; if (d > 0) tgt.push({ id: x.id, w: d }); });
     } else if (L.orderKey) { kind = 'order'; tgt = byGk[L.orderKey] || []; }
-    if (!tgt.length && kind !== 'all') { warn.push(`작업비 ¥${amt.toFixed(2)} — ${kind === 'box' ? '박스 ' + L.boxNo : '주문 ' + L.orderKey} 에 수량 있는 제품이 없어 사서함 전체 수량으로 나눔`); kind = 'all'; tgt = all; }
+    // [4판] 지정(박스 · 주문) 대상에 수량 있는 제품이 없으면 사서함 전체로 대체 배분하지 않고 차단(작업하지 않은 제품에 비용이 붙는 것 방지 · §3 R2).
+    if (!tgt.length && kind !== 'all') { E('labor_notarget', `작업비 ¥${amt.toFixed(2)} — ${kind === 'box' ? '[박스:' + String(L.boxNo).replace(/[<>&"']/g, '').slice(0, 12) + '] 지정인데 박스 ' + String(L.boxNo).replace(/[<>&"']/g, '').slice(0, 12) : '[주문:' + String(L.orderKey).replace(/[<>&"']/g, '').slice(0, 24) + '] 지정인데 주문 ' + String(L.orderKey).replace(/[<>&"']/g, '').slice(0, 24)} 에 수량 있는 제품이 없음 — 사서함 전체로 나누지 않음(작업비 메모의 지정 또는 제품 박스번호 · 주문번호 확인)`); return; }
+    laborSrc = t48Round2(laborSrc + amt);
     laborTotal = t48Round2(laborTotal + t48Split(amt, tgt, labor));
     laborLines.push({ kind, amt, orderKey: L.orderKey || '', boxNo: L.boxNo || '' });
   });
