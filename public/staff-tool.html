@@ -6275,24 +6275,12 @@ function addCostRowToTable(c, isNew) {
     const label = `주문 ${gk}${desc ? ' · ' + desc : ''}`;
     productOpts += `<option value="${gk}"${gk===selectedOrderKey?' selected':''}>${label}</option>`;
   });
-  // [v3.2.257 T-0048 4판] 새 방식 사서함만 — 메모의 [주문:X] 가 이 사서함 주문 목록에 없으면 「전체분배」로 조용히 풀리지 않게 값을 유지(박스 칸과 같은 값 보존 · t48ProductShares 가 labor_notarget 으로 차단).
+  // [v3.2.257 T-0048 4판] 새 방식 사서함만 — 메모의 [주문:X] 가 이 사서함 주문 목록에 없으면 「전체분배」로 조용히 풀리지 않게 값을 유지(t48ProductShares 가 labor_notarget 으로 차단).
   if (selectedOrderKey && !orderKeys.includes(selectedOrderKey) && typeof lclV2Active === 'function' && lclV2Active()) productOpts += `<option value="${escAttr(selectedOrderKey)}" selected>주문 ${escAttr(selectedOrderKey)} · ⚠ 이 사서함에 이 주문 제품 없음</option>`;
-  // [v3.2.257 T-0048 R2] 박스 지정(새 방식 사서함만 보임) — 저장 = 메모 꼬리표 [박스:N]([주문:X] 와 나란히 · Airtable 필드 추가 0).
-  //   기존 사서함은 칸을 숨기되 값은 유지(메모에 꼬리표가 있으면 저장 때 그대로 다시 씀). 옵션 = 제품 박스번호 ∪ state.boxes ∪ 저장값(로드 순서와 무관하게 값 보존).
-  const memoBoxMatch = memo.match(/\[박스:([^\]]+)\]/);
-  const selectedBox = memoBoxMatch ? memoBoxMatch[1] : '';
-  const _boxSet = new Set(Object.keys(state.boxes || {}));
-  (state.products || []).forEach(p => parseBoxNumbers((p.fields || {})['박스번호'] || '').forEach(n => _boxSet.add(n)));
-  if (selectedBox) _boxSet.add(selectedBox);
-  const _boxList = [..._boxSet].sort((a, b) => (parseInt(a, 10) - parseInt(b, 10)) || String(a).localeCompare(String(b)));
-  let boxOpts = `<option value="">박스 지정 안 함</option>`;
-  _boxList.forEach(n => { boxOpts += `<option value="${escAttr(n)}"${n === selectedBox ? ' selected' : ''}>박스 ${escAttr(n)} (그 박스 안 수량대로)</option>`; });
-  const _t48Row = (typeof lclV2Active === 'function') && lclV2Active();
 
   tr.innerHTML = `
     <td>
       <select data-field="productId" style="width:100%;">${productOpts}</select>
-      <select data-field="boxNo" style="width:100%; margin-top:3px;${_t48Row ? '' : ' display:none;'}" title="박스 작업(예 박스 포장)은 박스를 고르면 그 박스에 든 제품 수량대로 나눕니다">${boxOpts}</select>
     </td>
     <td>
       <select data-field="preset" style="width:100%;">${presetOpts}</select>
@@ -6368,16 +6356,6 @@ function addCostRowToTable(c, isNew) {
     refreshAll();
   });
   tr.querySelector('select[data-field="productId"]').addEventListener('change', () => {
-    // [v3.2.257 T-0048] 주문 · 박스 지정은 하나만 — 주문을 고르면 박스 지정 해제
-    const _bs = tr.querySelector('select[data-field="boxNo"]');
-    if (_bs && tr.querySelector('select[data-field="productId"]').value) _bs.value = '';
-    tr.classList.add('modified');
-    if (!isNew) state.modifiedCostIds.add(c.id);
-    refreshAll();
-  });
-  tr.querySelector('select[data-field="boxNo"]').addEventListener('change', () => {
-    // [v3.2.257 T-0048] 박스를 고르면 주문 지정 해제(박스 안 수량으로 나눔)
-    if (tr.querySelector('select[data-field="boxNo"]').value) tr.querySelector('select[data-field="productId"]').value = '';
     tr.classList.add('modified');
     if (!isNew) state.modifiedCostIds.add(c.id);
     refreshAll();
@@ -12057,8 +12035,6 @@ async function saveAll(skipReload) {
       //   Product 링크엔 안 넣음(주문키는 Product 레코드 ID가 아니라 문자열).
       //   Phase A의 buildCostsByOrder가 이 패턴을 읽어 작업비를 그 주문에 귀속.
       if (productId) memo = `[주문:${productId}] ${memo}`;
-      const boxNoSel = tr.querySelector('select[data-field="boxNo"]')?.value || '';   // [v3.2.257 T-0048 R2] 박스 지정 꼬리표
-      if (boxNoSel) memo = `[박스:${boxNoSel}] ${memo}`;
       const fields = {
         '항목ID': state.shipment.fields['사서함'] + '_' + cat + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,5),
         'Shipment': [state.shipment.id],
@@ -12107,8 +12083,6 @@ async function saveAll(skipReload) {
       const productId = tr.querySelector('select[data-field="productId"]')?.value || '';
       // v3.0.7 [Phase B.3]: 주문키 → 메모에 [주문:xxx] 패턴 (위 신규 저장과 동일 규칙)
       if (productId) memo = `[주문:${productId}] ${memo}`;
-      const boxNoSel = tr.querySelector('select[data-field="boxNo"]')?.value || '';   // [v3.2.257 T-0048 R2] 박스 지정 꼬리표(위 신규 저장과 같은 규칙)
-      if (boxNoSel) memo = `[박스:${boxNoSel}] ${memo}`;
       const updFields = {
         '카테고리': cat,
         '항목명': name,
@@ -12983,7 +12957,7 @@ function finalHeaderMissing() {
 function buildCostsByOrder() {
   const byOrder = {};
   let globalKrw = 0;
-  const lines = [];   // [v3.2.257 T-0048 R2] 줄 단위 {cny, orderKey, boxNo} — 새 방식 배분(t48ProductShares)만 읽음. byOrder · globalKrw(기존 규칙)는 그대로.
+  const lines = [];   // [v3.2.257 T-0048 R2] 줄 단위 {cny, orderKey} — 새 방식 배분(t48ProductShares)만 읽음. byOrder · globalKrw(기존 규칙)는 그대로.
   const rateCnyKrw = parseFloat((document.getElementById('rateCnyKrw')||{}).value) || 0;
   // [v3.2.257 T-0048 2판 F2·F4] 새 방식 배분(lines)만 — 금액이 음수 · 비유한 · 비숫자 · 센트 정수 범위 밖이면 err 'amount', KRW 금액인데 환율CNY_KRW 가 0 · 빈 값 · 비유한이면 err 'rate'.
   //   err 줄은 배분하지 않고 t48ProductShares().errors → t48GateIssues(발행 · 프리즈 차단)로 올린다. byOrder · globalKrw(기존 규칙)는 그대로.
@@ -13001,17 +12975,16 @@ function buildCostsByOrder() {
       if (recId) seenRecIds.add(recId);
       const total = parseFloat(totalInp.value) || 0;
       const _t48Bad = _t48AmtBad(totalInp.value);
-      if (_t48Bad) lines.push({ cny: 0, orderKey: '', boxNo: '', err: 'amount', raw: String(totalInp.value), src: '화면' });
+      if (_t48Bad) lines.push({ cny: 0, orderKey: '', err: 'amount', raw: String(totalInp.value), src: '화면' });
       if (total === 0) return;
       const currSel = tr.querySelector('select[data-field="currency"]');
       const curr = currSel ? currSel.value : 'KRW';
       const orderSel = tr.querySelector('select[data-field="productId"]');
       const orderKey = orderSel ? (orderSel.value || '') : '';
       const krw = (curr === 'CNY') ? (rateCnyKrw ? total * rateCnyKrw : 0) : total;
-      const boxSel = tr.querySelector('select[data-field="boxNo"]');
       if (!_t48Bad) {
-        if (curr !== 'CNY' && !_t48RateOk) lines.push({ cny: 0, orderKey: '', boxNo: '', err: 'rate', raw: String(totalInp.value), src: '화면' });
-        else lines.push({ cny: (curr === 'CNY') ? total : (rateCnyKrw > 0 ? krw / rateCnyKrw : 0), orderKey: (orderKey && !/^rec[A-Za-z0-9]{14}$/.test(orderKey)) ? orderKey : '', boxNo: boxSel ? (boxSel.value || '') : '' });
+        if (curr !== 'CNY' && !_t48RateOk) lines.push({ cny: 0, orderKey: '', err: 'rate', raw: String(totalInp.value), src: '화면' });
+        else lines.push({ cny: (curr === 'CNY') ? total : (rateCnyKrw > 0 ? krw / rateCnyKrw : 0), orderKey: (orderKey && !/^rec[A-Za-z0-9]{14}$/.test(orderKey)) ? orderKey : '' });
       }
       if (orderKey && !/^rec[A-Za-z0-9]{14}$/.test(orderKey)) {
         // 주문키 (Phase B.3 신규 방식)
@@ -13032,15 +13005,14 @@ function buildCostsByOrder() {
     const _t48Memo = String(f['메모'] || '');
     const _t48Skip = _t48Memo.includes('[부대비용:') || _t48Memo.includes('[원산지증명');
     const _t48Bad = !_t48Skip && _t48AmtBad(f['금액KRW']);
-    if (_t48Bad) lines.push({ cny: 0, orderKey: '', boxNo: '', err: 'amount', raw: String(f['금액KRW']), src: '저장' });
+    if (_t48Bad) lines.push({ cny: 0, orderKey: '', err: 'amount', raw: String(f['금액KRW']), src: '저장' });
     if (krw <= 0) return;
     const memo = String(f['메모'] || '');
     if (memo.includes('[부대비용:') || memo.includes('[원산지증명')) return;   // 부대비용/CO 제외
     const m = memo.match(/\[주문:([^\]]+)\]/);
-    const mb = memo.match(/\[박스:([^\]]+)\]/);
     if (!_t48Bad) {
-      if (!_t48RateOk) lines.push({ cny: 0, orderKey: '', boxNo: '', err: 'rate', raw: String(f['금액KRW']), src: '저장' });
-      else lines.push({ cny: krw / rateCnyKrw, orderKey: m ? m[1] : '', boxNo: mb ? mb[1] : '' });
+      if (!_t48RateOk) lines.push({ cny: 0, orderKey: '', err: 'rate', raw: String(f['금액KRW']), src: '저장' });
+      else lines.push({ cny: krw / rateCnyKrw, orderKey: m ? m[1] : '' });
     }
     if (m) {
       const cny = rateCnyKrw > 0 ? (krw / rateCnyKrw) : 0;
@@ -13081,7 +13053,7 @@ function buildOrderUnits() {
     const directCostCny = costByOrder[gk] || 0;
     const ratioKrw = totalProductsCny ? globalCostKrw * (원가CNY / totalProductsCny) : 0;
     const ratioCostCny = rateCnyKrw > 0 ? (ratioKrw / rateCnyKrw) : 0;
-    // [v3.2.257 T-0048 R2] 새 방식 = 줄별 배분(주문 · 박스 · 사서함 전체 수량) 제품 몫 합 · 기존 = 금액 비율(그대로).
+    // [v3.2.257 T-0048 R2] 새 방식 = t48ProductShares 제품 몫 합(주문 지정 = 그 주문 수량 · 지정 없음 = 기존과 같은 합계CNY 금액 비율 → 주문 안 수량) · 기존 = 금액 비율(그대로).
     const 작업비CNY = _t48 ? items.reduce((s,p) => s + ((_t48.byProduct[p.id] || {}).labor || 0), 0) : directCostCny + ratioCostCny;
     // 신고 총액·단가
     const 신고총액CNY = 원가CNY + 현지배송비CNY + 작업비CNY;
@@ -13120,9 +13092,9 @@ function buildOrderUnits() {
 // ========== [v3.2.257 T-0048] 신고가 4요소 = 제품가 + 중국 내륙운임 + 현지 작업비 + 해운비 — 새 방식(lclV2Active) 사서함만 ==========
 //   컷오버 판정 = lclV2Active 하나(새 날짜 상수 0). 아니면 null → buildOrderUnits · productDeclUnitCny 는 기존 식 그대로.
 //   R1 운송비 = Orders.현지배송비CNY · 주문 ↔ 제품 키 = 주문번호 = groupKeyOf(상품ID)(주문 묶음 · buildOrderUnits 와 같은 키) · 주문 안 수량 균등.
-//   R2 작업비 = buildCostsByOrder().lines 줄마다 — [박스:N] 그 박스 안 수량(lclV2AllocateCore 와 같은 parseBoxNumbers + distributeQty)
-//              · [주문:X] 그 주문 수량 · 지정 없음 = 사서함 전체 수량. 지정 대상에 수량이 없으면 [4판] 차단(labor_notarget · 대체 배분 안 함).
-//   끝전 = 줄(주문 운송비 · 작업비 줄)마다 소수 2자리 · 최대 잔여 0.01(동률 = 제품 순서) · Σ 제품 몫 = 줄 금액(2자리).
+//   R2 작업비 = buildCostsByOrder().lines — [주문:X] 줄마다 그 주문 수량 균등. 지정 대상에 수량이 없으면 [4판] 차단(labor_notarget · 대체 배분 안 함).
+//              · [5판 U3] 지정 없음 = 기준 main 과 같은 규칙 — 지정 없는 줄 합을 주문마다 합계CNY 금액 비율(분모 = 사서함 전체 합계CNY)로 나눈 뒤 주문 안 수량 균등.
+//   끝전 = 줄(주문 운송비 · 주문 지정 작업비 줄 · 지정 없는 작업비 합의 주문 몫)마다 소수 2자리 · 최대 잔여 0.01(동률 = 제품 순서) · Σ 제품 몫 = 줄 금액(2자리).
 function t48Round2(v) { return Math.round((parseFloat(v) || 0) * 100) / 100; }
 function t48Split(totalCny, targets, acc) {   // targets [{id, w>0}] → acc[id] += 몫(2자리) · 반환 = 배분한 센트 합/100
   const cents = Math.round((parseFloat(totalCny) || 0) * 100);
@@ -13156,10 +13128,9 @@ function t48ProductShares() {
   if (typeof lclV2Active !== 'function' || !lclV2Active()) return null;
   const prods = (state.products || []).map(p => {
     const f = p.fields || {};
-    return { id: p.id, gk: groupKeyOf(f['상품ID']), q: parseInt(f['수량'], 10) || 0, boxNos: parseBoxNumbers(f['박스번호'] || '') };
+    return { id: p.id, gk: groupKeyOf(f['상품ID']), q: parseInt(f['수량'], 10) || 0, amt: parseFloat(f['합계CNY']) || 0 };
   });
   const live = prods.filter(x => x.q > 0);
-  const all = live.map(x => ({ id: x.id, w: x.q }));
   const byGk = {};
   live.forEach(x => { (byGk[x.gk] = byGk[x.gk] || []).push({ id: x.id, w: x.q }); });
   const ship = {}, labor = {}, warn = [];
@@ -13188,24 +13159,32 @@ function t48ProductShares() {
   let laborTotal = 0, laborSrc = 0;
   const laborLines = [];
   const cob = (typeof buildCostsByOrder === 'function') ? buildCostsByOrder() : { lines: [] };
+  let allCny = 0, allN = 0;   // [5판 U3] 지정 없는 줄 — 합만 모아 아래에서 한 번에(기준 main 이 globalKrw 를 모아 한 번 나누는 것과 같음)
   (cob.lines || []).forEach(L => {
     if (L.err === 'amount') { E('labor_value', `작업비 금액 판독 불가(${L.src} · ${String(L.raw).replace(/[<>&"']/g, '').slice(0, 24)}) — 음수 · 비유한 · 숫자 아님`); return; }
     if (L.err === 'rate') { E('labor_rate', `작업비 원화 금액(${L.src} · ₩${String(L.raw).replace(/[<>&"']/g, '').slice(0, 24)})을 위안화로 바꿀 환율 CNY→KRW 없음(0 · 빈 값 · 비유한)`); return; }
+    if (!L.orderKey) { allCny += (parseFloat(L.cny) || 0); allN++; return; }
     const amt = t48Round2(L.cny);
     if (!amt) return;
-    let kind = 'all', tgt = all;
-    if (L.boxNo) {
-      kind = 'box';
-      tgt = [];
-      live.forEach(x => { const i = x.boxNos.indexOf(String(L.boxNo)); if (i < 0) return; const d = distributeQty(x.q, x.boxNos.length)[i]; if (d > 0) tgt.push({ id: x.id, w: d }); });
-    } else if (L.orderKey) { kind = 'order'; tgt = byGk[L.orderKey] || []; }
-    // [4판] 지정(박스 · 주문) 대상에 수량 있는 제품이 없으면 사서함 전체로 대체 배분하지 않고 차단(작업하지 않은 제품에 비용이 붙는 것 방지 · §3 R2).
-    if (!tgt.length && kind !== 'all') { E('labor_notarget', `작업비 ¥${amt.toFixed(2)} — ${kind === 'box' ? '[박스:' + String(L.boxNo).replace(/[<>&"']/g, '').slice(0, 12) + '] 지정인데 박스 ' + String(L.boxNo).replace(/[<>&"']/g, '').slice(0, 12) : '[주문:' + String(L.orderKey).replace(/[<>&"']/g, '').slice(0, 24) + '] 지정인데 주문 ' + String(L.orderKey).replace(/[<>&"']/g, '').slice(0, 24)} 에 수량 있는 제품이 없음 — 사서함 전체로 나누지 않음(작업비 메모의 지정 또는 제품 박스번호 · 주문번호 확인)`); return; }
+    const tgt = byGk[L.orderKey] || [];
+    // [4판] 주문 지정 대상에 수량 있는 제품이 없으면 사서함 전체로 대체 배분하지 않고 차단(작업하지 않은 제품에 비용이 붙는 것 방지 · §3 R2).
+    if (!tgt.length) { const _k = String(L.orderKey).replace(/[<>&"']/g, '').slice(0, 24); E('labor_notarget', `작업비 ¥${amt.toFixed(2)} — [주문:${_k}] 지정인데 주문 ${_k} 에 수량 있는 제품이 없음 — 사서함 전체로 나누지 않음(작업비 줄의 적용 주문 또는 제품 주문번호 확인)`); return; }
     laborSrc = t48Round2(laborSrc + amt);
     laborTotal = t48Round2(laborTotal + t48Split(amt, tgt, labor));
-    laborLines.push({ kind, amt, orderKey: L.orderKey || '', boxNo: L.boxNo || '' });
+    laborLines.push({ kind: 'order', amt, orderKey: L.orderKey });
   });
-  if (Math.abs(laborTotal - laborSrc) >= 0.005) E('labor_sum', `작업비 배분 합 ¥${laborTotal.toFixed(2)} ≠ 작업비 줄 합 ¥${laborSrc.toFixed(2)}(수량 있는 제품 없음)`);
+  // [5판 U3] 지정 없음 = 기준 main buildOrderUnits 규칙 — 주문 몫 = 합 × (주문 합계CNY ÷ 사서함 전체 합계CNY) → 주문 안 수량 균등.
+  const allAmt = t48Round2(allCny);
+  if (allAmt) {
+    laborSrc = t48Round2(laborSrc + allAmt);
+    const gkAmt = {}, gkOrder = [];
+    prods.forEach(x => { if (!(x.gk in gkAmt)) { gkAmt[x.gk] = 0; gkOrder.push(x.gk); } gkAmt[x.gk] += x.amt; });
+    const orderShare = {};
+    t48Split(allAmt, gkOrder.filter(k => gkAmt[k] > 0).map(k => ({ id: k, w: gkAmt[k] })), orderShare);
+    gkOrder.forEach(k => { if (orderShare[k] && byGk[k]) laborTotal = t48Round2(laborTotal + t48Split(orderShare[k], byGk[k], labor)); });
+    laborLines.push({ kind: 'all', amt: allAmt, lines: allN, byOrder: orderShare });
+  }
+  if (Math.abs(laborTotal - laborSrc) >= 0.005) E('labor_sum', `작업비 배분 합 ¥${laborTotal.toFixed(2)} ≠ 작업비 줄 합 ¥${laborSrc.toFixed(2)}(금액 몫을 받은 주문에 수량 있는 제품 없음 · 또는 사서함 합계CNY 0)`);
   const byProduct = {};
   prods.forEach(x => { byProduct[x.id] = { ship: ship[x.id] || 0, labor: labor[x.id] || 0 }; });
   return { byProduct, shipTotal, shipByOrder, laborTotal, laborLines, warn, errors };
